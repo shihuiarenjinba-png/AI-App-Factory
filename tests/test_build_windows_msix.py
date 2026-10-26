@@ -102,4 +102,52 @@ class WindowsPackageContractTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"Invalid Name or Version"):
             verify_inputs(self.root,"demo-product")
 
+
+    def test_reject_unsafe_slug_before_path_lookup(self):
+        for slug in ("../demo-product", "../../products/demo-product",
+                     "demo/product", "Demo-product", "", "a"):
+            with self.subTest(slug=slug):
+                with self.assertRaisesRegex(ValueError, "unsafe product slug"):
+                    verify_inputs(self.root, slug)
+
+    def test_reject_linked_manifest_identity_and_executable(self):
+        created = 0
+        for rel in ("manifest.json", "store/approved-identity.json", "main.py"):
+            with self.subTest(path=rel):
+                source = self.product / rel
+                original = source.read_bytes()
+                target = self.root / ("outside-" + source.name)
+                target.write_bytes(original)
+                source.unlink()
+                try:
+                    source.symlink_to(target)
+                except (OSError, NotImplementedError):
+                    source.write_bytes(original)
+                    continue
+                try:
+                    created += 1
+                    with self.assertRaisesRegex(ValueError, "linked"):
+                        verify_inputs(self.root, "demo-product")
+                finally:
+                    source.unlink()
+                    source.write_bytes(original)
+        if not created:
+            self.skipTest("symlinks unavailable on this runner")
+
+    def test_reject_linked_store_directory(self):
+        store = self.product / "store"
+        external = self.root / "outside-store"
+        store.rename(external)
+        try:
+            store.symlink_to(external, target_is_directory=True)
+        except (OSError, NotImplementedError):
+            external.rename(store)
+            self.skipTest("directory symlinks unavailable on this runner")
+        try:
+            with self.assertRaisesRegex(ValueError, "linked Store directory"):
+                verify_inputs(self.root, "demo-product")
+        finally:
+            store.unlink()
+            external.rename(store)
+
 if __name__=="__main__":unittest.main()
