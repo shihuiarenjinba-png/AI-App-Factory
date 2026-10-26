@@ -1,185 +1,28 @@
-name: Factory autonomous 15m
+name: Factory MCP handoff validation (no OpenAI API)
 on:
-  schedule:
-    - cron: '4,19,34,49 * * * *'
   workflow_dispatch:
-concurrency:
-  group: factory-auto-app
-  cancel-in-progress: false
+
+permissions:
+  contents: read
+
 jobs:
-  generate:
+  verify:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
-    permissions:
-      contents: read
-      actions: read
-    outputs:
-      ready: ${{ steps.gate.outputs.ready }}
-      source_sha: ${{ steps.gate.outputs.source_sha }}
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
         with:
           ref: codex/factory-autoloop-20261026
-          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: 'Gate: opt-in, cost limit, circuit breaker'
-        id: gate
-        env:
-          GH_TOKEN: ${{ github.token }}
-          ENABLED: ${{ vars.FACTORY_ENABLED }}
-          OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
-          DAILY_LIMIT: ${{ vars.MAX_AUTONOMOUS_STAGES_PER_DAY }}
-        shell: bash
+      - name: Validate Factory source with no model API
         run: |
-          set -euo pipefail
-          echo "ready=false" >> "$GITHUB_OUTPUT"
-          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          if [ "$ENABLED" != true ] || [ -z "$OPENAI_KEY" ]; then
-            echo "HOLD: configure FACTORY_ENABLED and OPENAI_API_KEY"
-            exit 0
-          fi
-          limit="$DAILY_LIMIT"
-          if [ -z "$limit" ]; then limit=32; fi
-          if ! [[ "$limit" =~ ^[0-9]+$ ]] || [ "$limit" -lt 1 ] || [ "$limit" -gt 96 ]; then
-            echo "HOLD: daily completed-stage limit outside 1..96"
-            exit 1
-          fi
-          completed=$(git log --since="24 hours ago" --format=%s --grep='^factory-auto:' | wc -l | tr -d ' ')
-          if [ "$completed" -ge "$limit" ]; then echo "HOLD: 24h budget reached"; exit 0; fi
-          failures=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/factory-autoloop.yml/runs?per_page=100" --jq '[.workflow_runs[] | select(.head_branch == "main") | select(.conclusion == "failure") | select((.created_at | fromdateiso8601) > (now - 86400))] | length')
-          if [ "$failures" -ge 3 ]; then echo "HOLD: 3 failing runs in 24 hours"; exit 0; fi
-          echo "ready=true" >> "$GITHUB_OUTPUT"
-      - name: Collect evidence and trusted plan
-        if: steps.gate.outputs.ready == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
+          python -m compileall -q factory.py tools tests
+          python -m unittest discover -s tests -v
+      - name: Explain orchestration ownership
         run: |
-          mkdir -p .runtime
-          echo '{"signals":[]}' > .runtime/market.json
-          if [ "$(python -c 'import json;print(json.load(open("factory/state.json"))["stage"])')" = research ]; then python factory.py market; fi
-          python factory.py plan
-      - uses: actions/upload-artifact@v4
-        if: steps.gate.outputs.ready == 'true'
-        with:
-          name: trusted-plan
-          path: .runtime/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 3
-      - name: Generate one candidate with Codex
-        if: steps.gate.outputs.ready == 'true'
-        uses: openai/codex-action@v1
-        with:
-          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
-          permission-profile: ':workspace'
-          prompt-file: .runtime/PROMPT.md
-      - name: Reject unapproved writes
-        if: steps.gate.outputs.ready == 'true'
-        run: |
-          git diff --exit-code
-          git diff --cached --exit-code
-          test -z "$(git ls-files --others --exclude-standard)"
-      - uses: actions/upload-artifact@v4
-        if: steps.gate.outputs.ready == 'true'
-        with:
-          name: candidate
-          path: .candidate/
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 3
-  audit:
-    needs: generate
-    if: needs.generate.outputs.ready == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    permissions:
-      contents: read
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.generate.outputs.source_sha }}
-          persist-credentials: false
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/download-artifact@v4
-        with:
-          name: trusted-plan
-          path: .runtime
-      - uses: actions/download-artifact@v4
-        with:
-          name: candidate
-          path: .candidate
-      - run: python factory.py validate
-      - name: Sandboxed nonzero-count product tests
-        shell: bash
-        run: |
-          set -euo pipefail
-          stage=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["stage"])')
-          if [ "$stage" != research ]; then
-            log=$(mktemp)
-            timeout 110s docker run --rm --network none --read-only \
-              --cap-drop ALL --security-opt no-new-privileges \
-              --pids-limit 64 --memory 512m --cpus 1 \
-              --user 65534:65534 -e PYTHONDONTWRITEBYTECODE=1 \
-              -v "$PWD/.candidate/product:/work:ro" -w /work \
-              python:3.12-slim python -m unittest discover -s tests -v 2>&1 | tee "$log"
-            grep -Eq 'Ran [1-9][0-9]* tests? in' "$log" || exit 1
-            if grep -Eq 'skipped=[1-9]|expected failures=[1-9]' "$log"; then exit 1; fi
-          fi
-  checkpoint:
-    needs: [generate, audit]
-    if: needs.audit.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 12
-    permissions:
-      contents: write
-      actions: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ needs.generate.outputs.source_sha }}
-          fetch-depth: 0
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.12'
-      - uses: actions/download-artifact@v4
-        with:
-          name: trusted-plan
-          path: .runtime
-      - uses: actions/download-artifact@v4
-        with:
-          name: candidate
-          path: .candidate
-      - name: Revalidate then continue from next stage
-        env:
-          EXPECTED_SHA: ${{ needs.generate.outputs.source_sha }}
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          git fetch origin codex/factory-autoloop-20261026
-          if [ "$(git rev-parse FETCH_HEAD)" != "$EXPECTED_SHA" ]; then
-            echo "HOLD: concurrent or unexpected code change"
-            exit 1
-          fi
-          python factory.py validate
-          stage=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["stage"])')
-          revision=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["revision"])')
-          slug=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["slug"] or "")')
-          python factory.py promote
-          git switch -c "validated-$GITHUB_RUN_ID"
-          git add -- factory/state.json
-          if [ "$stage" = research ]; then git add -- proposals; else git add -- products; fi
-          if git diff --cached --quiet; then echo "HOLD: no state change"; exit 1; fi
-          git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' \
-            commit -m "factory-auto: $stage rev $revision"
-          git push origin HEAD:refs/heads/codex/factory-autoloop-20261026
-          if [ "$stage" = improve ] && [ "$revision" = 2 ] && [ -f "products/$slug/store/approved-identity.json" ]; then
-            gh workflow run msix-export.yml --ref codex/factory-autoloop-20261026 -f "slug=$slug"
-          else
-            echo 'Continue the next development stage; MSIX export waits for verified Identity'
-          fi
+          echo "Product research, code changes and checkpoint decisions are performed by ChatGPT scheduled tasks using the GitHub connector."
+          echo "GitHub Actions handles deterministic CI, Windows builds, and validated artifact transfers only."
+          echo "No API key is used. This workflow does not schedule, run or invoke an AI model."
