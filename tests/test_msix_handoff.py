@@ -29,6 +29,10 @@ class FactoryTransportTests(unittest.TestCase):
         with zipfile.ZipFile(self.package,"w") as zipfileout:
             zipfileout.writestr("AppxManifest.xml",XML)
             zipfileout.writestr("demo.exe",b"windows test executable")
+            zipfileout.writestr("AppxBlockMap.xml",
+                b'<BlockMap xmlns="http://schemas.microsoft.com/appx/2010/blockmap"/>')
+            zipfileout.writestr("[Content_Types].xml",
+                b'<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"/>')
 
     def save_approved(self):
         (self.prod/"store/approved-identity.json").write_text(json.dumps(self.approved))
@@ -66,6 +70,31 @@ class FactoryTransportTests(unittest.TestCase):
         self.package.write_bytes(b"not a msix")
         with self.assertRaisesRegex(ValueError,"invalid MSIX"):
             create_handoff(self.root,"demo-product",self.package,self.root/"exports",SHA)
+
+    def test_plain_zip_with_manifest_is_not_msix(self):
+        with zipfile.ZipFile(self.package, "w") as archive:
+            archive.writestr("AppxManifest.xml", XML)
+            archive.writestr("demo.exe", b"windows test executable")
+        with self.assertRaisesRegex(ValueError, "required MSIX package metadata"):
+            create_handoff(self.root, "demo-product", self.package,
+                           self.root / "exports", SHA)
+
+    def test_duplicate_case_insensitive_member_is_rejected(self):
+        with zipfile.ZipFile(self.package, "a") as archive:
+            archive.writestr("appxmanifest.xml", XML)
+        with self.assertRaisesRegex(ValueError, "duplicate MSIX ZIP member"):
+            create_handoff(self.root, "demo-product", self.package,
+                           self.root / "exports", SHA)
+
+    def test_malformed_block_map_is_rejected(self):
+        with zipfile.ZipFile(self.package, "w") as archive:
+            archive.writestr("AppxManifest.xml", XML)
+            archive.writestr("demo.exe", b"windows test executable")
+            archive.writestr("AppxBlockMap.xml", b"<Other/>")
+            archive.writestr("[Content_Types].xml", b"<Types/>")
+        with self.assertRaisesRegex(ValueError, "block map root"):
+            create_handoff(self.root, "demo-product", self.package,
+                           self.root / "exports", SHA)
 
     def test_duplicate_bundle_fails(self):
         create_handoff(self.root,"demo-product",self.package,self.root/"exports",SHA)
