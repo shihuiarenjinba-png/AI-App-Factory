@@ -49,7 +49,7 @@ jobs:
           fi
           completed=$(git log --since="24 hours ago" --format=%s --grep='^factory-auto:' | wc -l | tr -d ' ')
           if [ "$completed" -ge "$limit" ]; then echo "HOLD: 24h budget reached"; exit 0; fi
-          failures=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/factory-autoloop.yml/runs?per_page=100" --jq '[.workflow_runs[] | select(.conclusion == "failure") | select((.created_at | fromdateiso8601) > (now - 86400))] | length')
+          failures=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/factory-autoloop.yml/runs?per_page=100" --jq '[.workflow_runs[] | select(.head_branch == "main") | select(.conclusion == "failure") | select((.created_at | fromdateiso8601) > (now - 86400))] | length')
           if [ "$failures" -ge 3 ]; then echo "HOLD: 3 failing runs in 24 hours"; exit 0; fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: Collect evidence and trusted plan
