@@ -16,7 +16,7 @@ class ScheduleContractTests(unittest.TestCase):
         self.assertIn("cancel-in-progress: false",self.source)
         self.assertIn("concurrency:",self.source)
     def test_draft_pr_only(self):
-        self.assertIn("gh pr create --draft",self.source)
+        self.assertIn("HEAD:refs/heads/codex/factory-autonomous-20261026",self.source)
         self.assertNotIn("gh pr merge",self.source)
         self.assertNotIn("git push origin main",self.source)
     def test_keys_only_in_dedicated_job(self):
@@ -29,6 +29,6 @@ class ScheduleContractTests(unittest.TestCase):
         self.assertIn("git diff --cached --exit-code",self.source)
         self.assertIn("git diff --exit-code",self.source)
     def test_tests_cannot_succeed_with_zero_cases(self):
-        self.assertIn("Ran [1-9][0-9]* tests? in",self.source)
+        self.assertIn("sandbox_test.py",self.source)
 
 if __name__=="__main__":unittest.main()

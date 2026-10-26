@@ -81,6 +81,9 @@ class CoreTests(unittest.TestCase):
             promote(self.root)
         s=json.loads((self.root/"factory/state.json").read_text())
         self.assertEqual((s["stage"],s["cycle"]),("research",2))
+        h=json.loads((self.root/"handoffs/simple-product.json").read_text())
+        self.assertEqual(h["status"],"WINDOWS_QA_REQUIRED")
+        self.assertEqual(h["package_identity"],"UNKNOWN")
 
 
     def test_bad_extension_rejected(self):

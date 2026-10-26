@@ -1,4 +1,4 @@
-name: Factory 15 minute cycle
+name: Factory autonomous 15 minute cycle
 on:
   schedule:
     - cron: "4,19,34,49 * * * *"
@@ -18,10 +18,13 @@ jobs:
       actions: read
     outputs:
       ready: ${{ steps.gate.outputs.ready }}
+      source_sha: ${{ steps.gate.outputs.source_sha }}
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: codex/factory-autonomous-20261026
+          fetch-depth: 0
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -31,15 +34,22 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           FACTORY_ENABLED: ${{ vars.FACTORY_ENABLED }}
           OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+          MAX_CYCLES_PER_DAY: ${{ vars.MAX_CYCLES_PER_DAY }}
         shell: bash
         run: |
           set -euo pipefail
           echo "ready=false" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           if [ "$FACTORY_ENABLED" != "true" ]; then echo "HOLD: set FACTORY_ENABLED=true"; exit 0; fi
           if [ -z "$OPENAI_KEY" ]; then echo "HOLD: OPENAI_API_KEY not configured"; exit 0; fi
-          count=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
-            --jq '[.[] | select(.head.ref | startswith("codex/factory-"))] | length')
-          if [ "$count" -gt 0 ]; then echo "HOLD: existing factory PR awaits human review"; exit 0; fi
+          limit="$MAX_CYCLES_PER_DAY"
+          if [ -z "$limit" ]; then limit=16; fi
+          if ! [[ "$limit" =~ ^[0-9]+$ ]] || [ "$limit" -lt 1 ] || [ "$limit" -gt 48 ]; then
+            echo "HOLD: MAX_CYCLES_PER_DAY must be 1..48" >&2
+            exit 1
+          fi
+          cycles=$(git log --since="24 hours ago" --format=%s --grep='^factory: advance ' | wc -l | tr -d ' ')
+          if [ "$cycles" -ge "$limit" ]; then echo "HOLD: successful cycle budget reached"; exit 0; fi
           failures=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/factory-cycle.yml/runs?per_page=100"             --jq '[.workflow_runs[] | select(.created_at >= (now - 86400 | strftime("%Y-%m-%dT%H:%M:%SZ"))) | select(.conclusion == "failure")] | length')
           if [ "$failures" -ge 3 ]; then echo "HOLD: 3 failed runs in 24h; circuit breaker"; exit 0; fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
@@ -94,6 +104,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ needs.generate.outputs.source_sha }}
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
@@ -114,26 +125,28 @@ jobs:
           set -euo pipefail
           stage=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["stage"])')
           if [ "$stage" != "research" ]; then
-            python -m compileall -q .candidate/product
-            test_log=$(mktemp)
-            timeout 100s docker run --rm --network none --read-only               --cap-drop ALL --security-opt no-new-privileges               --pids-limit 64 --memory 512m --cpus 1               --user 65534:65534 -e PYTHONDONTWRITEBYTECODE=1               -v "$PWD/.candidate/product:/work:ro" -w /work               python:3.12-slim python -m unittest discover -s tests -v 2>&1 | tee "$test_log"
-            grep -Eq 'Ran [1-9][0-9]* tests? in' "$test_log" || { echo "HOLD: zero tests"; exit 1; }
-            if grep -Eq 'skipped=[1-9]|expected failures=[1-9]' "$test_log"; then
-              echo "HOLD: skipped or expected-failure tests need investigation"
-              exit 1
-            fi
+            timeout 100s docker run --rm --network none --read-only \
+              --cap-drop ALL --security-opt no-new-privileges \
+              --pids-limit 64 --memory 512m --cpus 1 \
+              --user 65534:65534 -e PYTHONDONTWRITEBYTECODE=1 \
+              -v "$PWD/.candidate/product:/work:ro" \
+              -v "$PWD/scripts/sandbox_test.py:/test_runner.py:ro" -w /work \
+              python:3.12-slim python /test_runner.py
           fi
 
-  propose:
+  advance:
     needs: [generate, audit]
     if: needs.audit.result == 'success'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.generate.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: true
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -145,30 +158,34 @@ jobs:
         with:
           name: candidate
           path: .candidate
-      - name: Propose a Draft PR (never auto-merge)
+      - name: Advance isolated development branch
         env:
-          GH_TOKEN: ${{ github.token }}
+          EXPECTED_SHA: ${{ needs.generate.outputs.source_sha }}
         shell: bash
         run: |
           set -euo pipefail
-          count=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
-            --jq '[.[] | select(.head.ref | startswith("codex/factory-"))] | length')
-          if [ "$count" -gt 0 ]; then echo "HOLD: another factory PR exists"; exit 0; fi
-          python factory.py promote
+          git fetch origin codex/factory-autonomous-20261026
+          if [ "$(git rev-parse FETCH_HEAD)" != "$EXPECTED_SHA" ]; then
+            echo "HOLD: branch changed during audit" >&2
+            exit 1
+          fi
+          python factory.py validate
           stage=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["stage"])')
-          branch="codex/factory-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
-          git switch -c "$branch"
+          python factory.py promote
+          git switch -c "factory-run-$GITHUB_RUN_ID"
           git add -- factory/state.json
           if [ "$stage" = "research" ]; then
-            git add -- proposals
+            git add -- proposals/
           else
-            git add -- products
+            git add -- products/
+            if [ -d handoffs ]; then git add -- handoffs/; fi
           fi
           if git diff --cached --quiet; then echo "HOLD: no changes"; exit 1; fi
+          if git diff --cached --name-only | grep -Ev '^(factory/state.json|products/|proposals/|handoffs/)' ; then
+            echo "HOLD: unexpected staged changes" >&2
+            exit 1
+          fi
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
-              commit -m "factory: validated $stage candidate"
-          git push origin "$branch"
-          gh pr create --draft --base main --head "$branch" \
-            --title "Factory $stage: validated candidate for review" \
-            --body "Automated Linux validation only. Human approval required; Windows GUI, identity, MSIX, license and Store submission remain HOLD."
+              commit -m "factory: advance $stage run $GITHUB_RUN_ID"
+          git push origin "HEAD:refs/heads/codex/factory-autonomous-20261026"
