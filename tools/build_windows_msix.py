@@ -8,13 +8,15 @@ import argparse
 import json
 from pathlib import Path
 import re
+from urllib.parse import urlparse
 import shutil
 import subprocess
 import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
-NAME=re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{2,80}$")
+NAME=re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{2,49}$")
+STORE_ID=re.compile(r"^[A-Za-z0-9]{8,32}$")
 VERSION=re.compile(r"^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$")
 ASSETS=("StoreLogo.png","Square150.png","Square44.png")
 NS="http://schemas.microsoft.com/appx/manifest/foundation/windows10"
@@ -26,20 +28,42 @@ def verify_inputs(root:Path,slug:str)->tuple[Path,dict]:
     if not product.is_dir() or product.is_symlink():
         raise ValueError("product source directory unavailable")
     manifest=json.loads((product/"manifest.json").read_text(encoding="utf-8"))
-    if manifest.get("slug")!=slug or manifest.get("entry")!="main.py":
+    if (manifest.get("kind")!="app" or manifest.get("slug")!=slug
+            or manifest.get("entry")!="main.py"):
         raise ValueError("product manifest not approved for executable build")
     approved=product/"store/approved-identity.json"
     if not approved.is_file():
         raise ValueError("Store Identity missing; do not invent")
     cfg=json.loads(approved.read_text(encoding="utf-8"))
-    if (cfg.get("reviewed") is not True or cfg.get("source")!="partner_center" or
-        not isinstance(cfg.get("store_id"),str) or not cfg["store_id"].strip()):
+    # The file is an operator attestation, not proof of Microsoft authentication.
+    # Require the fields emitted by Windows-all-auto's official identity router,
+    # rather than trusting a hand-written reviewed:true flag alone.
+    if (cfg.get("reviewed") is not True or cfg.get("source")!="partner_center"
+            or not isinstance(cfg.get("store_id"),str)
+            or not STORE_ID.fullmatch(cfg["store_id"])):
         raise ValueError("Partner Center Identity not verified")
+    verifier=cfg.get("verified_by")
+    if (not isinstance(verifier,str) or not 3<=len(verifier)<=100
+            or any(ord(c)<32 or ord(c)==127 for c in verifier)):
+        raise ValueError("Missing official Identity reviewer")
+    evidence=cfg.get("evidence_url")
+    if not isinstance(evidence,str):
+        raise ValueError("Missing official Partner Center evidence")
+    url=urlparse(evidence)
+    if (url.scheme!="https" or url.hostname not in
+            ("partner.microsoft.com","partnercenter.microsoft.com")
+            or url.username or url.password or url.fragment):
+        raise ValueError("Invalid official Partner Center evidence URL")
     for field in ("name","publisher","version"):
         if not isinstance(cfg.get(field),str) or not cfg[field]:
             raise ValueError("Missing verified "+field)
     if not NAME.fullmatch(cfg["name"]) or not VERSION.fullmatch(cfg["version"]):
         raise ValueError("Invalid Name or Version")
+    if any(int(component)>65535 for component in cfg["version"].split(".")):
+        raise ValueError("Version component exceeds MSIX limit")
+    if (not cfg["publisher"].startswith("CN=") or len(cfg["publisher"])>512
+            or any(ord(c)<32 or ord(c)==127 for c in cfg["publisher"])):
+        raise ValueError("Invalid official Publisher")
     for file in ASSETS:
         path=product/"store/assets"/file
         if path.is_symlink() or not path.is_file() or path.stat().st_size>4*1024*1024:
@@ -60,7 +84,7 @@ def appx_manifest(identity:dict,executable:str)->bytes:
       "Version":identity["version"],"ProcessorArchitecture":"x64"})
     props=ET.SubElement(root,tag(NS,"Properties"))
     ET.SubElement(props,tag(NS,"DisplayName")).text=identity.get("display_name",identity["name"])
-    ET.SubElement(props,tag(NS,"PublisherDisplayName")).text=identity.get("publisher_display_name","OkinawaDesktopTools")
+    ET.SubElement(props,tag(NS,"PublisherDisplayName")).text=identity.get("publisher_display_name",identity["publisher"])
     ET.SubElement(props,tag(NS,"Logo")).text="Assets\\StoreLogo.png"
     resources=ET.SubElement(root,tag(NS,"Resources"))
     ET.SubElement(resources,tag(NS,"Resource"),{"Language":"en-us"})
