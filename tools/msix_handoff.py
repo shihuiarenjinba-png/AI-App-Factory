@@ -34,7 +34,7 @@ def msix_data(path:Path)->dict:
             # A ZIP with an AppxManifest is not necessarily an MSIX. MakeAppx
             # always emits both the OPC content-types file and a block map.
             # Reject ambiguous case-insensitive names before looking up entries.
-            names=[e.filename.replace("\\\\","/").lower() for e in entries]
+                names=[e.filename.replace("\\","/").lower() for e in entries]
             if len(set(names))!=len(names):
                 fail("duplicate MSIX ZIP member names")
             required={"appxmanifest.xml","appxblockmap.xml","[content_types].xml"}
