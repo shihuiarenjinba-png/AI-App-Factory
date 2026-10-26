@@ -3,6 +3,7 @@ on:
   push:
     branches:
       - "codex/factory-bootstrap-20261026"
+      - "codex/factory-autoloop-20261026"
       - "codex/factory-autonomous-*"
     paths:
       - "products/**"
