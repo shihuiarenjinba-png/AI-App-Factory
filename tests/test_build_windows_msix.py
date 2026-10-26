@@ -82,7 +82,7 @@ class WindowsPackageContractTests(unittest.TestCase):
             {"version":"1.65536.0.0"},
             {"name":"A"+"x"*50},
             {"store_id":"fake"},
-            {"verified_by":"name\\nnewline"},
+            {"verified_by":"name"+chr(10)+"newline"},
         ):
             with self.subTest(change=change):
                 obj=dict(IDENTITY,**change)
