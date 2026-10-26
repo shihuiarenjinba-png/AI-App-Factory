@@ -8,7 +8,10 @@ import zipfile
 from tools.msix_handoff import create_handoff
 
 SHA="a"*40
-XML=b'<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10"><Identity Name="OkinawaDesktopTools.Demo" Publisher="CN=TEST" Version="1.0.0.0"/></Package>'
+XML=(b'<Package xmlns="http://schemas.microsoft.com/appx/manifest/foundation/windows10">'
+     b'<Identity Name="OkinawaDesktopTools.Demo" Publisher="CN=TEST" Version="1.0.0.0"/>'
+     b'<Applications><Application Id="App" Executable="demo.exe" '
+     b'EntryPoint="Windows.FullTrustApplication"/></Applications></Package>')
 
 class FactoryTransportTests(unittest.TestCase):
     def setUp(self):
@@ -44,6 +47,8 @@ class FactoryTransportTests(unittest.TestCase):
         saved=self.root/"exports/factory-msix-handoff"
         self.assertEqual((saved/"package.msix").read_bytes(),self.package.read_bytes())
         self.assertEqual(meta["package_sha256"],hashlib.sha256(self.package.read_bytes()).hexdigest())
+        self.assertEqual(meta["executable_sha256"],
+                         hashlib.sha256(b"windows test executable").hexdigest())
 
     def test_no_partner_center_evidence_fails(self):
         self.approved["reviewed"]=False
@@ -93,6 +98,45 @@ class FactoryTransportTests(unittest.TestCase):
             archive.writestr("AppxBlockMap.xml", b"<Other/>")
             archive.writestr("[Content_Types].xml", b"<Types/>")
         with self.assertRaisesRegex(ValueError, "block map root"):
+            create_handoff(self.root, "demo-product", self.package,
+                           self.root / "exports", SHA)
+
+    def test_manifest_only_msix_metadata_cannot_export(self):
+        with zipfile.ZipFile(self.package, "w") as archive:
+            archive.writestr("AppxManifest.xml", XML)
+            archive.writestr("AppxBlockMap.xml", b"<BlockMap/>")
+            archive.writestr("[Content_Types].xml", b"<Types/>")
+        with self.assertRaisesRegex(ValueError, "executable payload missing"):
+            create_handoff(self.root, "demo-product", self.package,
+                           self.root / "exports", SHA)
+
+    def test_wrong_executable_path_cannot_export(self):
+        with zipfile.ZipFile(self.package, "w") as archive:
+            archive.writestr("AppxManifest.xml", XML)
+            archive.writestr("other.exe", b"unrelated program")
+            archive.writestr("AppxBlockMap.xml", b"<BlockMap/>")
+            archive.writestr("[Content_Types].xml", b"<Types/>")
+        with self.assertRaisesRegex(ValueError, "executable payload missing"):
+            create_handoff(self.root, "demo-product", self.package,
+                           self.root / "exports", SHA)
+
+    def test_traversal_executable_path_cannot_export(self):
+        with zipfile.ZipFile(self.package, "w") as archive:
+            archive.writestr("AppxManifest.xml",
+                             XML.replace(b'demo.exe', b'../demo.exe'))
+            archive.writestr("demo.exe", b"windows test executable")
+            archive.writestr("AppxBlockMap.xml", b"<BlockMap/>")
+            archive.writestr("[Content_Types].xml", b"<Types/>")
+        with self.assertRaisesRegex(ValueError, "unsafe MSIX executable path"):
+            create_handoff(self.root, "demo-product", self.package,
+                           self.root / "exports", SHA)
+
+    def test_crc_corrupted_executable_cannot_export(self):
+        raw=bytearray(self.package.read_bytes())
+        offset=raw.index(b"windows test executable")
+        raw[offset]=ord("W")
+        self.package.write_bytes(raw)
+        with self.assertRaisesRegex(ValueError, "invalid MSIX container"):
             create_handoff(self.root, "demo-product", self.package,
                            self.root / "exports", SHA)
 
