@@ -15,6 +15,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 
+SLUG=re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 NAME=re.compile(r"^[A-Za-z][A-Za-z0-9_.-]{2,49}$")
 STORE_ID=re.compile(r"^[A-Za-z0-9]{8,32}$")
 VERSION=re.compile(r"^\d{1,5}\.\d{1,5}\.\d{1,5}\.\d{1,5}$")
@@ -24,16 +25,27 @@ UAP="http://schemas.microsoft.com/appx/manifest/uap/windows10"
 RESCAP="http://schemas.microsoft.com/appx/manifest/foundation/windows10/restrictedcapabilities"
 
 def verify_inputs(root:Path,slug:str)->tuple[Path,dict]:
+    # Linked sources can silently import another product's package identity.
+    if not isinstance(slug,str) or not SLUG.fullmatch(slug):
+        raise ValueError("unsafe product slug")
+    if (root/"products").is_symlink():
+        raise ValueError("linked products directory forbidden")
     product=root/"products"/slug
     if not product.is_dir() or product.is_symlink():
         raise ValueError("product source directory unavailable")
-    manifest=json.loads((product/"manifest.json").read_text(encoding="utf-8"))
+    store=product/"store"
+    if store.is_symlink() or (store/"assets").is_symlink():
+        raise ValueError("linked Store directory forbidden")
+    manifest_path=product/"manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ValueError("product manifest missing or linked")
+    manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
     if (manifest.get("kind")!="app" or manifest.get("slug")!=slug
             or manifest.get("entry")!="main.py"):
         raise ValueError("product manifest not approved for executable build")
-    approved=product/"store/approved-identity.json"
-    if not approved.is_file():
-        raise ValueError("Store Identity missing; do not invent")
+    approved=store/"approved-identity.json"
+    if approved.is_symlink() or not approved.is_file():
+        raise ValueError("Store Identity missing or linked; do not invent")
     cfg=json.loads(approved.read_text(encoding="utf-8"))
     # The file is an operator attestation, not proof of Microsoft authentication.
     # Require the fields emitted by Windows-all-auto's official identity router,
@@ -72,7 +84,8 @@ def verify_inputs(root:Path,slug:str)->tuple[Path,dict]:
             header=asset.read(8)
         if header!=b"\x89PNG\r\n\x1a\n":
             raise ValueError("Store asset is not PNG: "+file)
-    if not (product/"main.py").is_file():raise ValueError("main.py absent")
+    if (product/"main.py").is_symlink() or not (product/"main.py").is_file():
+        raise ValueError("main.py absent or linked")
     return product,cfg
 
 def appx_manifest(identity:dict,executable:str)->bytes:
