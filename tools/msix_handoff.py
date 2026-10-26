@@ -31,9 +31,29 @@ def msix_data(path:Path)->dict:
                     entry.file_size>300*1024*1024 or
                     (entry.compress_size and entry.file_size>100*entry.compress_size)):
                     fail("unsafe MSIX ZIP member")
-            found=[e for e in entries if e.filename.lower()=="appxmanifest.xml"]
-            if len(found)!=1 or found[0].file_size>2*1024*1024:fail("AppxManifest.xml unavailable")
-            root=ET.fromstring(z.read(found[0]))
+            # A ZIP with an AppxManifest is not necessarily an MSIX. MakeAppx
+            # always emits both the OPC content-types file and a block map.
+            # Reject ambiguous case-insensitive names before looking up entries.
+            names=[e.filename.replace("\\","/").lower() for e in entries]
+            if len(set(names))!=len(names):
+                fail("duplicate MSIX ZIP member names")
+            required={"appxmanifest.xml","appxblockmap.xml","[content_types].xml"}
+            if not required.issubset(names):
+                fail("required MSIX package metadata missing")
+            by_name=dict(zip(names,entries))
+            for name in required:
+                entry=by_name[name]
+                if not 0<entry.file_size<=2*1024*1024:
+                    fail("invalid MSIX package metadata size")
+            root=ET.fromstring(z.read(by_name["appxmanifest.xml"]))
+            blockmap=ET.fromstring(z.read(by_name["appxblockmap.xml"]))
+            content_types=ET.fromstring(z.read(by_name["[content_types].xml"]))
+            if root.tag.split("}")[-1]!="Package":
+                fail("MSIX package manifest root invalid")
+            if blockmap.tag.split("}")[-1]!="BlockMap":
+                fail("MSIX block map root invalid")
+            if content_types.tag.split("}")[-1]!="Types":
+                fail("MSIX content types root invalid")
     except (zipfile.BadZipFile,ET.ParseError,KeyError,RuntimeError,OSError) as error:
         fail("invalid MSIX container: "+type(error).__name__)
     identity=next((x for x in root.iter() if x.tag=="Identity" or x.tag.endswith("}Identity")),None)
