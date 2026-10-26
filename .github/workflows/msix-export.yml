@@ -2,9 +2,10 @@ name: Factory MSIX export
 on:
   push:
     branches:
-      - "codex/factory-bootstrap-20261026"
-      - "codex/factory-autoloop-20261026"
-      - "codex/factory-autonomous-*"
+      # Approved Identity can be returned to any isolated codex work branch.
+      # Never build on main/release directly; the package gate still requires
+      # products/<slug>/store/approved-identity.json.
+      - "codex/**"
     paths:
       - "products/**"
   workflow_dispatch:
