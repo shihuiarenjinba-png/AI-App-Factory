@@ -39,6 +39,33 @@ class PushSelectionTests(unittest.TestCase):
         with self.assertRaises(SelectionHold):
             choose_slug("pull_request", "demo-app", "", "")
 
+    def test_cross_product_rename_reports_both_products_and_holds(self):
+        # Git's default rename detection reports only the destination in
+        # --name-only output.  That must not hide the source product.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            def git(*args):
+                return subprocess.run(["git", *args], cwd=root, check=True,
+                                      stdout=subprocess.PIPE, stderr=subprocess.PIPE).stdout.decode().strip()
+            git("init", "-q")
+            git("config", "user.email", "ci@example.invalid")
+            git("config", "user.name", "CI")
+            git("config", "diff.renames", "true")
+            (root / "products" / "first-app").mkdir(parents=True)
+            (root / "products" / "first-app" / "main.py").write_text("print(1)\\n")
+            git("add", ".")
+            git("commit", "-qm", "initial product")
+            before = git("rev-parse", "HEAD")
+            (root / "products" / "other-app").mkdir(parents=True)
+            git("mv", "products/first-app/main.py", "products/other-app/main.py")
+            git("commit", "-qm", "move file across products")
+            after = git("rev-parse", "HEAD")
+            self.assertEqual(sorted(push_paths(before, after, cwd=root)), [
+                "products/first-app/main.py", "products/other-app/main.py",
+            ])
+            with self.assertRaisesRegex(SelectionHold, "exactly one"):
+                choose_slug("push", "", before, after, cwd=root)
+
     def test_real_multi_commit_git_range(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

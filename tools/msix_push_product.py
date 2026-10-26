@@ -43,7 +43,10 @@ def push_paths(before: str, after: str, *, cwd: Path | None = None) -> list[str]
     if ancestor.returncode != 0:
         raise SelectionHold("push history is non-fast-forward or unavailable")
     changed = subprocess.run(
-        ["git", "diff", "--name-only", "-z", before, after, "--", "products/"],
+        # A cross-product rename changes *both* source and destination products.
+        # Git rename detection reports only the destination with --name-only,
+        # which could incorrectly select one product and export its MSIX.
+        ["git", "diff", "--no-renames", "--name-only", "-z", before, after, "--", "products/"],
         cwd=cwd, capture_output=True, check=False, timeout=30,
     )
     if changed.returncode != 0:
