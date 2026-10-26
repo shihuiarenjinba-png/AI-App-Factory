@@ -16,7 +16,7 @@ class AutoLoopContract(unittest.TestCase):
         self.assertNotIn("git push origin main",WORKFLOW)
         self.assertNotIn("gh pr create",WORKFLOW)
     def test_same_sha_reviewed(self):
-        self.assertIn("another change arrived after candidate generation",WORKFLOW)
+        self.assertIn("HOLD: concurrent or unexpected code change",WORKFLOW)
         self.assertIn("ref: "+"$"+"{{ needs.generate.outputs.source_sha }}",WORKFLOW)
     def test_bounded_cost_and_failures(self):
         self.assertIn("MAX_AUTONOMOUS_STAGES_PER_DAY",WORKFLOW)
