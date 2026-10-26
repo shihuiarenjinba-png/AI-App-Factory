@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """Audited AI product factory - Python standard library only."""
 import ast
-import hashlib
 import json
 import os
 import re
@@ -223,15 +222,6 @@ def promote(root=ROOT):
         elif st["revision"]==1:
             st["revision"]=2
         else:
-            hashes={}
-            for item in sorted(dest.rglob("*")):
-                if item.is_file():
-                    hashes[item.relative_to(dest).as_posix()]=hashlib.sha256(item.read_bytes()).hexdigest()
-            save(root/"handoffs"/(slug+".json"),{
-                "schema":1,"kind":st["kind"],"slug":slug,
-                "status":"WINDOWS_QA_REQUIRED","package_identity":"UNKNOWN",
-                "source_branch":"codex/factory-autonomous-20261026",
-                "product_path":"products/"+slug,"sha256":hashes})
             st.update(stage="research",revision=0,slug=None,cycle=st["cycle"]+1)
     save(root/"factory/state.json",st)
     return result
