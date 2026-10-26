@@ -41,3 +41,10 @@ No new GitHub repos are created automatically in this first phase.
   downstream independent systems, currently with unfinished live integration.
 - Windows QA, identity and final commercial gate are mandatory before any sale.
 - All work uses reviewed branches; do not bypass a HOLD.
+
+## Failure circuit breaker and test isolation
+
+After 3 failed scheduled workflow runs within 24 hours the factory refuses further
+AI invocations until the window clears and the operator reviews errors.
+Generated tests execute in a memory/CPU/PID-bounded, network-disabled, non-root,
+read-only Docker container. The clean promotion job never executes generated tests.

@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Audited AI product factory - Python standard library only."""
+import ast
 import json
 import os
 import re
@@ -148,10 +149,18 @@ def validate(root=ROOT):
         if not isinstance(urls,list) or len(urls)<2 or len(set(urls))<2 or any(
             not isinstance(url,str) or url not in allowed for url in urls):
             stop("fabricated or insufficient evidence")
+        if len({"/".join(u.split("/")[3:5]) for u in urls}) < 2:
+            stop("research evidence must reference two distinct repositories")
         return {"stage":"research","slug":slug}
     if any(part.parts[0]!="product" for part in files): stop("unexpected candidate root")
     for req in ("manifest.json","README.md","main.py","tests/test_smoke.py"):
         if not (base/"product"/req).is_file(): stop("missing: "+req)
+    if not (base/"product/README.md").read_text(encoding="utf-8").strip():
+        stop("empty README")
+    nodes=ast.parse((base/"product/tests/test_smoke.py").read_text(encoding="utf-8"))
+    if not any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
+               and n.name.startswith("test_") for n in ast.walk(nodes)):
+        stop("no runnable smoke tests")
     mf=load(base/"product/manifest.json")
     if mf.get("slug")!=st["slug"] or mf.get("kind")!=cfg["kind"] or mf.get("entry")!="main.py":
         stop("manifest/state mismatch")

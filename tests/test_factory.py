@@ -17,13 +17,13 @@ class CoreTests(unittest.TestCase):
         save(self.root/"factory/state.json",{
             "schema":1,"kind":"app","stage":"research","cycle":1,"revision":0,"slug":None})
         save(self.root/".runtime/market.json",{"kind":"app","signals":[
-            {"url":"https://github.com/a/b/issues/1"},{"url":"https://github.com/a/b/issues/2"}]})
+            {"url":"https://github.com/a/b/issues/1"},{"url":"https://github.com/c/d/issues/2"}]})
         self.proposal={"slug":"simple-product","title":"A useful Windows offline utility",
             "customer_problem":"Users spend too long sorting local documents",
             "audience":"Professionals using desktop computers daily",
             "differentiation":"Local-first simple no-telemetry operations",
             "scope":["Allow offline file selection","Show clear validation errors"],
-            "evidence_urls":["https://github.com/a/b/issues/1","https://github.com/a/b/issues/2"]}
+            "evidence_urls":["https://github.com/a/b/issues/1","https://github.com/c/d/issues/2"]}
 
     def research(self):
         plan(self.root)
@@ -76,5 +76,35 @@ class CoreTests(unittest.TestCase):
             plan(self.root);promote(self.root)
         s=json.loads((self.root/"factory/state.json").read_text())
         self.assertEqual((s["stage"],s["cycle"]),("research",2))
+
+
+    def test_bad_extension_rejected(self):
+        self.research()
+        (self.root/".candidate/unsafe.exe").write_bytes(b"bad")
+        with self.assertRaises(ValueError):validate(self.root)
+
+    def test_research_requires_distinct_issue_repos(self):
+        self.research()
+        self.proposal["evidence_urls"]=["https://github.com/a/b/issues/1","https://github.com/a/b/issues/2"]
+        signals=json.loads((self.root/".runtime/market.json").read_text())
+        signals["signals"].append({"url":"https://github.com/a/b/issues/2"})
+        save(self.root/".runtime/market.json",signals)
+        save(self.root/".candidate/proposal.json",self.proposal)
+        with self.assertRaises(ValueError):validate(self.root)
+
+    def test_missing_market_signals_holds(self):
+        save(self.root/".runtime/market.json",{"signals":[]})
+        with self.assertRaises(ValueError):plan(self.root)
+
+    def test_game_mode_research(self):
+        save(self.root/"factory/config.json",{"name":"test-game","kind":"game"})
+        s=json.loads((self.root/"factory/state.json").read_text())
+        s["kind"]="game";save(self.root/"factory/state.json",s)
+        save(self.root/".runtime/market.json",{"kind":"game","signals":[
+            {"url":"https://github.com/game1/one/issues/1"},
+            {"url":"https://github.com/game2/two/issues/2"}]})
+        self.proposal["evidence_urls"]=["https://github.com/game1/one/issues/1","https://github.com/game2/two/issues/2"]
+        self.research()
+        self.assertEqual(validate(self.root)["slug"],"simple-product")
 
 if __name__=="__main__":unittest.main()

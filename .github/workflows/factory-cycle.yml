@@ -15,6 +15,7 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      actions: read
     outputs:
       ready: ${{ steps.gate.outputs.ready }}
     steps:
@@ -39,6 +40,8 @@ jobs:
           count=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
             --jq '[.[] | select(.head.ref | startswith("codex/factory-"))] | length')
           if [ "$count" -gt 0 ]; then echo "HOLD: existing factory PR awaits human review"; exit 0; fi
+          failures=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/factory-cycle.yml/runs?per_page=100"             --jq '[.workflow_runs[] | select(.created_at >= (now - 86400 | strftime("%Y-%m-%dT%H:%M:%SZ"))) | select(.conclusion == "failure")] | length')
+          if [ "$failures" -ge 3 ]; then echo "HOLD: 3 failed runs in 24h; circuit breaker"; exit 0; fi
           echo "ready=true" >> "$GITHUB_OUTPUT"
       - name: Collect market signals
         if: steps.gate.outputs.ready == 'true'
@@ -111,7 +114,7 @@ jobs:
           stage=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["stage"])')
           if [ "$stage" != "research" ]; then
             python -m compileall -q .candidate/product
-            timeout 80s python -m unittest discover -s .candidate/product/tests -v
+            timeout 100s docker run --rm --network none --read-only               --cap-drop ALL --security-opt no-new-privileges               --pids-limit 64 --memory 512m --cpus 1               --user 65534:65534 -e PYTHONDONTWRITEBYTECODE=1               -v "$PWD/.candidate/product:/work:ro" -w /work               python:3.12-slim python -m unittest discover -s tests -v
           fi
 
   propose:
