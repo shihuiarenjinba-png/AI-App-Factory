@@ -1,7 +1,5 @@
 name: Factory 15 minute cycle
 on:
-  schedule:
-    - cron: "4,19,34,49 * * * *"
   workflow_dispatch:
 
 concurrency:
