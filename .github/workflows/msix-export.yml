@@ -29,43 +29,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 2
+          fetch-depth: 0
           persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - name: Reject manual dispatch outside isolated work branches
         run: python tools/msix_export_ref_guard.py
-      - name: Select exactly one changed product
+      - name: Select exactly one product from the complete push range
         id: pick
         env:
           EXPLICIT_SLUG: ${{ inputs.slug }}
-        shell: pwsh
-        run: |
-          $ErrorActionPreference='Stop'
-          "ready=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
-            $slug = $env:EXPLICIT_SLUG
-          } else {
-            $paths = @(git show --format= --name-only HEAD)
-            $slugs = @($paths | ForEach-Object {
-              if ($_ -match '^products/([^/]+)/') { $matches[1] }
-            } | Sort-Object -Unique)
-            if ($slugs.Count -ne 1) {
-              Write-Host "HOLD: expected exactly one changed product"
-              exit 0
-            }
-            $slug = $slugs[0]
-          }
-          if ($slug -notmatch '^[a-z][a-z0-9-]{3,39}$') {
-            throw 'HOLD: malformed product slug'
-          }
-          if (-not (Test-Path -LiteralPath "products/$slug/store/approved-identity.json")) {
-            Write-Host 'HOLD: approved Identity absent; do not invent Store IDs'
-            exit 0
-          }
-          "ready=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-          "slug=$slug" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: python tools/msix_push_product.py
       - name: Run factory regression tests
         if: steps.pick.outputs.ready == 'true'
         run: python -m unittest discover -s tests -v
