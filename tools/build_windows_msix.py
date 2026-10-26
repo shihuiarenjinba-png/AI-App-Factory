@@ -68,7 +68,9 @@ def verify_inputs(root:Path,slug:str)->tuple[Path,dict]:
         path=product/"store/assets"/file
         if path.is_symlink() or not path.is_file() or path.stat().st_size>4*1024*1024:
             raise ValueError("Approved Store asset missing: "+file)
-        if path.open("rb").read(8)!=b"\x89PNG\r\n\x1a\n":
+        with path.open("rb") as asset:
+            header=asset.read(8)
+        if header!=b"\x89PNG\r\n\x1a\n":
             raise ValueError("Store asset is not PNG: "+file)
     if not (product/"main.py").is_file():raise ValueError("main.py absent")
     return product,cfg
