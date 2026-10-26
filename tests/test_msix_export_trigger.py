@@ -7,6 +7,7 @@ from tools.msix_export_ref_guard import validate_export_context
 
 ROOT=Path(__file__).resolve().parents[1]
 WORKFLOW=(ROOT/".github/workflows/msix-export.yml").read_text(encoding="utf-8")
+SELECTOR=(ROOT/"tools/msix_push_product.py").read_text(encoding="utf-8")
 
 class MsixExportTriggerTests(unittest.TestCase):
     def test_identity_return_on_any_codex_work_branch_triggers_export(self):
@@ -65,10 +66,14 @@ class MsixExportTriggerTests(unittest.TestCase):
         )
 
     def test_only_one_product_per_build(self):
-        self.assertIn('expected exactly one changed product',WORKFLOW)
+        self.assertIn('expected exactly one changed product', SELECTOR)
+        self.assertIn('PUSH_BEFORE: ${{ github.event.before }}', WORKFLOW)
+        self.assertIn('fetch-depth: 0', WORKFLOW)
+        self.assertIn('run: python tools/msix_push_product.py', WORKFLOW)
+        self.assertNotIn('git show --format= --name-only HEAD', WORKFLOW)
     def test_build_never_fabricates_store_identity(self):
-        self.assertIn('approved-identity.json',WORKFLOW)
-        self.assertIn('do not invent Store IDs',WORKFLOW)
+        self.assertIn('approved-identity.json', SELECTOR)
+        self.assertIn('do not invent Store IDs', SELECTOR)
     def test_windows_runner_and_binary_provenance(self):
         self.assertIn('runs-on: windows-latest',WORKFLOW)
         self.assertIn('tools/build_windows_msix.py',WORKFLOW)
