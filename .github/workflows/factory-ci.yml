@@ -14,4 +14,12 @@ jobs:
         with:
           python-version: "3.12"
       - run: python -m unittest discover -s tests -v
-      - run: python -m py_compile factory.py
+      - run: python -m py_compile factory.py scripts/simulate_clock.py
+      - name: Simulate 96 quarter-hour ticks (not real scheduled dispatch)
+        run: python scripts/simulate_clock.py
+      - name: Exercise hardened isolated runner (no model API key)
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --pids-limit 64 \
+            --memory 512m --cpus 1 --user 65534:65534 \
+            python:3.12-slim python -c "print('sandbox-smoke: ok')"
