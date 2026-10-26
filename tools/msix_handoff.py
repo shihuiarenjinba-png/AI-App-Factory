@@ -54,6 +54,31 @@ def msix_data(path:Path)->dict:
                 fail("MSIX block map root invalid")
             if content_types.tag.split("}")[-1]!="Types":
                 fail("MSIX content types root invalid")
+            # Metadata alone does not make a runnable Windows package. Bind the
+            # manifest's sole application to a real, readable EXE ZIP member.
+            applications=[e for e in root.iter()
+                          if e.tag.rsplit("}",1)[-1]=="Application"]
+            if len(applications)!=1:
+                fail("MSIX must declare exactly one executable application")
+            executable=applications[0].attrib.get("Executable")
+            if not isinstance(executable,str):
+                fail("MSIX executable path missing")
+            exe_path=executable.replace("\\","/")
+            components=exe_path.split("/")
+            if (not exe_path.lower().endswith(".exe") or
+                any(not part or part in (".","..") or
+                    part.endswith((" ",".")) or ":" in part or
+                    any(ord(ch)<32 or ord(ch)==127 for ch in part)
+                    for part in components)):
+                fail("unsafe MSIX executable path")
+            payload=by_name.get(exe_path.casefold())
+            if payload is None or payload.is_dir() or not 0<payload.file_size<=300*1024*1024:
+                fail("manifest executable payload missing or empty")
+            exe_digest=sha256()
+            # Reading to EOF also validates the ZIP member's CRC before export.
+            with z.open(payload) as executable_stream:
+                for chunk in iter(lambda:executable_stream.read(1024*1024),b""):
+                    exe_digest.update(chunk)
     except (zipfile.BadZipFile,ET.ParseError,KeyError,RuntimeError,OSError) as error:
         fail("invalid MSIX container: "+type(error).__name__)
     identity=next((x for x in root.iter() if x.tag=="Identity" or x.tag.endswith("}Identity")),None)
@@ -63,7 +88,8 @@ def msix_data(path:Path)->dict:
     digest=sha256()
     with path.open("rb") as reader:
         for piece in iter(lambda:reader.read(1024*1024),b""):digest.update(piece)
-    fields.update(package_sha256=digest.hexdigest(),package_bytes=path.stat().st_size)
+    fields.update(package_sha256=digest.hexdigest(),package_bytes=path.stat().st_size,
+                  executable_sha256=exe_digest.hexdigest())
     return fields
 
 def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:str)->dict:
@@ -94,6 +120,7 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
        "package":"package.msix","status":"QA_UNSIGNED",
        "package_sha256":actual["package_sha256"],
        "package_bytes":actual["package_bytes"],
+       "executable_sha256":actual["executable_sha256"],
        "identity":{k:actual[k] for k in ("name","publisher","version")},
     }
     dest=output/"factory-msix-handoff"
