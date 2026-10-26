@@ -74,6 +74,7 @@ jobs:
         if: steps.gate.outputs.ready == 'true'
         run: |
           git diff --exit-code
+          git diff --cached --exit-code
           test -z "$(git ls-files --others --exclude-standard)"
       - uses: actions/upload-artifact@v4
         if: steps.gate.outputs.ready == 'true'
@@ -114,7 +115,13 @@ jobs:
           stage=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["stage"])')
           if [ "$stage" != "research" ]; then
             python -m compileall -q .candidate/product
-            timeout 100s docker run --rm --network none --read-only               --cap-drop ALL --security-opt no-new-privileges               --pids-limit 64 --memory 512m --cpus 1               --user 65534:65534 -e PYTHONDONTWRITEBYTECODE=1               -v "$PWD/.candidate/product:/work:ro" -w /work               python:3.12-slim python -m unittest discover -s tests -v
+            test_log=$(mktemp)
+            timeout 100s docker run --rm --network none --read-only               --cap-drop ALL --security-opt no-new-privileges               --pids-limit 64 --memory 512m --cpus 1               --user 65534:65534 -e PYTHONDONTWRITEBYTECODE=1               -v "$PWD/.candidate/product:/work:ro" -w /work               python:3.12-slim python -m unittest discover -s tests -v 2>&1 | tee "$test_log"
+            grep -Eq 'Ran [1-9][0-9]* tests? in' "$test_log" || { echo "HOLD: zero tests"; exit 1; }
+            if grep -Eq 'skipped=[1-9]|expected failures=[1-9]' "$test_log"; then
+              echo "HOLD: skipped or expected-failure tests need investigation"
+              exit 1
+            fi
           fi
 
   propose:
@@ -151,7 +158,12 @@ jobs:
           stage=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["stage"])')
           branch="codex/factory-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
           git switch -c "$branch"
-          git add -A
+          git add -- factory/state.json
+          if [ "$stage" = "research" ]; then
+            git add -- proposals
+          else
+            git add -- products
+          fi
           if git diff --cached --quiet; then echo "HOLD: no changes"; exit 1; fi
           git -c user.name="github-actions[bot]" \
               -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \

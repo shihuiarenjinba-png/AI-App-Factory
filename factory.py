@@ -161,6 +161,45 @@ def validate(root=ROOT):
     if not any(isinstance(n, (ast.FunctionDef, ast.AsyncFunctionDef))
                and n.name.startswith("test_") for n in ast.walk(nodes)):
         stop("no runnable smoke tests")
+
+    product=base/"product"
+    code_paths=[p for p in files if p.parts[0]=="product" and p.suffix==".py"]
+    forbidden_roots={"subprocess","socket","urllib","http","ftplib","smtplib","ctypes",
+                     "winreg","requests","paramiko","importlib"}
+    forbidden_builtins={"eval","exec","compile","__import__"}
+    for path in code_paths:
+        tree=ast.parse((base/path).read_text(encoding="utf-8"),filename=str(path))
+        for node in ast.walk(tree):
+            imports=[]
+            if isinstance(node,ast.Import):
+                imports=[a.name for a in node.names]
+            elif isinstance(node,ast.ImportFrom):
+                imports=[node.module or ""]
+            for imp in imports:
+                if imp.split(".")[0] in forbidden_roots:
+                    stop("network/process/system API is prohibited: "+imp)
+            if isinstance(node,ast.Call):
+                if isinstance(node.func,ast.Name) and node.func.id in forbidden_builtins:
+                    stop("dynamic execution prohibited")
+                if (isinstance(node.func,ast.Attribute)
+                    and isinstance(node.func.value,ast.Name)
+                    and node.func.value.id=="os"
+                    and node.func.attr in ("system","popen","spawnl","spawnv","execv")):
+                    stop("process execution prohibited")
+    if st["stage"]=="improve":
+        current=root/"products"/st["slug"]
+        previous={p.relative_to(current).as_posix():p for p in current.rglob("*") if p.is_file()}
+        incoming={p.relative_to(product).as_posix():p for p in product.rglob("*") if p.is_file()}
+        if set(previous)-set(incoming):
+            stop("improvement cannot silently delete existing product files")
+        if not any(p.endswith(".py") and not p.startswith("tests/")
+                   and (p not in previous or previous[p].read_bytes()!=incoming[p].read_bytes())
+                   for p in incoming):
+            stop("improvement must change actual product code")
+        if not any(p.startswith("tests/") and p.endswith(".py")
+                   and (p not in previous or previous[p].read_bytes()!=incoming[p].read_bytes())
+                   for p in incoming):
+            stop("improvement must add or change regression tests")
     mf=load(base/"product/manifest.json")
     if mf.get("slug")!=st["slug"] or mf.get("kind")!=cfg["kind"] or mf.get("entry")!="main.py":
         stop("manifest/state mismatch")

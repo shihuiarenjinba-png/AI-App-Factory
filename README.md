@@ -48,3 +48,11 @@ After 3 failed scheduled workflow runs within 24 hours the factory refuses furth
 AI invocations until the window clears and the operator reviews errors.
 Generated tests execute in a memory/CPU/PID-bounded, network-disabled, non-root,
 read-only Docker container. The clean promotion job never executes generated tests.
+
+## Quality gates added during follow-up audit
+- The Codex job checks staged AND unstaged tracked changes before any generated artifact is accepted.
+- Generated tests must run at least one test successfully; skips and expected failures require review.
+- Product code cannot silently import process/network/system modules or call dynamic exec/eval.
+- Improvements must modify actual code and regression tests, and cannot silently delete existing files.
+- Pull request promotion stages only the expected state and product/proposal directory.
+- The scheduler still requires merge into the default branch, OpenAI credentials and opt-in variable.
