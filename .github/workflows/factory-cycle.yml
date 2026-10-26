@@ -1,0 +1,172 @@
+name: Factory 15 minute cycle
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: factory-app
+  cancel-in-progress: false
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Check activation and unfinished Draft PR
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FACTORY_ENABLED: ${{ vars.FACTORY_ENABLED }}
+          OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "ready=false" >> "$GITHUB_OUTPUT"
+          if [ "$FACTORY_ENABLED" != "true" ]; then echo "HOLD: set FACTORY_ENABLED=true"; exit 0; fi
+          if [ -z "$OPENAI_KEY" ]; then echo "HOLD: OPENAI_API_KEY not configured"; exit 0; fi
+          count=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
+            --jq '[.[] | select(.head.ref | startswith("codex/factory-"))] | length')
+          if [ "$count" -gt 0 ]; then echo "HOLD: existing factory PR awaits human review"; exit 0; fi
+          failures=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/factory-cycle.yml/runs?per_page=100"             --jq '[.workflow_runs[] | select(.created_at >= (now - 86400 | strftime("%Y-%m-%dT%H:%M:%SZ"))) | select(.conclusion == "failure")] | length')
+          if [ "$failures" -ge 3 ]; then echo "HOLD: 3 failed runs in 24h; circuit breaker"; exit 0; fi
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+      - name: Collect market signals
+        if: steps.gate.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p .runtime
+          echo '{"signals":[]}' > .runtime/market.json
+          if [ "$(python -c 'import json;print(json.load(open("factory/state.json"))["stage"])')" = "research" ]; then
+            python factory.py market
+          fi
+      - name: Prepare plan and scoped prompt
+        if: steps.gate.outputs.ready == 'true'
+        run: python factory.py plan
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          name: trusted-plan
+          path: .runtime/
+          include-hidden-files: true
+          retention-days: 7
+      - name: Develop one bounded change with Codex
+        if: steps.gate.outputs.ready == 'true'
+        uses: openai/codex-action@v1
+        with:
+          openai-api-key: ${{ secrets.OPENAI_API_KEY }}
+          permission-profile: ":workspace"
+          prompt-file: .runtime/PROMPT.md
+      - name: Detect unauthorized tracked changes
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          git diff --exit-code
+          git diff --cached --exit-code
+          test -z "$(git ls-files --others --exclude-standard)"
+      - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.ready == 'true'
+        with:
+          name: candidate
+          path: .candidate/
+          include-hidden-files: true
+          retention-days: 7
+
+  audit:
+    needs: generate
+    if: needs.generate.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: trusted-plan
+          path: .runtime
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate
+          path: .candidate
+      - name: Validate in clean runner
+        run: python factory.py validate
+      - name: Execute time-bounded headless tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          stage=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["stage"])')
+          if [ "$stage" != "research" ]; then
+            python -m compileall -q .candidate/product
+            test_log=$(mktemp)
+            timeout 100s docker run --rm --network none --read-only               --cap-drop ALL --security-opt no-new-privileges               --pids-limit 64 --memory 512m --cpus 1               --user 65534:65534 -e PYTHONDONTWRITEBYTECODE=1               -v "$PWD/.candidate/product:/work:ro" -w /work               python:3.12-slim python -m unittest discover -s tests -v 2>&1 | tee "$test_log"
+            grep -Eq 'Ran [1-9][0-9]* tests? in' "$test_log" || { echo "HOLD: zero tests"; exit 1; }
+            if grep -Eq 'skipped=[1-9]|expected failures=[1-9]' "$test_log"; then
+              echo "HOLD: skipped or expected-failure tests need investigation"
+              exit 1
+            fi
+          fi
+
+  propose:
+    needs: [generate, audit]
+    if: needs.audit.result == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: trusted-plan
+          path: .runtime
+      - uses: actions/download-artifact@v4
+        with:
+          name: candidate
+          path: .candidate
+      - name: Propose a Draft PR (never auto-merge)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          count=$(gh api "repos/$GITHUB_REPOSITORY/pulls?state=open&per_page=100" \
+            --jq '[.[] | select(.head.ref | startswith("codex/factory-"))] | length')
+          if [ "$count" -gt 0 ]; then echo "HOLD: another factory PR exists"; exit 0; fi
+          python factory.py promote
+          stage=$(python -c 'import json;print(json.load(open(".runtime/plan.json"))["stage"])')
+          branch="codex/factory-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          git switch -c "$branch"
+          git add -- factory/state.json
+          if [ "$stage" = "research" ]; then
+            git add -- proposals
+          else
+            git add -- products
+          fi
+          if git diff --cached --quiet; then echo "HOLD: no changes"; exit 1; fi
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -m "factory: validated $stage candidate"
+          git push origin "$branch"
+          gh pr create --draft --base main --head "$branch" \
+            --title "Factory $stage: validated candidate for review" \
+            --body "Automated Linux validation only. Human approval required; Windows GUI, identity, MSIX, license and Store submission remain HOLD."

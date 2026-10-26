@@ -1,0 +1,85 @@
+name: Factory MSIX export
+on:
+  push:
+    branches:
+      - "codex/factory-bootstrap-20261026"
+      - "codex/factory-autoloop-20261026"
+      - "codex/factory-autonomous-*"
+    paths:
+      - "products/**"
+  workflow_dispatch:
+    inputs:
+      slug:
+        description: "Existing product slug; approved Identity and PNG assets required"
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: factory-msix-export-app
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Select exactly one changed product
+        id: pick
+        env:
+          EXPLICIT_SLUG: ${{ inputs.slug }}
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          "ready=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          if ($env:GITHUB_EVENT_NAME -eq 'workflow_dispatch') {
+            $slug = $env:EXPLICIT_SLUG
+          } else {
+            $paths = @(git show --format= --name-only HEAD)
+            $slugs = @($paths | ForEach-Object {
+              if ($_ -match '^products/([^/]+)/') { $matches[1] }
+            } | Sort-Object -Unique)
+            if ($slugs.Count -ne 1) {
+              Write-Host "HOLD: expected exactly one changed product"
+              exit 0
+            }
+            $slug = $slugs[0]
+          }
+          if ($slug -notmatch '^[a-z][a-z0-9-]{3,39}$') {
+            throw 'HOLD: malformed product slug'
+          }
+          if (-not (Test-Path -LiteralPath "products/$slug/store/approved-identity.json")) {
+            Write-Host 'HOLD: approved Identity absent; do not invent Store IDs'
+            exit 0
+          }
+          "ready=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          "slug=$slug" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+      - name: Run factory regression tests
+        if: steps.pick.outputs.ready == 'true'
+        run: python -m unittest discover -s tests -v
+      - name: Build Windows executable dependencies
+        if: steps.pick.outputs.ready == 'true'
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - name: Build MSIX on Windows with approved package identity
+        if: steps.pick.outputs.ready == 'true'
+        run: python tools/build_windows_msix.py --slug "${{ steps.pick.outputs.slug }}" --output dist/msix
+      - name: Assemble verified MSIX handoff
+        if: steps.pick.outputs.ready == 'true'
+        run: python tools/msix_handoff.py --slug "${{ steps.pick.outputs.slug }}" --msix "dist/msix/${{ steps.pick.outputs.slug }}.msix" --output dist/handoff
+      - name: Export package and checksum for Windows-all-auto
+        if: steps.pick.outputs.ready == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: factory-msix-handoff-${{ steps.pick.outputs.slug }}
+          path: dist/handoff/factory-msix-handoff/
+          if-no-files-found: error
+          retention-days: 5
