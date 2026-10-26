@@ -58,7 +58,7 @@ class MsixExportTriggerTests(unittest.TestCase):
         self.assertIn("run: python tools/msix_export_ref_guard.py", WORKFLOW)
         self.assertLess(
             WORKFLOW.index("run: python tools/msix_export_ref_guard.py"),
-            WORKFLOW.index("Select exactly one changed product"),
+            WORKFLOW.index("Select exactly one product from the complete push range"),
         )
         self.assertLess(
             WORKFLOW.index("run: python tools/msix_export_ref_guard.py"),
