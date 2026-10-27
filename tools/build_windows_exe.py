@@ -20,6 +20,7 @@ SLUG = re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SOURCE_REPOSITORY = "shihuiarenjinba-png/AI-App-Factory"
 SOURCE_BRANCH = re.compile(r"^codex/[A-Za-z0-9._/-]+$")
+REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
 def current_source_branch(root: Path) -> str:
@@ -103,9 +104,13 @@ def _run_pyinstaller(source: Path, slug: str, work: Path, root: Path) -> None:
     )
 
 
-def build_exe(root: Path, slug: str, expected_sha: str, output: Path) -> dict:
+def build_exe(root: Path, slug: str, expected_sha: str, output: Path,
+              request_id: str | None = None) -> dict:
     if sys.platform != "win32":
         raise ValueError("Windows runner required for real EXE build")
+    if request_id is not None and (not isinstance(request_id, str)
+            or not REQUEST_ID.fullmatch(request_id)):
+        raise ValueError("unsafe APP request_id")
     root = root.resolve(strict=True)
     source = verify_source(root, slug, expected_sha)
     source_branch = current_source_branch(root)
@@ -140,6 +145,7 @@ def build_exe(root: Path, slug: str, expected_sha: str, output: Path) -> dict:
             "source_factory": "AI-App-Factory",
             "source_branch": source_branch,
             "source_sha": expected_sha,
+            "request_id": request_id,
             "product_type": "APP",
             "slug": slug,
             "display_name": display_name,
@@ -168,10 +174,12 @@ def main(argv=None) -> int:
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument("--slug", required=True)
     parser.add_argument("--expected-sha", required=True)
+    parser.add_argument("--request-id", help="Exact immutable Provisioner request_id; omit for EXE-only QA")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
-        result = build_exe(args.root, args.slug, args.expected_sha, args.output)
+        result = build_exe(args.root, args.slug, args.expected_sha, args.output,
+                           request_id=args.request_id)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
     except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError,
