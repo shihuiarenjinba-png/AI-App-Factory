@@ -42,6 +42,14 @@ def atomic_write(path, data):
         if temp is not None:
             temp.unlink(missing_ok=True)
 
+def reject_duplicate_json_keys(pairs):
+    result = {}
+    for key, value in pairs:
+        if key in result:
+            raise ValueError("Duplicate JSON key: " + key)
+        result[key] = value
+    return result
+
 def read_notes(path):
     path = Path(path)
     reason = None
@@ -49,7 +57,8 @@ def read_notes(path):
         try:
             if candidate.stat().st_size > 5000000:
                 raise ValueError("File exceeds 5 MB")
-            value = json.loads(candidate.read_text(encoding="utf-8"))
+            value = json.loads(candidate.read_text(encoding="utf-8"),
+                               object_pairs_hook=reject_duplicate_json_keys)
             if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
                 raise ValueError("Unsupported notes schema")
             return [dict(n) for n in validate_notes(value.get("notes"))], candidate != path

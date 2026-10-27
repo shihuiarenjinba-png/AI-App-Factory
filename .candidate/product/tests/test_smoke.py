@@ -51,6 +51,23 @@ class Smoke(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Cannot read"):
             read_notes(self.path)
 
+    def test_duplicate_json_keys_fail_closed_and_recover_backup(self):
+        import json
+        note_json = json.dumps(self.note, ensure_ascii=False)
+        # A repeated notes key must not silently discard the user's data.
+        self.path.write_text('{"schema":1,"notes":[' + note_json + '],"notes":[]}', encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Duplicate JSON key"):
+            read_notes(self.path)
+        # Duplicate fields inside individual notes must also be rejected.
+        self.path.write_text('{"schema":1,"notes":[{' +
+                             '"id":"' + self.note["id"] + '","title":"safe",' +
+                             '"title":"overwritten","body":"data"}]}', encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Duplicate JSON key"):
+            read_notes(self.path)
+        backup = self.path.with_name(self.path.name + ".bak")
+        save_notes(backup, [self.note])
+        self.assertEqual(read_notes(self.path), ([self.note], True))
+
     def test_backup(self):
         save_notes(self.path, [self.note])
         save_notes(self.path, [new_note()])
