@@ -23,3 +23,17 @@ jobs:
             --security-opt no-new-privileges --pids-limit 64 \
             --memory 512m --cpus 1 --user 65534:65534 \
             python:3.12-slim python -c "print('sandbox-smoke: ok')"
+  windows-contracts:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Test APP source and Windows EXE build contracts
+        run: python -m unittest discover -s tests -v
+      - name: Compile Windows pre-Identity builder
+        run: python -m py_compile tools/build_windows_exe.py tools/preidentity_product_select.py
