@@ -35,7 +35,9 @@ def verify_source(root: Path, slug: str, expected_sha: str) -> Path:
     if not isinstance(expected_sha, str) or not SHA40.fullmatch(expected_sha) or expected_sha == "0" * 40:
         raise ValueError("exact non-placeholder source SHA required")
     root = root.resolve(strict=True)
-    if _git(root, "rev-parse", "--show-toplevel") != str(root):
+    # Git for Windows prints forward slashes while pathlib uses native
+    # separators. Compare canonical paths, not raw text representations.
+    if Path(_git(root, "rev-parse", "--show-toplevel")).resolve(strict=True) != root:
         raise ValueError("root must be Git checkout top-level")
     if _git(root, "rev-parse", "HEAD") != expected_sha:
         raise ValueError("source HEAD differs from pinned SHA")
@@ -43,6 +45,8 @@ def verify_source(root: Path, slug: str, expected_sha: str) -> Path:
     product = products / slug
     if products.is_symlink() or product.is_symlink() or not product.is_dir():
         raise ValueError("APP product directory missing or linked")
+    if any(path.is_symlink() for path in product.rglob("*")):
+        raise ValueError("linked APP product content forbidden")
     paths = ("factory/config.json", f"products/{slug}/manifest.json",
              f"products/{slug}/main.py", f"products/{slug}/tests/test_smoke.py")
     for rel in paths:
