@@ -58,7 +58,7 @@ def inspect_exe_evidence(root: Path, slug: str, evidence: Path,
     if not isinstance(request_id, str) or not REQUEST.fullmatch(request_id):
         raise ValueError("immutable request_id required")
     root = root.resolve(strict=True)
-    if current_source_branch(root) != source_branch:
+    if current_source_branch(root, source_branch) != source_branch:
         raise ValueError("current Factory branch differs from pinned EXE branch")
     if subprocess.run(["git", "-C", str(root), "merge-base", "--is-ancestor",
                        source_sha, "HEAD"], capture_output=True, timeout=30).returncode:
