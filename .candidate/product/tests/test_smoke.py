@@ -58,6 +58,25 @@ class Smoke(unittest.TestCase):
             with self.subTest(title=title):
                 self.assertTrue(safe_filename(title).startswith("note_"), title)
 
+    def test_export_preserves_unsaved_status(self):
+        from main import App
+        from unittest.mock import Mock
+        for lang in ("ja", "en"):
+            with self.subTest(lang=lang):
+                export_path = Path(self.tmp.name) / ("export_" + lang + ".txt")
+                app = App.__new__(App)
+                app.notes = [self.note]
+                app.current = self.note["id"]
+                app.lang = lang
+                app.dirty = True
+                app.status = Mock()
+                app.commit_editor = lambda: None
+                with patch("main.filedialog.asksaveasfilename", return_value=str(export_path)):
+                    app.export()
+                self.assertTrue(app.dirty, "TXT export must not mark the notes database saved")
+                self.assertTrue(export_path.is_file())
+                self.assertIn("TXT", app.status.set.call_args.args[0][0])
+
     def test_symlink(self):
         target = Path(self.tmp.name) / "target"
         target.write_text("safe")
