@@ -16,6 +16,10 @@ import subprocess
 import sys
 import tempfile
 
+# Support both python -m tools.build_windows_msix_from_exe and direct script invocation.
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from tools.build_windows_exe import current_source_branch
 from tools.build_windows_msix import ASSETS, appx_manifest, locate_makeappx, verify_inputs
 from tools.msix_handoff import msix_data
