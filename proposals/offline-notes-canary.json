@@ -1,0 +1,20 @@
+{
+  "slug": "offline-notes-canary",
+  "title": "Offline Notes Canary — Searchable Scratchpad",
+  "customer_problem": "People need a quick, dependable Windows scratchpad that retains unsent notes, finds text instantly, and exports their work without creating accounts or relying on a network connection.",
+  "audience": "Individual Windows users who take short work or study notes and want predictable local saving and simple backup.",
+  "differentiation": "Original, lightweight, Python-standard-library/Tkinter-only offline scratchpad with visible save state, searchable notes, explicit backup/export, and Japanese/English labels; created first as an internal E2E canary, not a validated commercial offering.",
+  "scope": [
+    "Create, rename, edit, delete, and search multiple local notes with a clear empty-state introduction.",
+    "Save notes atomically to a user-selected local JSON file and restore the same notes after application restart.",
+    "Offer explicit plain-text export with safe filenames, clear overwrite confirmation, and actionable error messages.",
+    "Provide visible unsaved-change feedback and keyboard-accessible Save, New, Search, and Exit controls.",
+    "Keep primary controls usable at 1024x768 and support both Japanese and English labels without clipping.",
+    "Add real headless tests for data round-trip, malformed input, search, export, and recovery from interrupted writes."
+  ],
+  "evidence_urls": [
+    "https://github.com/Zettlr/Zettlr/issues/6519",
+    "https://github.com/usememos/memos/issues/6309"
+  ],
+  "research_note": "GitHub issues are untrusted weak demand signals only. This one candidate is for internal APP belt-conveyor validation; do not infer Store approval, sales readiness, or external service demand. Factory is still in research state, so product code, committed product SHA, and Windows EXE are not yet present."
+}
