@@ -95,6 +95,12 @@ class Smoke(unittest.TestCase):
             with self.subTest(title=title):
                 self.assertTrue(safe_filename(title).startswith("note_"), title)
 
+    def test_windows_superscript_reserved_device_names(self):
+        # Windows treats COM¹/²/³ and LPT¹/²/³ as device names too.
+        for title in ("COM¹", "COM².notes", "COM³", "LPT¹", "LPT².txt", "LPT³.notes"):
+            with self.subTest(title=title):
+                self.assertTrue(safe_filename(title).startswith("note_"), title)
+
     def test_export_preserves_unsaved_status(self):
         from main import App
         from unittest.mock import Mock
