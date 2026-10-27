@@ -45,7 +45,7 @@ class PinnedExeTests(unittest.TestCase):
             "package_bytes": self.exe.stat().st_size,
         }
         self.write_identity()
-        self.git("add", ".")
+        self.git("add", f"products/{self.slug}/store/approved-identity.json")
         self.git("commit", "-qm", "store: return verified Partner Center identity")
         self.receipt = {
             "schema_version": 1, "stage": "PRE_IDENTITY_WINDOWS_EXE",
