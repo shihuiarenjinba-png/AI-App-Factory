@@ -77,6 +77,28 @@ class Smoke(unittest.TestCase):
                 self.assertTrue(export_path.is_file())
                 self.assertIn("TXT", app.status.set.call_args.args[0][0])
 
+    def test_export_overwrite_confirmation_localized(self):
+        from main import App
+        from unittest.mock import Mock
+        for lang, expected in (("ja", "既存ファイルを上書きしますか？"), ("en", "Overwrite existing file?")):
+            with self.subTest(lang=lang):
+                path = Path(self.tmp.name) / ("existing_" + lang + ".txt")
+                path.write_text("original", encoding="utf-8")
+                app = App.__new__(App)
+                app.notes = [self.note]
+                app.current = self.note["id"]
+                app.lang = lang
+                app.dirty = True
+                app.status = Mock()
+                app.commit_editor = lambda: None
+                with patch("main.filedialog.asksaveasfilename", return_value=str(path)), \
+                     patch("main.messagebox.askyesno", return_value=False) as confirm:
+                    app.export()
+                self.assertEqual(confirm.call_count, 1)
+                self.assertEqual(confirm.call_args.args[1], expected)
+                self.assertEqual(path.read_text(encoding="utf-8"), "original")
+                self.assertTrue(app.dirty)
+
     def test_symlink(self):
         target = Path(self.tmp.name) / "target"
         target.write_text("safe")
