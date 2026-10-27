@@ -84,8 +84,8 @@ def safe_filename(title):
     return (name or "untitled") + ".txt"
 
 STRINGS = {
-    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了"],
-    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported"]
+    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？"],
+    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?"]
 }
 
 class App:
@@ -284,7 +284,7 @@ class App:
             if not selected:
                 return
             path = Path(selected)
-            if path.exists() and not messagebox.askyesno(self.t(0), "Overwrite?"):
+            if path.exists() and not messagebox.askyesno(self.t(0), self.t(17)):
                 return
             atomic_write(path, (n["title"] + "\n\n" + n["body"] + "\n").encode("utf-8"))
             self.status.set(self.t(16) + " — " + str(path))
