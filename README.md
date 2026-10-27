@@ -83,3 +83,39 @@ Identity, return the attested Identity through the separate Provisioner,
 then build and inspect MSIX. The Provisioner pins
 `codex/factory-autoloop-20261026`; this stacked Draft branch must be
 reviewed and integrated into that source branch before a live round trip.
+
+
+## SHA-pinned EXE reuse for MSIX (Draft APP build path)
+
+For a **real committed APP product** and a Provisioner-validated job, capture
+the exact `source_sha`, `source_branch` and `request_id` before the official
+Identity return. On a Windows checkout of that source commit, with PyInstaller:
+
+```powershell
+python tools/build_windows_exe.py --slug $Slug --expected-sha $SourceSha --source-branch $SourceBranch --request-id $RequestId --output dist/preidentity
+```
+
+The local Provisioner adapter passes these fields from its validated job and
+checks the resulting EXE bytes/receipt. A detached Provisioner checkout also
+needs its origin branch ref to match the pinned source SHA.
+
+After **authenticated** Partner Center Identity is returned to the same
+`codex/*` Factory branch, and approved PNG assets exist, build the MSIX from
+the *same EXE bytes*, without a second PyInstaller build:
+
+```powershell
+python tools/build_windows_msix_from_exe.py --slug $Slug --exe-evidence dist/preidentity --source-sha $SourceSha --source-branch $SourceBranch --request-id $RequestId --output dist/msix-prebuilt
+```
+
+The builder rejects modified source, mismatched receipt/request/branch/SHA,
+missing official Identity, altered EXE, invalid MSIX container, and package
+identity or embedded EXE SHA mismatches. Output contains the actual
+`<slug>.msix` and `msix-build-receipt.json` with package SHA-256.
+
+**HOLD:** This new builder is not yet wired into the existing
+`msix-export.yml` Actions artifact route. The old handoff script currently
+labels the post-Identity Git HEAD as `source_sha`; it must be adapted to
+preserve the original source SHA and separately record the packaging HEAD
+before claiming immutable Factory-to-Windows-all-auto E2E provenance.
+No actual product, official Identity, signed package, local install or
+Windows-all-auto E2E PASS is established by these offline tests.
