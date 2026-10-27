@@ -26,13 +26,15 @@ REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 def current_source_branch(root: Path) -> str:
     """Bind receipt to the actual checked-out codex ref, including detached Actions checkouts."""
     head = _git(root, "rev-parse", "HEAD")
-    ref = os.environ.get("GITHUB_REF")
-    if ref is not None:
-        if not ref.startswith("refs/heads/codex/") or os.environ.get("GITHUB_SHA") != head:
-            raise ValueError("GitHub Actions ref/SHA does not match checked-out source")
-        branch = ref[len("refs/heads/"):]
-    else:
+    # A local checkout has an authoritative symbolic ref even if the test
+    # runner itself carries unrelated GITHUB_REF/GITHUB_SHA environment vars.
+    try:
         branch = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    except subprocess.CalledProcessError:
+        ref = os.environ.get("GITHUB_REF", "")
+        if not ref.startswith("refs/heads/codex/") or os.environ.get("GITHUB_SHA") != head:
+            raise ValueError("detached Git checkout lacks verified codex ref/SHA")
+        branch = ref[len("refs/heads/"):]
     if (not SOURCE_BRANCH.fullmatch(branch) or ".." in branch or "//" in branch
             or branch.endswith(("/", "."))):
         raise ValueError("unsafe or non-codex source branch")
