@@ -1,0 +1,150 @@
+"""Build an actual Windows EXE before Store Identity is available.
+
+This is a local/Windows build stage, NOT an MSIX, Store candidate, or Identity
+lookup. It accepts only an exact, clean, committed APP product source SHA.
+"""
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tempfile
+
+SLUG = re.compile(r"^[a-z][a-z0-9-]{3,39}$")
+SHA40 = re.compile(r"^[0-9a-f]{40}$")
+SOURCE_REPOSITORY = "shihuiarenjinba-png/AI-App-Factory"
+
+
+def _git(root: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", "-C", str(root), *args], check=True, capture_output=True,
+        text=True, encoding="utf-8", timeout=30,
+    )
+    return result.stdout.strip()
+
+
+def verify_source(root: Path, slug: str, expected_sha: str) -> Path:
+    if not isinstance(slug, str) or not SLUG.fullmatch(slug):
+        raise ValueError("invalid APP product slug")
+    if not isinstance(expected_sha, str) or not SHA40.fullmatch(expected_sha) or expected_sha == "0" * 40:
+        raise ValueError("exact non-placeholder source SHA required")
+    root = root.resolve(strict=True)
+    if _git(root, "rev-parse", "--show-toplevel") != str(root):
+        raise ValueError("root must be Git checkout top-level")
+    if _git(root, "rev-parse", "HEAD") != expected_sha:
+        raise ValueError("source HEAD differs from pinned SHA")
+    products = root / "products"
+    product = products / slug
+    if products.is_symlink() or product.is_symlink() or not product.is_dir():
+        raise ValueError("APP product directory missing or linked")
+    paths = ("factory/config.json", f"products/{slug}/manifest.json",
+             f"products/{slug}/main.py", f"products/{slug}/tests/test_smoke.py")
+    for rel in paths:
+        file = root / rel
+        if file.is_symlink() or not file.is_file() or file.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError("required committed APP source missing, linked, or oversized")
+        _git(root, "cat-file", "-e", f"HEAD:{rel}")
+    if _git(root, "status", "--porcelain", "--untracked-files=all", "--",
+            "factory/config.json", f"products/{slug}"):
+        raise ValueError("APP source differs from pinned Git commit")
+    config = json.loads((root / "factory/config.json").read_text(encoding="utf-8"))
+    manifest = json.loads((product / "manifest.json").read_text(encoding="utf-8"))
+    if not isinstance(config, dict) or config.get("kind") != "app":
+        raise ValueError("wrong Factory lane")
+    if (not isinstance(manifest, dict) or manifest.get("kind") != "app"
+            or manifest.get("slug") != slug or manifest.get("entry") != "main.py"):
+        raise ValueError("APP product manifest mismatch")
+    return product / "main.py"
+
+
+def _run_pyinstaller(source: Path, slug: str, work: Path, root: Path) -> None:
+    subprocess.run(
+        [sys.executable, "-m", "PyInstaller", "--noconfirm", "--clean",
+         "--onefile", "--windowed", "--noupx", "--name", slug,
+         "--paths", str(source.parent),
+         "--distpath", str(work / "dist"), "--workpath", str(work / "build"),
+         "--specpath", str(work / "spec"), str(source)],
+        cwd=root, check=True, timeout=1200,
+    )
+
+
+def build_exe(root: Path, slug: str, expected_sha: str, output: Path) -> dict:
+    if sys.platform != "win32":
+        raise ValueError("Windows runner required for real EXE build")
+    root = root.resolve(strict=True)
+    source = verify_source(root, slug, expected_sha)
+    if output.exists() or output.is_symlink():
+        raise ValueError("refusing to overwrite existing EXE evidence")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if output.parent.is_symlink():
+        raise ValueError("linked output parent forbidden")
+    with tempfile.TemporaryDirectory(prefix="app-preidentity-", dir=output.parent) as temporary:
+        work = Path(temporary)
+        _run_pyinstaller(source, slug, work, root)
+        candidate = work / "dist" / (slug + ".exe")
+        if not candidate.is_file() or candidate.is_symlink():
+            raise ValueError("PyInstaller produced no regular Windows EXE")
+        size = candidate.stat().st_size
+        if not 1024 < size <= 300 * 1024 * 1024:
+            raise ValueError("Windows EXE size outside QA limits")
+        with candidate.open("rb") as reader:
+            if reader.read(2) != b"MZ":
+                raise ValueError("Windows EXE PE signature absent")
+        digest = hashlib.sha256()
+        with candidate.open("rb") as reader:
+            for chunk in iter(lambda: reader.read(1024 * 1024), b""):
+                digest.update(chunk)
+        receipt = {
+            "schema_version": 1,
+            "stage": "PRE_IDENTITY_WINDOWS_EXE",
+            "status": "EXE_QA_UNSIGNED",
+            "source_repository": SOURCE_REPOSITORY,
+            "source_sha": expected_sha,
+            "product_type": "APP",
+            "slug": slug,
+            "executable": slug + ".exe",
+            "executable_sha256": digest.hexdigest(),
+            "executable_bytes": size,
+            "official_identity_status": "NOT_COLLECTED",
+            "store_id": None,
+            "msix_status": "NOT_BUILT",
+        }
+        final = work / "final"
+        final.mkdir()
+        shutil.copyfile(candidate, final / (slug + ".exe"))
+        if hashlib.sha256((final / (slug + ".exe")).read_bytes()).hexdigest() != digest.hexdigest():
+            raise ValueError("copied Windows EXE hash mismatch")
+        (final / "exe-receipt.json").write_text(
+            json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        if output.exists() or output.is_symlink():
+            raise ValueError("output appeared during build; refuse overwrite")
+        os.replace(final, output)
+    return receipt
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    parser.add_argument("--slug", required=True)
+    parser.add_argument("--expected-sha", required=True)
+    parser.add_argument("--output", required=True, type=Path)
+    args = parser.parse_args(argv)
+    try:
+        result = build_exe(args.root, args.slug, args.expected_sha, args.output)
+        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        return 0
+    except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError,
+            subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
+        print("PRE_IDENTITY_EXE_HOLD: " + type(exc).__name__ + ": " + str(exc)[:200],
+              file=sys.stderr)
+        return 2
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
