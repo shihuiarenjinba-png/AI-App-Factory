@@ -37,7 +37,7 @@ def verify_source(root: Path, slug: str, expected_sha: str) -> Path:
     root = root.resolve(strict=True)
     # Git for Windows prints forward slashes while pathlib uses native
     # separators. Compare canonical paths, not raw text representations.
-    if Path(_git(root, "rev-parse", "--show-toplevel")).resolve(strict=True) != root:
+    if not Path(_git(root, "rev-parse", "--show-toplevel")).samefile(root):
         raise ValueError("root must be Git checkout top-level")
     if _git(root, "rev-parse", "HEAD") != expected_sha:
         raise ValueError("source HEAD differs from pinned SHA")
