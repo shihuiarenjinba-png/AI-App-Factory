@@ -84,8 +84,8 @@ def safe_filename(title):
     return (name or "untitled") + ".txt"
 
 STRINGS = {
-    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。"],
-    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file."]
+    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了"],
+    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported"]
 }
 
 class App:
@@ -287,7 +287,7 @@ class App:
             if path.exists() and not messagebox.askyesno(self.t(0), "Overwrite?"):
                 return
             atomic_write(path, (n["title"] + "\n\n" + n["body"] + "\n").encode("utf-8"))
-            self.status.set(self.t(11) + " — " + str(path))
+            self.status.set(self.t(16) + " — " + str(path))
         except (OSError, ValueError) as exc:
             self.error(exc)
 
