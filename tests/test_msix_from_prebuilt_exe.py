@@ -57,7 +57,7 @@ class PinnedExeMsixTests(unittest.TestCase):
         (store / "approved-identity.json").write_text(json.dumps(IDENTITY))
         for name in ("StoreLogo.png", "Square150.png", "Square44.png"):
             (store / "assets" / name).write_bytes(PNG)
-        self.git("add", ".")
+        self.git("add", "products/example-tool/store")
         self.git("commit", "-qm", "official Identity and approved assets return")
         self.output = self.root / "exports" / "msix"
 
