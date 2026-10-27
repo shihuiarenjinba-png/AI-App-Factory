@@ -1,4 +1,4 @@
-"""Windows-only gated PyInstaller -> MakeAppx MSIX candidate builder.
+"""Windows-only gated pinned-EXE -> MakeAppx MSIX candidate builder.
 
 Never creates Store identities, signs packages, publishes, or claims certification.
 Requires real brand assets and user-verified package identity before building.
@@ -126,22 +126,24 @@ def locate_makeappx()->Path:
         raise ValueError("Windows SDK MakeAppx missing; HOLD")
     return matches[0]
 
-def build(repo_root:Path,slug:str,out:Path)->Path:
+def build(repo_root:Path,slug:str,out:Path,prebuilt_dir:Path|None=None)->Path:
     if sys.platform!="win32":raise ValueError("Windows runner required")
+    if prebuilt_dir is None:raise ValueError("pinned pre-Identity EXE directory required; never rebuild")
+    try:
+        from tools.prebuilt_msix import approved_identity, verify_prebuilt, verify_msix
+    except ModuleNotFoundError:
+        from prebuilt_msix import approved_identity, verify_prebuilt, verify_msix
     product,identity=verify_inputs(repo_root,slug)
+    provenance=approved_identity(repo_root,slug)
+    exe_source=verify_prebuilt(repo_root,slug,prebuilt_dir,provenance)
     if out.exists() and any(out.iterdir()):raise ValueError("refusing to overwrite existing output")
     out.mkdir(parents=True,exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="msix-pack-") as temp:
         work=Path(temp)
         exe=slug+".exe"
-        subprocess.run([sys.executable,"-m","PyInstaller",
-            "--noconfirm","--clean","--onefile","--windowed",
-            "--name",slug,"--distpath",str(work/"dist"),"--workpath",str(work/"work"),
-            "--specpath",str(work),str(product/"main.py")],
-            check=True,timeout=600)
         layout=work/"layout"
         (layout/"Assets").mkdir(parents=True)
-        shutil.copyfile(work/"dist"/exe,layout/exe)
+        shutil.copyfile(exe_source,layout/exe)
         for file in ASSETS:
             shutil.copyfile(product/"store/assets"/file,layout/"Assets"/file)
         (layout/"AppxManifest.xml").write_bytes(appx_manifest(identity,exe))
@@ -150,16 +152,24 @@ def build(repo_root:Path,slug:str,out:Path)->Path:
             "/p",str(destination),"/o"],check=True,timeout=180)
         if not destination.is_file() or destination.stat().st_size<1000:
             raise ValueError("MSIX output absent or implausibly small")
+        try:
+            verified=verify_msix(destination,provenance)
+        except (ValueError,OSError):
+            destination.unlink(missing_ok=True)
+            raise
+        print("MSIX_BUILT_FROM_PINNED_EXE",verified["package_sha256"],
+              verified["executable_sha256"])
         return destination
 
 def main(argv=None):
     parser=argparse.ArgumentParser()
     parser.add_argument("--slug",required=True)
+    parser.add_argument("--prebuilt-dir",type=Path,required=True)
     parser.add_argument("--output",type=Path,required=True)
     parser.add_argument("--root",type=Path,default=Path(__file__).resolve().parents[1])
     args=parser.parse_args(argv)
     try:
-        product=build(args.root,args.slug,args.output)
+        product=build(args.root,args.slug,args.output,args.prebuilt_dir)
         print(product)
         return 0
     except (ValueError,OSError,KeyError,subprocess.CalledProcessError,
