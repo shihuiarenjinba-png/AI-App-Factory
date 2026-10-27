@@ -20,7 +20,7 @@ SLUG = re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SOURCE_REPOSITORY = "shihuiarenjinba-png/AI-App-Factory"
 SOURCE_BRANCH = re.compile(r"^codex/[A-Za-z0-9._/-]+$")
-REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{3,127}$")
 
 
 def current_source_branch(root: Path, claimed_branch: str | None = None) -> str:
