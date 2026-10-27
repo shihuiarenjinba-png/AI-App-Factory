@@ -53,6 +53,11 @@ class Smoke(unittest.TestCase):
         self.assertEqual(safe_filename("CON"), "note_CON.txt")
         self.assertEqual(safe_filename(""), "untitled.txt")
 
+    def test_windows_reserved_device_name_with_extension(self):
+        for title in ("CON.txt", "con.log", "PRN.backup", "COM1.notes", "LPT9.notes"):
+            with self.subTest(title=title):
+                self.assertTrue(safe_filename(title).startswith("note_"), title)
+
     def test_symlink(self):
         target = Path(self.tmp.name) / "target"
         target.write_text("safe")
