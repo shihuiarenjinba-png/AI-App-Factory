@@ -111,18 +111,45 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
         not approved["store_id"].strip()):
         fail("Partner Center approval not recorded")
     actual=msix_data(package)
+    # A Provisioner EXE Identity return advances Factory HEAD by exactly one
+    # attestation-only commit. Keep original source_sha invariant across E2E;
+    # separately record the Actions commit that actually produced the MSIX.
+    pinned=None
+    if approved.get("package_kind")=="exe":
+        try:
+            from tools.prebuilt_msix import approved_identity, verify_msix
+        except ModuleNotFoundError:
+            from prebuilt_msix import approved_identity, verify_msix
+        pinned=approved_identity(repo_root,slug)
+        current=subprocess.check_output(["git","rev-parse","HEAD"],
+            cwd=repo_root,encoding="utf-8",timeout=8).strip()
+        if source_sha!=current:
+            fail("MSIX build HEAD differs from Identity return commit")
+        verify_msix(package,pinned)
     for field in ("name","publisher","version"):
         if approved.get(field)!=actual[field]:fail("MSIX identity differs from approved "+field)
     basename="AI-App-Factory" if kind=="app" else "AI-Game-Factory"
     result={
        "schema_version":1,"source_repository":"https://github.com/"+OWNER+"/"+basename,
-       "source_sha":source_sha,"type":kind,"slug":slug,
+       "source_sha":pinned["source_sha"] if pinned else source_sha,
+       "type":kind,"slug":slug,
        "package":"package.msix","status":"QA_UNSIGNED",
        "package_sha256":actual["package_sha256"],
        "package_bytes":actual["package_bytes"],
        "executable_sha256":actual["executable_sha256"],
        "identity":{k:actual[k] for k in ("name","publisher","version")},
     }
+    if pinned:
+        result.update({
+            "factory_head_sha":source_sha,
+            "expected_head_sha":pinned["expected_head_sha"],
+            "request_id":pinned["request_id"],"product_type":"APP",
+            "source_factory":pinned["source_factory"],
+            "source_branch":pinned["source_branch"],
+            "display_name":pinned["display_name"],
+            "store_id":pinned["store_id"],
+            "prebuilt_exe_sha256":pinned["package_sha256"],
+        })
     dest=output/"factory-msix-handoff"
     if dest.exists():fail("output artifact already exists")
     dest.mkdir(parents=True)
