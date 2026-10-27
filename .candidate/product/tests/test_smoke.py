@@ -99,6 +99,21 @@ class Smoke(unittest.TestCase):
                 self.assertEqual(path.read_text(encoding="utf-8"), "original")
                 self.assertTrue(app.dirty)
 
+    def test_error_guidance_localized(self):
+        from main import App
+        from unittest.mock import Mock
+        for lang, guidance in (("ja", "入力内容とファイルの保存先を確認"),
+                               ("en", "Check your input and file location")):
+            with self.subTest(lang=lang):
+                app = App.__new__(App)
+                app.lang = lang
+                app.status = Mock()
+                with patch("main.messagebox.showerror") as dialog:
+                    app.error(ValueError("broken JSON"))
+                self.assertIn(guidance, dialog.call_args.args[1])
+                self.assertIn("broken JSON", dialog.call_args.args[1])
+                self.assertIn(guidance, app.status.set.call_args.args[0])
+
     def test_symlink(self):
         target = Path(self.tmp.name) / "target"
         target.write_text("safe")
