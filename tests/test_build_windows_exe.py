@@ -20,6 +20,9 @@ class PreIdentityWindowsBuildTests(unittest.TestCase):
         self.git("config", "user.email", "ci@example.invalid")
         (self.root / "factory").mkdir()
         (self.root / "factory/config.json").write_text('{"kind":"app"}')
+        (self.root / "proposals").mkdir()
+        (self.root / "proposals/example-tool.json").write_text(
+            '{"slug":"example-tool","title":"Example Tool"}')
         self.product = self.root / "products" / "example-tool"
         (self.product / "tests").mkdir(parents=True)
         (self.product / "manifest.json").write_text(
@@ -57,6 +60,7 @@ class PreIdentityWindowsBuildTests(unittest.TestCase):
                          hashlib.sha256(executable.read_bytes()).hexdigest())
         self.assertEqual(json.loads((self.output / "exe-receipt.json").read_text()), receipt)
         self.assertEqual(receipt["status"], "EXE_QA_UNSIGNED")
+        self.assertEqual(receipt["display_name"], "Example Tool")
         self.assertIsNone(receipt["store_id"])
         self.assertEqual(receipt["msix_status"], "NOT_BUILT")
         with patch("tools.build_windows_exe.sys.platform", "win32"):
@@ -82,6 +86,12 @@ class PreIdentityWindowsBuildTests(unittest.TestCase):
 
     def test_untracked_source_rejected(self):
         (self.product / "extra.py").write_text("print('extra')\n")
+        with self.assertRaisesRegex(ValueError, "differs"):
+            verify_source(self.root, "example-tool", self.sha)
+
+    def test_dirty_product_title_rejected(self):
+        (self.root / "proposals/example-tool.json").write_text(
+            '{"slug":"example-tool","title":"Changed Tool"}')
         with self.assertRaisesRegex(ValueError, "differs"):
             verify_source(self.root, "example-tool", self.sha)
 
