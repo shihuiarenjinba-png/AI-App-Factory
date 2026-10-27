@@ -26,7 +26,7 @@ from tools.msix_handoff import msix_data
 
 SHA40 = re.compile(r"^[a-f0-9]{40}$")
 SHA64 = re.compile(r"^[a-f0-9]{64}$")
-REQUEST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
+REQUEST = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{3,127}$")
 BRANCH = re.compile(r"^codex/[A-Za-z0-9._/-]+$")
 MAX_EXE = 300 * 1024 * 1024
 
