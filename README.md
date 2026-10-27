@@ -56,3 +56,30 @@ read-only Docker container. The clean promotion job never executes generated tes
 - Improvements must modify actual code and regression tests, and cannot silently delete existing files.
 - Pull request promotion stages only the expected state and product/proposal directory.
 - The scheduler still requires merge into the default branch, OpenAI credentials and opt-in variable.
+
+## Windows EXE before Partner Center Identity (Draft work branch)
+
+A committed APP under `products/<slug>` can be built to a real Windows EXE
+without any Store ID, approved Identity, OPENAI_API_KEY, or paid Codex API.
+On a Windows machine with Python 3.12, Git and PyInstaller 6.16.0:
+
+```powershell
+python tools/build_windows_exe.py --slug example-tool --expected-sha (git rev-parse HEAD) --output dist/preidentity
+```
+
+The script checks the exact clean Git source SHA, product manifest, and lane.
+It emits `<slug>.exe` plus `exe-receipt.json` with the real executable
+SHA-256, status `EXE_QA_UNSIGNED`, and `store_id: null`. It refuses
+overwrites, uncommitted changes, linked product files, or non-Windows runners.
+
+The `Factory pre-Identity Windows EXE` workflow can create the same
+5-day-retained QA artifact on an isolated `codex/*` push with exactly one
+changed product, or via a reviewed manual dispatch. It is not a Store package.
+No actual product is currently committed on this development branch, so
+this is a tested build path, **not a claimed real EXE artifact**.
+
+After local Windows QA, the operator must obtain the *real* Partner Center
+Identity, return the attested Identity through the separate Provisioner,
+then build and inspect MSIX. The Provisioner pins
+`codex/factory-autoloop-20261026`; this stacked Draft branch must be
+reviewed and integrated into that source branch before a live round trip.
