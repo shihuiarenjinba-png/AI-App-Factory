@@ -46,7 +46,7 @@ class PreIdentityWindowsBuildTests(unittest.TestCase):
 
     def test_committed_app_without_identity_is_eligible_for_exe(self):
         source = verify_source(self.root, "example-tool", self.sha)
-        self.assertEqual(source, self.product / "main.py")
+        self.assertTrue(source.samefile(self.product / "main.py"))
         self.assertFalse((self.product / "store/approved-identity.json").exists())
 
     def test_preidentity_build_produces_real_bytes_and_receipt(self):
