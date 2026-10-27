@@ -49,7 +49,9 @@ def make_request(root: Path, slug: str, request_id: str) -> dict:
     if not isinstance(request_id, str) or not REQUEST_ID.fullmatch(request_id):
         raise ValueError("unsafe request ID")
     root = root.resolve(strict=True)
-    if _git(root, "rev-parse", "--show-toplevel") != str(root):
+    # Git for Windows can emit 8.3 short paths (RUNNER~1) while pathlib
+    # resolves the long path. Compare filesystem identity, not path text.
+    if not Path(_git(root, "rev-parse", "--show-toplevel")).samefile(root):
         raise ValueError("root must be Git checkout top-level")
     if _git(root, "branch", "--show-current") != BRANCH:
         raise ValueError("unapproved Factory source branch")
