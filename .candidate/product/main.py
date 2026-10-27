@@ -162,6 +162,8 @@ class App:
         if self.current and not self.loading:
             self.dirty = True
             self.status.set(self.t(10))
+            if self.query.get():
+                self.refresh_list()
 
     def body_changed(self, _event=None):
         if self.body.edit_modified():
@@ -179,7 +181,14 @@ class App:
                 self.dirty = True
 
     def refresh_list(self):
-        filtered = search_notes(self.notes, self.query.get())
+        # Search the visible, unsaved editor text without mutating the saved model.
+        # The editor is committed only on Save or when switching notes.
+        notes = self.notes
+        if self.current and not self.loading:
+            title, body = self.title.get(), self.body.get("1.0", "end-1c")
+            notes = [{**n, "title": title, "body": body} if n["id"] == self.current else n
+                     for n in self.notes]
+        filtered = search_notes(notes, self.query.get())
         self.visible = [n["id"] for n in filtered]
         self.listbox.delete(0, "end")
         for n in filtered:

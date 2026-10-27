@@ -22,6 +22,26 @@ class Smoke(unittest.TestCase):
         self.assertEqual(search_notes([self.note], "hello"), [self.note])
         self.assertEqual(search_notes([self.note], "missing"), [])
 
+    def test_search_includes_unsaved_editor_without_persisting(self):
+        from main import App
+        from unittest.mock import Mock
+        app = App.__new__(App)
+        app.notes = [dict(self.note)]
+        app.current = self.note["id"]
+        app.loading = False
+        app.query = Mock()
+        app.query.get.return_value = "draft text"
+        app.title = Mock()
+        app.title.get.return_value = "Draft title"
+        app.body = Mock()
+        app.body.get.return_value = "Draft text not yet saved"
+        app.listbox = Mock()
+        app.refresh_list()
+        self.assertEqual(app.visible, [self.note["id"]])
+        app.listbox.insert.assert_called_once_with("end", "Draft title")
+        self.assertEqual(app.notes[0]["title"], self.note["title"])
+        self.assertEqual(app.notes[0]["body"], self.note["body"])
+
     def test_duplicate(self):
         with self.assertRaisesRegex(ValueError, "Duplicate"):
             validate_notes([self.note, self.note])
