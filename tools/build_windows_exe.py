@@ -52,6 +52,8 @@ def current_source_branch(root: Path, claimed_branch: str | None = None) -> str:
     if (not SOURCE_BRANCH.fullmatch(branch) or ".." in branch or "//" in branch
             or branch.endswith(("/", "."))):
         raise ValueError("unsafe or non-codex source branch")
+    if claimed_branch is not None and claimed_branch != branch:
+        raise ValueError("claimed Factory source branch differs from checkout")
     return branch
 
 
