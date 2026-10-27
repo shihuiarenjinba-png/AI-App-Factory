@@ -161,7 +161,7 @@ def download_artifact(root: Path, slug: str, run_id: str, destination: Path) -> 
     if destination.exists() or destination.is_symlink():
         hold("refusing to overwrite an existing EXE download")
     command = ["gh", "run", "view", str(run_id), "-R", REPOSITORY,
-               "--json", "headSha,headBranch,status,conclusion"]
+               "--json", "headSha,headBranch,status,conclusion,workflowName,event"]
     result = subprocess.run(command, capture_output=True, text=True,
                             encoding="utf-8", timeout=60, check=True)
     try:
@@ -170,7 +170,9 @@ def download_artifact(root: Path, slug: str, run_id: str, destination: Path) -> 
         raise ValueError("PINNED_EXE_HOLD: invalid GitHub run metadata") from exc
     if (run.get("headSha") != identity["source_sha"]
             or run.get("headBranch") != identity["source_branch"]
-            or run.get("status") != "completed" or run.get("conclusion") != "success"):
+            or run.get("status") != "completed" or run.get("conclusion") != "success"
+            or run.get("workflowName") != "Factory pre-Identity Windows EXE"
+            or run.get("event") not in ("push", "workflow_dispatch")):
         hold("EXE artifact run is not a successful run for the pinned source SHA")
     artifact = f"factory-preidentity-exe-{slug}-{identity['source_sha']}"
     destination.parent.mkdir(parents=True, exist_ok=True)
