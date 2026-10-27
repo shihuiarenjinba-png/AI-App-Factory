@@ -14,9 +14,14 @@ on:
         description: "Existing product slug; approved Identity and PNG assets required"
         required: true
         type: string
+      exe_artifact_run_id:
+        description: "Successful Factory pre-Identity Windows EXE run ID for the pinned source SHA"
+        required: true
+        type: string
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: factory-msix-export-app
@@ -43,19 +48,27 @@ jobs:
           PUSH_BEFORE: ${{ github.event.before }}
         run: python tools/msix_push_product.py
       - name: Run factory regression tests
-        if: steps.pick.outputs.ready == 'true'
+        if: steps.pick.outputs.ready == 'true' && github.event_name == 'workflow_dispatch'
         run: python -m unittest discover -s tests -v
-      - name: Build Windows executable dependencies
-        if: steps.pick.outputs.ready == 'true'
-        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - name: Explain push HOLD until immutable EXE Artifact run is selected
+        if: steps.pick.outputs.ready == 'true' && github.event_name != 'workflow_dispatch'
+        shell: pwsh
+        run: 'echo "HOLD: manually dispatch with the successful pre-Identity EXE Artifact run ID; no EXE rebuild" >> $env:GITHUB_STEP_SUMMARY'
+      - name: Download and verify the pinned pre-Identity Windows EXE Artifact
+        if: steps.pick.outputs.ready == 'true' && github.event_name == 'workflow_dispatch'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXE_RUN_ID: ${{ inputs.exe_artifact_run_id }}
+        shell: pwsh
+        run: python tools/prebuilt_msix.py --slug "${{ steps.pick.outputs.slug }}" --run-id "$env:EXE_RUN_ID" --output dist/prebuilt
       - name: Build MSIX on Windows with approved package identity
-        if: steps.pick.outputs.ready == 'true'
-        run: python tools/build_windows_msix.py --slug "${{ steps.pick.outputs.slug }}" --output dist/msix
+        if: steps.pick.outputs.ready == 'true' && github.event_name == 'workflow_dispatch'
+        run: python tools/build_windows_msix.py --slug "${{ steps.pick.outputs.slug }}" --prebuilt-dir dist/prebuilt --output dist/msix
       - name: Assemble verified MSIX handoff
-        if: steps.pick.outputs.ready == 'true'
+        if: steps.pick.outputs.ready == 'true' && github.event_name == 'workflow_dispatch'
         run: python tools/msix_handoff.py --slug "${{ steps.pick.outputs.slug }}" --msix "dist/msix/${{ steps.pick.outputs.slug }}.msix" --output dist/handoff
       - name: Export package and checksum for Windows-all-auto
-        if: steps.pick.outputs.ready == 'true'
+        if: steps.pick.outputs.ready == 'true' && github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4
         with:
           name: factory-msix-handoff-${{ steps.pick.outputs.slug }}
