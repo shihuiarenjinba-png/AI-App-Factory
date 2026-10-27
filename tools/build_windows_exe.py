@@ -19,6 +19,23 @@ import tempfile
 SLUG = re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 SHA40 = re.compile(r"^[0-9a-f]{40}$")
 SOURCE_REPOSITORY = "shihuiarenjinba-png/AI-App-Factory"
+SOURCE_BRANCH = re.compile(r"^codex/[A-Za-z0-9._/-]+$")
+
+
+def current_source_branch(root: Path) -> str:
+    """Bind receipt to the actual checked-out codex ref, including detached Actions checkouts."""
+    head = _git(root, "rev-parse", "HEAD")
+    ref = os.environ.get("GITHUB_REF")
+    if ref is not None:
+        if not ref.startswith("refs/heads/codex/") or os.environ.get("GITHUB_SHA") != head:
+            raise ValueError("GitHub Actions ref/SHA does not match checked-out source")
+        branch = ref[len("refs/heads/"):]
+    else:
+        branch = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
+    if (not SOURCE_BRANCH.fullmatch(branch) or ".." in branch or "//" in branch
+            or branch.endswith(("/", "."))):
+        raise ValueError("unsafe or non-codex source branch")
+    return branch
 
 
 def _git(root: Path, *args: str) -> str:
@@ -91,6 +108,7 @@ def build_exe(root: Path, slug: str, expected_sha: str, output: Path) -> dict:
         raise ValueError("Windows runner required for real EXE build")
     root = root.resolve(strict=True)
     source = verify_source(root, slug, expected_sha)
+    source_branch = current_source_branch(root)
     display_name = json.loads((root / "proposals" / (slug + ".json")).read_text(
         encoding="utf-8"))["title"]
     if output.exists() or output.is_symlink():
@@ -119,6 +137,8 @@ def build_exe(root: Path, slug: str, expected_sha: str, output: Path) -> dict:
             "stage": "PRE_IDENTITY_WINDOWS_EXE",
             "status": "EXE_QA_UNSIGNED",
             "source_repository": SOURCE_REPOSITORY,
+            "source_factory": "AI-App-Factory",
+            "source_branch": source_branch,
             "source_sha": expected_sha,
             "product_type": "APP",
             "slug": slug,
