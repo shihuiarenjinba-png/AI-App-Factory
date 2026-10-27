@@ -23,7 +23,7 @@ SOURCE_BRANCH = re.compile(r"^codex/[A-Za-z0-9._/-]+$")
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 
 
-def current_source_branch(root: Path) -> str:
+def current_source_branch(root: Path, claimed_branch: str | None = None) -> str:
     """Bind receipt to the actual checked-out codex ref, including detached Actions checkouts."""
     head = _git(root, "rev-parse", "HEAD")
     # A local checkout has an authoritative symbolic ref even if the test
@@ -31,10 +31,24 @@ def current_source_branch(root: Path) -> str:
     try:
         branch = _git(root, "symbolic-ref", "--quiet", "--short", "HEAD")
     except subprocess.CalledProcessError:
-        ref = os.environ.get("GITHUB_REF", "")
-        if not ref.startswith("refs/heads/codex/") or os.environ.get("GITHUB_SHA") != head:
-            raise ValueError("detached Git checkout lacks verified codex ref/SHA")
-        branch = ref[len("refs/heads/"):]
+        if claimed_branch is not None:
+            # Provisioner first authenticates ls-remote and checks out the exact
+            # SHA detached. Also require its local origin tracking ref to match.
+            if (not SOURCE_BRANCH.fullmatch(claimed_branch) or ".." in claimed_branch
+                    or "//" in claimed_branch or claimed_branch.endswith(("/", "."))):
+                raise ValueError("unsafe claimed Factory source branch")
+            try:
+                tracked = _git(root, "rev-parse", "refs/remotes/origin/" + claimed_branch)
+            except subprocess.CalledProcessError as exc:
+                raise ValueError("origin source branch tracking ref absent") from exc
+            if tracked != head:
+                raise ValueError("detached source HEAD differs from origin branch ref")
+            branch = claimed_branch
+        else:
+            ref = os.environ.get("GITHUB_REF", "")
+            if not ref.startswith("refs/heads/codex/") or os.environ.get("GITHUB_SHA") != head:
+                raise ValueError("detached Git checkout lacks verified codex ref/SHA")
+            branch = ref[len("refs/heads/"):]
     if (not SOURCE_BRANCH.fullmatch(branch) or ".." in branch or "//" in branch
             or branch.endswith(("/", "."))):
         raise ValueError("unsafe or non-codex source branch")
@@ -107,7 +121,8 @@ def _run_pyinstaller(source: Path, slug: str, work: Path, root: Path) -> None:
 
 
 def build_exe(root: Path, slug: str, expected_sha: str, output: Path,
-              request_id: str | None = None) -> dict:
+              request_id: str | None = None,
+              source_branch: str | None = None) -> dict:
     if sys.platform != "win32":
         raise ValueError("Windows runner required for real EXE build")
     if request_id is not None and (not isinstance(request_id, str)
@@ -115,7 +130,7 @@ def build_exe(root: Path, slug: str, expected_sha: str, output: Path,
         raise ValueError("unsafe APP request_id")
     root = root.resolve(strict=True)
     source = verify_source(root, slug, expected_sha)
-    source_branch = current_source_branch(root)
+    source_branch = current_source_branch(root, source_branch)
     display_name = json.loads((root / "proposals" / (slug + ".json")).read_text(
         encoding="utf-8"))["title"]
     if output.exists() or output.is_symlink():
@@ -177,11 +192,12 @@ def main(argv=None) -> int:
     parser.add_argument("--slug", required=True)
     parser.add_argument("--expected-sha", required=True)
     parser.add_argument("--request-id", help="Exact immutable Provisioner request_id; omit for EXE-only QA")
+    parser.add_argument("--source-branch", help="Exact codex branch for authenticated detached Provisioner checkout")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args(argv)
     try:
         result = build_exe(args.root, args.slug, args.expected_sha, args.output,
-                           request_id=args.request_id)
+                           request_id=args.request_id, source_branch=args.source_branch)
         print(json.dumps(result, ensure_ascii=False, sort_keys=True))
         return 0
     except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError,
