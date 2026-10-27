@@ -47,7 +47,8 @@ def verify_source(root: Path, slug: str, expected_sha: str) -> Path:
         raise ValueError("APP product directory missing or linked")
     if any(path.is_symlink() for path in product.rglob("*")):
         raise ValueError("linked APP product content forbidden")
-    paths = ("factory/config.json", f"products/{slug}/manifest.json",
+    paths = ("factory/config.json", f"proposals/{slug}.json",
+             f"products/{slug}/manifest.json",
              f"products/{slug}/main.py", f"products/{slug}/tests/test_smoke.py")
     for rel in paths:
         file = root / rel
@@ -55,10 +56,17 @@ def verify_source(root: Path, slug: str, expected_sha: str) -> Path:
             raise ValueError("required committed APP source missing, linked, or oversized")
         _git(root, "cat-file", "-e", f"HEAD:{rel}")
     if _git(root, "status", "--porcelain", "--untracked-files=all", "--",
-            "factory/config.json", f"products/{slug}"):
+            "factory/config.json", f"proposals/{slug}.json", f"products/{slug}"):
         raise ValueError("APP source differs from pinned Git commit")
     config = json.loads((root / "factory/config.json").read_text(encoding="utf-8"))
     manifest = json.loads((product / "manifest.json").read_text(encoding="utf-8"))
+    proposal = json.loads((root / "proposals" / (slug + ".json")).read_text(encoding="utf-8"))
+    if (not isinstance(proposal, dict) or proposal.get("slug") != slug
+            or not isinstance(proposal.get("title"), str)
+            or not 1 <= len(proposal["title"]) <= 100
+            or proposal["title"] != proposal["title"].strip()
+            or any(ord(ch) < 32 or ord(ch) == 127 for ch in proposal["title"])):
+        raise ValueError("Factory product title missing or unapproved")
     if not isinstance(config, dict) or config.get("kind") != "app":
         raise ValueError("wrong Factory lane")
     if (not isinstance(manifest, dict) or manifest.get("kind") != "app"
@@ -83,6 +91,8 @@ def build_exe(root: Path, slug: str, expected_sha: str, output: Path) -> dict:
         raise ValueError("Windows runner required for real EXE build")
     root = root.resolve(strict=True)
     source = verify_source(root, slug, expected_sha)
+    display_name = json.loads((root / "proposals" / (slug + ".json")).read_text(
+        encoding="utf-8"))["title"]
     if output.exists() or output.is_symlink():
         raise ValueError("refusing to overwrite existing EXE evidence")
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -112,6 +122,7 @@ def build_exe(root: Path, slug: str, expected_sha: str, output: Path) -> dict:
             "source_sha": expected_sha,
             "product_type": "APP",
             "slug": slug,
+            "display_name": display_name,
             "executable": slug + ".exe",
             "executable_sha256": digest.hexdigest(),
             "executable_bytes": size,
