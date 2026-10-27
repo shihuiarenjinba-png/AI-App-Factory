@@ -75,7 +75,7 @@ class Smoke(unittest.TestCase):
                     app.export()
                 self.assertTrue(app.dirty, "TXT export must not mark the notes database saved")
                 self.assertTrue(export_path.is_file())
-                self.assertIn("TXT", app.status.set.call_args.args[0][0])
+                self.assertTrue(app.status.set.call_args.args[0].startswith("TXT書き出し完了" if lang == "ja" else "TXT exported"))
 
     def test_export_overwrite_confirmation_localized(self):
         from main import App
