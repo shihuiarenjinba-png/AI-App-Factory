@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/focus-save-rollback-improve-exe.yml
       - scripts/promote_focus_save_rollback.py
+      - tests/test_focus_cohort_lifecycle.py
 
 permissions:
   contents: write
