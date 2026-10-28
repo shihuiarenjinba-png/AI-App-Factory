@@ -293,7 +293,7 @@ class Desk:
         self.timer_area.pack(fill="x", pady=(0, 14))
         self.clock_label = ttk.Label(self.timer_area, font=("Consolas", 33, "bold"))
         self.clock_label.pack(anchor="center")
-        self.timer_state = ttk.Label(timer_area)
+        self.timer_state = ttk.Label(self.timer_area)
         self.timer_state.pack(anchor="center")
         bar = ttk.Frame(self.timer_area)
         bar.pack(pady=(10, 0))
