@@ -393,12 +393,28 @@ class Desk:
         self.start_button.state(["disabled"] if self.timer.state != "idle" else ["!disabled"])
 
     def action(self, fn):
+        # Failed disk writes must not leave unsaved changes in the live model.
+        import copy
+        previous_data = copy.deepcopy(self.data)
+        previous_timer = (self.timer.minutes, self.timer.state,
+                          self.timer.remaining, self.timer.started_at)
+        previous_language = self.lang
+        previous_entry = self.entry_var.get()
         try:
             fn()
             self.save()
-            self.refresh()
         except (OSError, ValueError, UnicodeError) as exc:
+            self.data = previous_data
+            (self.timer.minutes, self.timer.state,
+             self.timer.remaining, self.timer.started_at) = previous_timer
+            self.lang = previous_language
+            self.entry_var.set(previous_entry)
+            self.minutes_var.set(str(self.timer.minutes))
+            self.relabel()
             messagebox.showerror(self.words("error"), str(exc))
+            return False
+        self.refresh()
+        return True
 
     def add(self):
         def run():
@@ -443,9 +459,9 @@ class Desk:
         self.action(self.timer.reset)
 
     def switch_language(self):
-        self.lang = "en" if self.lang == "ja" else "ja"
-        self.relabel()
-        self.action(lambda: None)
+        target = "en" if self.lang == "ja" else "ja"
+        if self.action(lambda: setattr(self, "lang", target)):
+            self.relabel()
 
     def tick(self):
         was = self.timer.state

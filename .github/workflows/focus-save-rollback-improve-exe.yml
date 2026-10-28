@@ -1,0 +1,138 @@
+name: Focus save rollback improvement Factory promote and Windows EXE
+on:
+  push:
+    branches:
+      - codex/app-focus-save-rollback-20261029
+    paths:
+      - .github/workflows/focus-save-rollback-improve-exe.yml
+      - scripts/promote_focus_save_rollback.py
+      - tests/test_focus_cohort_lifecycle.py
+
+permissions:
+  contents: write
+
+concurrency:
+  group: focus-save-rollback-improve-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  improve-promote:
+    if: github.ref == 'refs/heads/codex/app-focus-save-rollback-20261029'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      source_sha: ${{ steps.promote.outputs.source_sha }}
+      request_id: ${{ steps.promote.outputs.request_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Genuine Factory plan, candidate tests, validate and improve promote
+        id: promote
+        run: python scripts/promote_focus_save_rollback.py
+
+  windows-exe:
+    needs: improve-promote
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check exact promoted source, revision and identity-free contract
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.improve-promote.outputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          state = json.loads(Path("factory/state.json").read_text(encoding="utf-8"))
+          assert state["slug"] == "focus-session-desk"
+          assert state["stage"] == "improve" and state["revision"] == 2
+          assert Path("products/focus-session-desk/main.py").is_file()
+          PY
+      - name: Run core and product regression tests on Windows
+        run: |
+          python -m unittest discover -s tests -v
+          python -m unittest discover -s products/focus-session-desk/tests -v
+      - name: Install pinned unsigned Windows EXE builder
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - name: Build exact-source request-bound unsigned EXE
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ needs.improve-promote.outputs.source_sha }}
+          REQUEST_ID: ${{ needs.improve-promote.outputs.request_id }}
+        run: |
+          python tools/build_windows_exe.py --slug focus-session-desk --expected-sha "$env:SOURCE_SHA" --source-branch codex/app-focus-save-rollback-20261029 --request-id "$env:REQUEST_ID" --output dist/preidentity
+      - name: Independently verify receipt and emit review-only registration handoff
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.improve-promote.outputs.source_sha }}
+          REQUEST_ID: ${{ needs.improve-promote.outputs.request_id }}
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          out = Path("dist/preidentity")
+          receipt = json.loads((out / "exe-receipt.json").read_text(encoding="utf-8"))
+          exe = out / "focus-session-desk.exe"
+          assert exe.is_file()
+          assert exe.open("rb").read(2) == b"MZ"
+          assert hashlib.sha256(exe.read_bytes()).hexdigest() == receipt["executable_sha256"]
+          assert receipt["source_sha"] == os.environ["SOURCE_SHA"]
+          assert receipt["request_id"] == os.environ["REQUEST_ID"]
+          assert receipt["slug"] == "focus-session-desk"
+          assert receipt["store_id"] is None
+          handoff = {
+            "schema_version": 1,
+            "product": "Focus Session Desk",
+            "slug": "focus-session-desk",
+            "repo": "shihuiarenjinba-png/AI-App-Factory",
+            "source_branch": "codex/app-focus-save-rollback-20261029",
+            "source_sha": receipt["source_sha"],
+            "request_id": receipt["request_id"],
+            "product_type": "APP",
+            "packaging_family": "MSIX",
+            "partner_center_registration_type": "MSIX_OR_PWA_APP",
+            "partner_center_selection": "MSIX or PWA app",
+            "partner_center_display_name": None,
+            "proposed_display_name": "Focus Session Desk",
+            "reserved_display_name_verified": False,
+            "identity_status": "WAITING_USER_IDENTITY",
+            "required_fields": ["Store ID", "reserved display name",
+                                "Package Identity Name", "Publisher",
+                                "Publisher Display Name", "PFN", "Package SID"],
+            "identity_return_target": {"owner": "36_MIN_WINDOWS_E2E",
+                                       "stage": "AUTHENTICATED_IDENTITY_EVIDENCE_AND_CAS"},
+            "pre_identity_exe": {"status": "EXE_QA_UNSIGNED",
+                                 "sha256": receipt["executable_sha256"],
+                                 "bytes": receipt["executable_bytes"]},
+            "windows_gui_status": "UNVERIFIED",
+            "msix_status": "NOT_BUILT",
+            "identity_cas_allowed": False
+          }
+          (out / "registration-handoff.json").write_text(
+              json.dumps(handoff, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(handoff, ensure_ascii=False))
+          PY
+      - name: Upload new revision EXE, SHA receipt and registration handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-save-rollback-improve-preidentity-${{ needs.improve-promote.outputs.source_sha }}
+          path: dist/preidentity/
+          if-no-files-found: error
+          retention-days: 5
