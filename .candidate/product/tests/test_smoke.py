@@ -68,6 +68,24 @@ class Smoke(unittest.TestCase):
         save_notes(backup, [self.note])
         self.assertEqual(read_notes(self.path), ([self.note], True))
 
+    def test_invalid_unicode_surrogate_rejected_and_backup_recovered(self):
+        import json
+        for field in ("title", "body"):
+            with self.subTest(field=field):
+                bad = dict(self.note)
+                bad[field] = "broken" + chr(0xD800)
+                with self.assertRaisesRegex(ValueError, "Unicode surrogate"):
+                    save_notes(self.path, [bad])
+                self.assertFalse(self.path.exists())
+                self.path.write_text(json.dumps({"schema": 1, "notes": [bad]}), encoding="utf-8")
+                with self.assertRaisesRegex(ValueError, "Cannot read"):
+                    read_notes(self.path)
+                backup = self.path.with_name(self.path.name + ".bak")
+                save_notes(backup, [self.note])
+                self.assertEqual(read_notes(self.path), ([self.note], True))
+                self.path.unlink()
+                backup.unlink()
+
     def test_backup(self):
         save_notes(self.path, [self.note])
         save_notes(self.path, [new_note()])
