@@ -71,7 +71,7 @@ def run():
             atomic_write(path, (n["title"] + "\\n\\n" + n["body"] + "\\n").encode("utf-8"))
 '''
     new_export = '''            path = Path(selected)
-            if self.path is not None:
+            if getattr(self, "path", None) is not None:
                 active = Path(self.path).absolute()
                 protected = (active, active.with_name(active.name + ".bak"))
                 output = path.absolute()
