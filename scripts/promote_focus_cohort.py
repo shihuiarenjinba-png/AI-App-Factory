@@ -13,6 +13,7 @@ import sys
 import tempfile
 import urllib.request
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import factory
 
 ROOT = Path(__file__).resolve().parents[1]
