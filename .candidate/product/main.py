@@ -64,6 +64,29 @@ def scan(paths):
         except (OSError,ValueError,struct.error) as exc:errors.append((str(item),str(exc)))
     return rows,errors
 
+def append_images(existing, paths):
+    """Append new files without rescanning or silently dropping saved inventory rows."""
+    if not isinstance(existing, list) or not isinstance(paths, (list, tuple)):
+        raise ValueError("Invalid inventory")
+    if len(existing) + len(paths) > MAX_ITEMS:
+        raise ValueError("Too many images")
+    rows = list(existing)
+    errors = []
+    seen = {row["path"] for row in existing}
+    for item in paths:
+        try:
+            if not isinstance(item, (str, Path)):
+                raise ValueError("Invalid path")
+            path = Path(item).absolute()
+            if len(str(path)) > 4096 or str(path) in seen:
+                raise ValueError("Duplicate or oversized path")
+            seen.add(str(path))
+            rows.append(inspect_image(path))
+        except (OSError, ValueError, struct.error) as exc:
+            errors.append((str(item), str(exc)))
+    return rows, errors
+
+
 def validate_session(value):
     if not isinstance(value,dict) or set(value)!={"schema","paths"} or type(value["schema"]) is not int or value["schema"]!=1:
         raise ValueError("Invalid session schema")
@@ -145,7 +168,7 @@ class Desk:
     def add(self):
         paths=filedialog.askopenfilenames(parent=self.root,title=self.t("add"),filetypes=[("Images","*.png *.jpg *.jpeg *.gif *.bmp"),("All","*.*")])
         if not paths:return
-        try:rows,errors=scan([r["path"] for r in self.rows]+list(paths))
+        try:rows,errors=append_images(self.rows,list(paths))
         except ValueError as exc:self.error(exc);return
         self.rows=rows;self.refresh();self.status.set(self.t("result").format(n=len(rows),bad=len(errors)))
         if errors:self.error("\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
