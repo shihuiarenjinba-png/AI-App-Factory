@@ -192,5 +192,73 @@ class FocusDeskTests(unittest.TestCase):
         self.assertTrue(WORDS["en"]["name"])
 
 
+    def test_disk_failure_rolls_back_task_timer_and_language(self):
+        """The visible model must not claim an edit that was not saved."""
+        from unittest.mock import patch
+        from main import Desk
+
+        class FakeVar:
+            def __init__(self, value):
+                self.value = value
+
+            def get(self):
+                return self.value
+
+            def set(self, value):
+                self.value = value
+
+        desk = Desk.__new__(Desk)
+        desk.data = blank_document()
+        desk.lang = "ja"
+        desk.timer = FocusTimer(25, clock=lambda: 10.0)
+        desk.entry_var = FakeVar("typed task")
+        desk.minutes_var = FakeVar("25")
+        desk.words = lambda key: "Action failed"
+        desk.relabel = lambda: None
+        desk.refresh = lambda: None
+
+        def fail_save():
+            raise OSError("disk full")
+
+        desk.save = fail_save
+
+        def change_all():
+            add_task(desk.data, "unsaved task")
+            desk.timer.start()
+            desk.lang = "en"
+            desk.entry_var.set("")
+
+        with patch("main.messagebox.showerror") as error:
+            self.assertFalse(desk.action(change_all))
+            error.assert_called_once()
+        self.assertEqual(desk.data, blank_document())
+        self.assertEqual(desk.timer.state, "idle")
+        self.assertEqual(desk.timer.remaining, 25 * 60)
+        self.assertEqual(desk.lang, "ja")
+        self.assertEqual(desk.entry_var.get(), "typed task")
+        self.assertEqual(desk.minutes_var.get(), "25")
+
+    def test_successful_action_saves_and_refreshes(self):
+        from main import Desk
+
+        class FakeVar:
+            def get(self):
+                return "25"
+
+        desk = Desk.__new__(Desk)
+        desk.data = blank_document()
+        desk.lang = "ja"
+        desk.timer = FocusTimer(25)
+        desk.entry_var = FakeVar()
+        desk.minutes_var = FakeVar()
+        events = []
+        desk.save = lambda: events.append("save")
+        desk.refresh = lambda: events.append("refresh")
+        self.assertTrue(desk.action(lambda: add_task(desk.data, "Saved")))
+        self.assertEqual(events, ["save", "refresh"])
+        self.assertEqual(len(desk.data["tasks"]), 1)
+
+
+
 if __name__ == "__main__":
     unittest.main()
