@@ -57,6 +57,29 @@ class Tests(unittest.TestCase):
         self.assertEqual((len(rows),len(errors)),(1,2))
     def test_scan_limit(self):
         with self.assertRaises(ValueError):app.scan([self.png]*201)
+    def test_append_preserves_snapshot_if_old_file_disappears(self):
+        old = app.inspect_image(self.png)
+        self.png.unlink()
+        new = self.d / "new.gif"
+        new.write_bytes(b"GIF89a" + struct.pack("<HH", 12, 34))
+        rows, errors = app.append_images([old], [new])
+        self.assertEqual(errors, [])
+        self.assertEqual(rows[0], old)
+        self.assertEqual((rows[1]["width"], rows[1]["height"]), (12, 34))
+
+    def test_append_duplicate_does_not_modify_existing_rows(self):
+        old = app.inspect_image(self.png)
+        rows, errors = app.append_images([old], [self.png])
+        self.assertEqual(rows, [old])
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Duplicate", errors[0][1])
+
+    def test_append_bad_new_file_preserves_existing_rows(self):
+        old = app.inspect_image(self.png)
+        rows, errors = app.append_images([old], [self.d / "missing.png"])
+        self.assertEqual(rows, [old])
+        self.assertEqual(len(errors), 1)
+
     def test_session_roundtrip(self):
         rows=[app.inspect_image(self.png)];p=self.d/"s.json";app.save_session(p,rows)
         self.assertEqual(app.load_session(p)["paths"],[str(self.png)])
