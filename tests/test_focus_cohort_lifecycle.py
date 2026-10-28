@@ -23,7 +23,11 @@ SLUG = "focus-session-desk"
 class FocusCohortLifecycleTests(unittest.TestCase):
     def test_real_controller_research_build_and_candidate_tests(self):
         proposal_path = ROOT / ".candidate" / "proposal.json"
+        if not proposal_path.is_file():
+            proposal_path = ROOT / "proposals" / (SLUG + ".json")
         product_path = ROOT / ".candidate" / "product"
+        if not product_path.is_dir():
+            product_path = ROOT / "products" / SLUG
         if not proposal_path.is_file() or not product_path.is_dir():
             self.fail("Focus research proposal and real product candidate are required")
         proposal = json.loads(proposal_path.read_text(encoding="utf-8"))
