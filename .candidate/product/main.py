@@ -289,13 +289,13 @@ class Desk:
         self.heading.pack(anchor="w")
         self.sub = ttk.Label(self.frame, text=self.words("subtitle"))
         self.sub.pack(anchor="w", pady=(0, 14))
-        timer_area = ttk.LabelFrame(self.frame, text=self.words("minutes"), padding=12)
-        timer_area.pack(fill="x", pady=(0, 14))
-        self.clock_label = ttk.Label(timer_area, font=("Consolas", 33, "bold"))
+        self.timer_area = ttk.LabelFrame(self.frame, text=self.words("minutes"), padding=12)
+        self.timer_area.pack(fill="x", pady=(0, 14))
+        self.clock_label = ttk.Label(self.timer_area, font=("Consolas", 33, "bold"))
         self.clock_label.pack(anchor="center")
         self.timer_state = ttk.Label(timer_area)
         self.timer_state.pack(anchor="center")
-        bar = ttk.Frame(timer_area)
+        bar = ttk.Frame(self.timer_area)
         bar.pack(pady=(10, 0))
         self.minutes_var = tk.StringVar(value=str(self.timer.minutes))
         self.minutes_entry = ttk.Entry(bar, textvariable=self.minutes_var, width=6)
@@ -308,18 +308,19 @@ class Desk:
         self.pause_button.pack(side="left", padx=4)
         self.reset_button = ttk.Button(bar, command=self.reset)
         self.reset_button.pack(side="left", padx=4)
-        tasks_frame = ttk.LabelFrame(self.frame, text=self.words("tasks"), padding=10)
-        tasks_frame.pack(fill="both", expand=True)
-        self.empty = ttk.Label(tasks_frame)
+        self.tasks_frame = ttk.LabelFrame(self.frame, text=self.words("tasks"), padding=10)
+        self.tasks_frame.pack(fill="both", expand=True)
+        self.empty = ttk.Label(self.tasks_frame)
         self.empty.pack(anchor="w")
-        self.tree = ttk.Treeview(tasks_frame, columns=("done", "title"), show="headings", selectmode="browse", height=8)
+        self.tree = ttk.Treeview(self.tasks_frame, columns=("done", "title"), show="headings", selectmode="browse", height=8)
         self.tree.heading("done", text="✓")
         self.tree.heading("title", text=self.words("tasks"))
         self.tree.column("done", width=55, stretch=False, anchor="center")
         self.tree.column("title", width=500, stretch=True)
         self.tree.pack(fill="both", expand=True, pady=6)
         self.tree.bind("<Double-1>", lambda _: self.toggle())
-        actions = ttk.Frame(tasks_frame)
+        self.tree.bind("<<TreeviewSelect>>", self.on_select)
+        actions = ttk.Frame(self.tasks_frame)
         actions.pack(fill="x")
         self.entry_var = tk.StringVar()
         self.entry = ttk.Entry(actions, textvariable=self.entry_var)
@@ -344,6 +345,8 @@ class Desk:
     def relabel(self):
         self.root.title(self.words("name"))
         self.heading.configure(text=self.words("name"))
+        self.timer_area.configure(text=self.words("minutes"))
+        self.tasks_frame.configure(text=self.words("tasks"))
         self.sub.configure(text=self.words("subtitle"))
         self.duration_button.configure(text=self.words("duration"))
         self.start_button.configure(text=self.words("start"))
@@ -353,6 +356,14 @@ class Desk:
         for key, button in self.buttons:
             button.configure(text=self.words(key))
         self.refresh()
+
+    def on_select(self, _event=None):
+        selected = self.tree.selection()
+        if selected:
+            try:
+                self.entry_var.set(self.data["tasks"][find_task(self.data, selected[0])]["title"])
+            except ValueError:
+                pass
 
     def selected(self):
         selected = self.tree.selection()
