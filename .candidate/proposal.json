@@ -1,20 +1,20 @@
 {
-  "slug": "offline-notes-canary",
-  "title": "Offline Notes Canary — Searchable Scratchpad",
-  "customer_problem": "People need a quick, dependable Windows scratchpad that retains unsent notes, finds text instantly, and exports their work without creating accounts or relying on a network connection.",
-  "audience": "Individual Windows users who take short work or study notes and want predictable local saving and simple backup.",
-  "differentiation": "Original, lightweight, Python-standard-library/Tkinter-only offline scratchpad with visible save state, searchable notes, explicit backup/export, and Japanese/English labels; created first as an internal E2E canary, not a validated commercial offering.",
+  "slug": "focus-session-desk",
+  "title": "Focus Session Desk — Offline Timer and Task Checklist",
+  "customer_problem": "People working locally on a desktop need a predictable focus countdown and a small task checklist without accounts, online sync, hidden background activity, or accidental loss of their work.",
+  "audience": "Students, writers and individual office workers who use a Windows desktop and want a minimal offline session tracker with an immediately understandable first-run experience.",
+  "differentiation": "Original local-only Tkinter timer paired with a short editable checklist, honest pause/resume/stop behavior, atomic local state persistence and explicit interruption recovery; it is not a notes app or a network productivity service.",
   "scope": [
-    "Create, rename, edit, delete, and search multiple local notes with a clear empty-state introduction.",
-    "Save notes atomically to a user-selected local JSON file and restore the same notes after application restart.",
-    "Offer explicit plain-text export with safe filenames, clear overwrite confirmation, and actionable error messages.",
-    "Provide visible unsaved-change feedback and keyboard-accessible Save, New, Search, and Exit controls.",
-    "Keep primary controls usable at 1024x768 and support both Japanese and English labels without clipping.",
-    "Add real headless tests for data round-trip, malformed input, search, export, and recovery from interrupted writes."
+    "Create, edit, reorder, complete and delete a local task checklist with an accessible first-run empty state.",
+    "Start, pause, resume, reset and finish configurable focus sessions using a monotonic clock; show elapsed and remaining time without background services.",
+    "Persist task and session settings atomically in user-local JSON, with backup and clear recovery or validation messages for damaged state.",
+    "When the user exits during an active session, show an honest confirmation and restore an interrupted-session summary without pretending time ran while closed.",
+    "Offer Japanese and English UI labels, keyboard-operable primary controls and a usable 1024x768 layout with visible errors and confirmation states.",
+    "Provide headless tests for task CRUD, timer transitions, invalid durations, persistence, recovery and restart behavior; never claim Windows GUI PASS without real evidence."
   ],
   "evidence_urls": [
-    "https://github.com/Zettlr/Zettlr/issues/6519",
-    "https://github.com/usememos/memos/issues/6309"
+    "https://github.com/Dylan-Buchanan/WorkTime/issues/120",
+    "https://github.com/DJisaiah/pomo-tracker/issues/77"
   ],
-  "research_note": "GitHub issues are untrusted weak demand signals only. This one candidate is for internal APP belt-conveyor validation; do not infer Store approval, sales readiness, or external service demand. Factory is still in research state, so product code, committed product SHA, and Windows EXE are not yet present."
+  "research_note": "Untrusted public GitHub issues are weak demand signals, not market proof. The two cited issue URLs were retrieved from distinct repositories. No code/assets from either repository may be copied. This is APP cohort slot 2 of maximum 5, separate from immutable Offline Notes Canary; only candidate research is staged."
 }
