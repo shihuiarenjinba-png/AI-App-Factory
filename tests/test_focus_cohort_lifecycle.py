@@ -74,7 +74,7 @@ class FocusCohortLifecycleTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
             import re
-            count = re.search(r"Ran (\\d+) tests in", result.stderr)
+            count = re.search(r"Ran (\d+) tests in", result.stderr)
             self.assertIsNotNone(count, result.stderr)
             self.assertGreaterEqual(int(count.group(1)), 18)
             print("FOCUS_CANDIDATE_TESTS=" + count.group(1)
