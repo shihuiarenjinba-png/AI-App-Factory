@@ -81,10 +81,14 @@ def save_notes(path, notes):
     if path.exists():
         try:
             _, recovered = read_notes(path)
-            if not recovered:
-                atomic_write(path.with_name(path.name + ".bak"), path.read_bytes())
         except (OSError, ValueError):
-            pass
+            # A damaged primary is allowed to be saved over; an existing
+            # recoverable backup must not be replaced with damaged data.
+            recovered = True
+        if not recovered:
+            # If this fails, abort the save: never replace the only good
+            # primary after silently losing the previous-version backup.
+            atomic_write(path.with_name(path.name + ".bak"), path.read_bytes())
     atomic_write(path, payload)
 
 def search_notes(notes, term):
@@ -307,6 +311,14 @@ class App:
             if not selected:
                 return
             path = Path(selected)
+            if getattr(self, "path", None) is not None:
+                active = Path(self.path).absolute()
+                protected = (active, active.with_name(active.name + ".bak"))
+                output = path.absolute()
+                if any(output == item or (
+                    path.exists() and item.exists() and os.path.samefile(path, item)
+                ) for item in protected):
+                    raise ValueError("TXT export cannot overwrite the notes database or backup")
             if path.exists() and not messagebox.askyesno(self.t(0), self.t(17)):
                 return
             atomic_write(path, (n["title"] + "\n\n" + n["body"] + "\n").encode("utf-8"))

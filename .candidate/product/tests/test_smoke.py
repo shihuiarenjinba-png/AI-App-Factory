@@ -14,6 +14,68 @@ class Smoke(unittest.TestCase):
         self.note = new_note()
         self.note.update(title="研究", body="Hello 日本語")
 
+    def test_backup_failure_must_abort_save_without_overwriting_primary(self):
+        save_notes(self.path, [self.note])
+        original = self.path.read_bytes()
+        with patch("main.atomic_write", side_effect=OSError("backup disk full")) as writer:
+            with self.assertRaisesRegex(OSError, "backup disk full"):
+                save_notes(self.path, [self.note, new_note()])
+        self.assertEqual(writer.call_count, 1, "must not attempt primary write")
+        self.assertEqual(writer.call_args.args[0], self.path.with_name("notes.json.bak"))
+        self.assertEqual(self.path.read_bytes(), original)
+
+    def test_txt_export_cannot_overwrite_open_notes_database(self):
+        from main import App
+        from unittest.mock import Mock
+        save_notes(self.path, [self.note])
+        original = self.path.read_bytes()
+        app = App.__new__(App)
+        app.notes, app.current, app.path = [dict(self.note)], self.note["id"], self.path
+        app.lang, app.dirty = "en", True
+        app.commit_editor, app.error = lambda: None, Mock()
+        with (patch("main.filedialog.asksaveasfilename", return_value=str(self.path)),
+              patch("main.messagebox.askyesno", return_value=True) as confirm):
+            app.export()
+        app.error.assert_called_once()
+        confirm.assert_not_called()
+        self.assertEqual(self.path.read_bytes(), original)
+        self.assertTrue(app.dirty)
+
+    def test_txt_export_cannot_overwrite_database_backup_name(self):
+        from main import App
+        from unittest.mock import Mock
+        save_notes(self.path, [self.note])
+        backup = self.path.with_name("notes.json.bak")
+        app = App.__new__(App)
+        app.notes, app.current, app.path = [dict(self.note)], self.note["id"], self.path
+        app.lang, app.dirty = "ja", True
+        app.commit_editor, app.error = lambda: None, Mock()
+        with patch("main.filedialog.asksaveasfilename", return_value=str(backup)):
+            app.export()
+        app.error.assert_called_once()
+        self.assertFalse(backup.exists(), "export must not create/overwrite backup")
+
+    def test_txt_export_cannot_overwrite_hardlinked_database(self):
+        import os
+        from main import App
+        from unittest.mock import Mock
+        save_notes(self.path, [self.note])
+        alias = self.path.with_name("export.txt")
+        try:
+            os.link(self.path, alias)
+        except (OSError, NotImplementedError):
+            self.skipTest("hardlinks unavailable")
+        original = self.path.read_bytes()
+        app = App.__new__(App)
+        app.notes, app.current, app.path = [dict(self.note)], self.note["id"], self.path
+        app.lang, app.dirty = "en", True
+        app.commit_editor, app.error = lambda: None, Mock()
+        with patch("main.filedialog.asksaveasfilename", return_value=str(alias)):
+            app.export()
+        app.error.assert_called_once()
+        self.assertEqual(alias.read_bytes(), original)
+        self.assertEqual(self.path.read_bytes(), original)
+
     def test_roundtrip(self):
         save_notes(self.path, [self.note])
         self.assertEqual(read_notes(self.path), ([self.note], False))
