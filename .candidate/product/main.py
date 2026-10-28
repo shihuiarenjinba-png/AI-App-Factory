@@ -78,25 +78,44 @@ def make_session(left,right,ignore=False,context=3):
                              "right":str(Path(right).absolute()),"ignore":ignore,"context":context})
 
 def write_atomic(path, content, protected=()):
-    p=Path(path).absolute()
-    if p.is_symlink() or p in {Path(x).absolute() for x in protected}:
-        raise ValueError("Unsafe output path")
-    if p.exists() and not p.is_file():
-        raise ValueError("Output must be a regular file")
-    backup=p.with_name(p.name+".bak")
-    if backup.is_symlink() or (backup.exists() and not backup.is_file()):
-        raise ValueError("Unsafe backup")
-    if not p.parent.is_dir():
-        raise ValueError("Output folder missing")
-    if p.exists():
-        shutil.copyfile(p,backup)
-    fd,tmp=tempfile.mkstemp(prefix=".text-diff-",dir=p.parent)
+    p = Path(path).absolute()
+    backup = p.with_name(p.name + ".bak")
+    sources = {Path(item).absolute() for item in protected}
+    # Both the requested output AND its implicit .bak are write targets.
+    # A source document can have the exact .bak name or be hardlinked to it.
+    for target in (p, backup):
+        if target.is_symlink() or target in sources:
+            raise ValueError("Output or backup overlaps a source document")
+        if target.exists() and not target.is_file():
+            raise ValueError("Output and backup must be regular files")
+        if target.exists() and any(
+            src.exists() and os.path.samefile(target, src) for src in sources
+        ):
+            raise ValueError("Output or backup aliases a source document")
+    if not p.parent.is_dir() or p.parent.is_symlink():
+        raise ValueError("Output folder missing or linked")
+
+    # Write the new output first, before modifying any existing backup.
+    fd, tmp = tempfile.mkstemp(prefix=".text-diff-", dir=p.parent)
     try:
-        with os.fdopen(fd,"w",encoding="utf-8",newline="\n") as f:
-            f.write(content)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp,p)
+        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as stream:
+            stream.write(content)
+            stream.flush()
+            os.fsync(stream.fileno())
+        if p.exists():
+            backup_fd, backup_tmp = tempfile.mkstemp(
+                prefix=".text-diff-backup-", dir=p.parent
+            )
+            try:
+                with os.fdopen(backup_fd, "wb") as writer, p.open("rb") as reader:
+                    shutil.copyfileobj(reader, writer)
+                    writer.flush()
+                    os.fsync(writer.fileno())
+                os.replace(backup_tmp, backup)
+            finally:
+                if os.path.exists(backup_tmp):
+                    os.unlink(backup_tmp)
+        os.replace(tmp, p)
     finally:
         if os.path.exists(tmp):
             os.unlink(tmp)

@@ -7,3 +7,5 @@ Save session writes only file paths and options to JSON using atomic replacement
 Run: `python main.py`. Test: `python -m unittest discover -s tests -v`.
 
 The Windows EXE is unsigned QA-only. No Windows GUI/install, accessibility, Store MSIX or commercial-quality PASS is claimed without separate evidence.
+
+Safety update: the explicit output and its automatic .bak are both checked against protected source documents (including hardlinks). New output and replacement backup are written to temporary files before atomic replacement; failed backup writes preserve the previous output and backup.
