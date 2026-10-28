@@ -169,10 +169,13 @@ def run():
     if factory.validate(ROOT) != {"stage": "improve", "slug": SLUG}:
         raise ValueError("Factory validation failed")
     env = dict(os.environ, PYTHONDONTWRITEBYTECODE="1")
-    result = command(sys.executable, "-m", "unittest", "discover", "-s",
-                     str(candidate / "tests"), "-v", env=env,
-                     capture_output=True, timeout=180)
+    result = subprocess.run((sys.executable, "-m", "unittest", "discover", "-s",
+                             str(candidate / "tests"), "-v"), cwd=ROOT,
+                            text=True, capture_output=True, env=env, timeout=180)
+    print(result.stdout, flush=True)
     print(result.stderr, flush=True)
+    if result.returncode:
+        raise ValueError("Candidate regression failed; see test output")
     if "Ran 22 tests in" not in result.stderr or "\nOK" not in result.stderr:
         raise ValueError("22 product tests not established")
     if factory.promote(ROOT) != {"stage": "improve", "slug": SLUG}:
