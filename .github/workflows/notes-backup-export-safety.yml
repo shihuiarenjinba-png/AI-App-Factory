@@ -1,0 +1,150 @@
+name: Offline Notes backup and TXT export safety improvement
+on:
+  push:
+    branches:
+      - codex/app-notes-backup-export-safety-20261029
+    paths:
+      - .github/workflows/notes-backup-export-safety.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: notes-backup-export-safety-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  owner-improve:
+    if: github.ref == 'refs/heads/codex/app-notes-backup-export-safety-20261029'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      source_sha: ${{ steps.promote.outputs.source_sha }}
+      request_id: ${{ steps.promote.outputs.request_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Owner Factory plan, candidate regression, validate and promote
+        id: promote
+        run: python scripts/improve_notes_backup_export_safety.py
+
+  windows-exe:
+    needs: owner-improve
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify immutable promoted source and revision
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.owner-improve.outputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test "$(git branch --show-current)" = "codex/app-notes-backup-export-safety-20261029"
+          test -z "$(git status --porcelain)"
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          state = json.loads(Path("factory/state.json").read_text(encoding="utf-8"))
+          assert state == {"schema": 1, "kind": "app", "stage": "improve",
+                           "cycle": 1, "revision": 2, "slug": "offline-notes-canary"}
+          manifest = json.loads(Path("products/offline-notes-canary/manifest.json").read_text(encoding="utf-8"))
+          assert manifest == {"slug": "offline-notes-canary", "kind": "app", "entry": "main.py"}
+          PY
+      - name: Windows Factory core and Notes functional regression
+        run: |
+          python -m unittest discover -s tests -v
+          python -m unittest discover -s products/offline-notes-canary/tests -v
+      - name: Install pinned unsigned Windows EXE builder
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - name: Build request-correlated unsigned EXE
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ needs.owner-improve.outputs.source_sha }}
+          REQUEST_ID: ${{ needs.owner-improve.outputs.request_id }}
+        run: |
+          python tools/build_windows_exe.py --slug offline-notes-canary --expected-sha "$env:SOURCE_SHA" --source-branch codex/app-notes-backup-export-safety-20261029 --request-id "$env:REQUEST_ID" --output dist/preidentity
+      - name: Verify PE, receipt and emit review-only Identity handoff
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.owner-improve.outputs.source_sha }}
+          REQUEST_ID: ${{ needs.owner-improve.outputs.request_id }}
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          folder = Path("dist/preidentity")
+          receipt = json.loads((folder / "exe-receipt.json").read_text(encoding="utf-8"))
+          exe = folder / "offline-notes-canary.exe"
+          raw = exe.read_bytes()
+          assert raw[:2] == b"MZ"
+          assert len(raw) == receipt["executable_bytes"]
+          assert hashlib.sha256(raw).hexdigest() == receipt["executable_sha256"]
+          assert receipt["source_sha"] == os.environ["SOURCE_SHA"]
+          assert receipt["request_id"] == os.environ["REQUEST_ID"]
+          assert receipt["slug"] == "offline-notes-canary"
+          assert receipt["store_id"] is None
+          handoff = {
+              "schema_version": 1,
+              "product": "Offline Notes Canary",
+              "slug": "offline-notes-canary",
+              "repo": "shihuiarenjinba-png/AI-App-Factory",
+              "source_branch": "codex/app-notes-backup-export-safety-20261029",
+              "source_sha": receipt["source_sha"],
+              "request_id": receipt["request_id"],
+              "product_type": "APP",
+              "packaging_family": "MSIX",
+              "partner_center_registration_type": "MSIX_OR_PWA_APP",
+              "partner_center_selection": "MSIX or PWA app",
+              "proposed_display_name": "Offline Notes Canary",
+              "partner_center_display_name": None,
+              "reserved_display_name_verified": False,
+              "identity_status": "REFERENCE_AVAILABLE",
+              "user_provided_store_id_reference": "9MZ8ZZTRTS17",
+              "identity_binding_status": "NOT_BOUND",
+              "required_fields": ["store_id", "reserved_display_name",
+                                  "identity_name", "publisher",
+                                  "publisher_display_name", "pfn", "package_sid"],
+              "identity_return_target": {
+                  "owner": "36_MIN_WINDOWS_E2E",
+                  "stage": "AUTHENTICATED_IDENTITY_EVIDENCE_AND_CAS",
+                  "source_sha": receipt["source_sha"],
+                  "request_id": receipt["request_id"]
+              },
+              "pre_identity_exe": {
+                  "status": "EXE_QA_UNSIGNED",
+                  "sha256": receipt["executable_sha256"],
+                  "bytes": receipt["executable_bytes"]
+              },
+              "windows_gui_status": "UNVERIFIED",
+              "msix_status": "NOT_BUILT",
+              "identity_cas_allowed": False
+          }
+          (folder / "registration-handoff.json").write_text(
+              json.dumps(handoff, ensure_ascii=False, indent=2) + "\n",
+              encoding="utf-8")
+          print(json.dumps(handoff, ensure_ascii=False))
+          PY
+      - name: Upload exact-source unsigned EXE, receipt and registration handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-notes-backup-export-safety-${{ needs.owner-improve.outputs.source_sha }}
+          path: dist/preidentity/
+          if-no-files-found: error
+          retention-days: 5
