@@ -1,0 +1,20 @@
+{
+  "slug": "offline-image-inventory-desk",
+  "title": "Offline Image Inventory Desk — Local Image Header Catalog",
+  "customer_problem": "People organizing personal image folders need to inspect formats and dimensions without uploading photos or opening every file in a full image editor.",
+  "audience": "Windows users handling small collections of PNG, JPEG, GIF and BMP images who want a private bilingual inventory and a portable CSV summary.",
+  "differentiation": "Read-only bounded image-header inspection with zero external dependencies, local CSV export and recoverable JSON sessions; no EXIF harvesting or image editing.",
+  "scope": [
+    "Inspect PNG, JPEG, GIF and BMP image headers locally without decoding pixels or modifying source images.",
+    "Show bounded dimensions, format and byte size for up to 200 user-selected images with per-file errors.",
+    "Provide a bilingual 1024x768 desktop table with a clear first-run action and empty state.",
+    "Save and reopen local JSON sessions atomically with backup recovery for malformed sessions.",
+    "Export a CSV inventory safely with overwrite confirmation and original-file overwrite prevention.",
+    "Run headless functional tests for image formats, corrupt headers, symlinks, limits, recovery and CSV export."
+  ],
+  "evidence_urls": [
+    "https://github.com/pwyq/Fabricum/issues/29",
+    "https://github.com/cemfirat/mediarama/issues/91"
+  ],
+  "research_note": "Public issues are weak untrusted signals. Original stdlib-only implementation, cohort 5/5."
+}
