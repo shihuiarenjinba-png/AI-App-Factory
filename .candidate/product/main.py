@@ -67,7 +67,7 @@ def read_notes(path):
             if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
                 raise ValueError("Unsupported notes schema")
             return [dict(n) for n in validate_notes(value.get("notes"))], candidate != path
-        except (OSError, ValueError, UnicodeError) as exc:
+        except (OSError, ValueError, UnicodeError, RecursionError) as exc:
             if reason is None:
                 reason = exc
     raise ValueError("Cannot read notes or backup: " + str(reason))

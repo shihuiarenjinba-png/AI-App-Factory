@@ -86,6 +86,16 @@ class Smoke(unittest.TestCase):
                 self.path.unlink()
                 backup.unlink()
 
+    def test_deeply_nested_json_rejected_and_backup_recovered(self):
+        # The standard JSON decoder raises RecursionError on deeply nested
+        # input; a damaged local file must not crash the GUI open action.
+        self.path.write_text("[" * 10000 + "0" + "]" * 10000, encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "Cannot read notes or backup"):
+            read_notes(self.path)
+        backup = self.path.with_name(self.path.name + ".bak")
+        save_notes(backup, [self.note])
+        self.assertEqual(read_notes(self.path), ([self.note], True))
+
     def test_backup(self):
         save_notes(self.path, [self.note])
         save_notes(self.path, [new_note()])
