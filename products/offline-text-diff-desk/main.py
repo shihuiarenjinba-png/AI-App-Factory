@@ -37,7 +37,7 @@ def read_text(path):
     raw = p.read_bytes()
     if len(raw) > LIMIT or b"\x00" in raw:
         raise ValueError("Oversized or binary file")
-    result = raw.decode("utf-8-sig")
+    result = raw.decode("utf-8-sig").replace("\r\n", "\n").replace("\r", "\n")
     if len(result.splitlines()) > LINES:
         raise ValueError("Too many lines")
     return result

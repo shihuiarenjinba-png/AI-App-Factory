@@ -17,6 +17,10 @@ class DiffTests(unittest.TestCase):
         self.left.write_text("alpha\nbeta\n",encoding="utf-8")
         self.right.write_text("alpha\ngamma\n",encoding="utf-8")
 
+    def test_crlf_normalized_on_windows(self):
+        self.left.write_bytes(b"alpha\r\nbeta\r\n")
+        self.assertEqual(app.read_text(self.left),"alpha\nbeta\n")
+
     def test_utf8_read(self):
         self.assertEqual(app.read_text(self.left),"alpha\nbeta\n")
 
