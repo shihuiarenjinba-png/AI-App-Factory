@@ -23,6 +23,11 @@ def validate_notes(notes):
         ids.add(n["id"])
         if not isinstance(n["title"], str) or not isinstance(n["body"], str) or len(n["title"]) > 300 or len(n["body"]) > 300000:
             raise ValueError("Invalid or oversized note text")
+        # JSON permits escaped lone surrogates, but UTF-8 saving and Tkinter do not.
+        # Reject them while loading so a corrupt file can fall back to its backup.
+        for field in ("title", "body"):
+            if any(0xD800 <= ord(char) <= 0xDFFF for char in n[field]):
+                raise ValueError("Invalid Unicode surrogate in note text")
     return notes
 
 def atomic_write(path, data):
