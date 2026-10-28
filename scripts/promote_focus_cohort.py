@@ -112,9 +112,11 @@ def run():
     command(sys.executable, "-m", "unittest", "discover", "-s", "tests", "-v",
             cwd=ROOT, env=env, timeout=180)
 
-    command("git", "add", "-A", "--", "factory/state.json",
-            ".candidate/proposal.json", f"proposals/{SLUG}.json",
-            f"products/{SLUG}")
+    # The tracked research candidate is under an ignored directory. Stage its
+    # deletion with -u; adding the ignored path with -A fails on Git 2.56.
+    command("git", "add", "-u", "--", ".candidate/proposal.json")
+    command("git", "add", "--", "factory/state.json",
+            f"proposals/{SLUG}.json", f"products/{SLUG}")
     changed = command("git", "diff", "--cached", "--name-only",
                       capture_output=True).stdout.splitlines()
     allowed = {"factory/state.json", ".candidate/proposal.json",
