@@ -149,6 +149,34 @@ class FocusDeskTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             load_document(self.path)
 
+    def test_gui_build_uses_existing_timer_frame(self):
+        """Prevent the headless-invisible Tkinter NameError at first launch."""
+        import ast
+        import inspect
+        import textwrap
+        from main import Desk
+        tree = ast.parse(textwrap.dedent(inspect.getsource(Desk.build)))
+        self.assertFalse(
+            [node for node in ast.walk(tree)
+             if isinstance(node, ast.Name) and node.id == "timer_area"],
+            "Desk.build must use self.timer_area, not an undefined local timer_area",
+        )
+
+    def test_gui_first_launch_when_display_available(self):
+        """Exercise real widget construction when the runner has a display."""
+        import tkinter as tk
+        from main import Desk
+        try:
+            root = tk.Tk()
+        except tk.TclError:
+            self.skipTest("No graphical display; static GUI regression still runs")
+        try:
+            app = Desk(root, path=self.path)
+            self.assertEqual(app.timer_state.winfo_exists(), 1)
+            self.assertEqual(app.timer_area.winfo_exists(), 1)
+        finally:
+            root.destroy()
+
     def test_english_japanese_labels_exist(self):
         from main import WORDS
         self.assertEqual(set(WORDS["en"]), set(WORDS["ja"]))
