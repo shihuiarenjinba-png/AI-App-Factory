@@ -1,5 +1,1 @@
-{
-  "slug": "offline-text-diff-desk",
-  "kind": "app",
-  "entry": "main.py"
-}
+{"slug":"offline-image-inventory-desk","kind":"app","entry":"main.py"}

@@ -1,20 +1,20 @@
 {
-  "slug": "offline-text-diff-desk",
-  "title": "Offline Text Diff Desk — Private Side-by-Side Comparison",
-  "customer_problem": "People reviewing two local versions of a plain-text document need an easy private way to see edits without copying sensitive contents into an online diff website.",
-  "audience": "Windows users comparing local plain-text notes, configuration files, logs, or CSV text who want a clear bilingual desktop view and a reproducible offline diff.",
-  "differentiation": "Two-file read-only comparison with an explicit whitespace option, bounded UTF-8 inputs, unified diff export, and recoverable session metadata; no upload, telemetry, or source-file edits.",
+  "slug": "offline-image-inventory-desk",
+  "title": "Offline Image Inventory Desk — Local Image Header Catalog",
+  "customer_problem": "People organizing personal image folders need to inspect formats and dimensions without uploading photos or opening every file in a full image editor.",
+  "audience": "Windows users handling small collections of PNG, JPEG, GIF and BMP images who want a private bilingual inventory and a portable CSV summary.",
+  "differentiation": "Read-only bounded image-header inspection with zero external dependencies, local CSV export and recoverable JSON sessions; no EXIF harvesting or image editing.",
   "scope": [
-    "Open two user-selected UTF-8 local text files with strict size, line-count, binary and symlink validation.",
-    "Compare line changes using a bounded unified diff and optional whitespace normalization, with a visible empty/equal state.",
-    "Offer side-by-side read-only text panels and an accessible result panel in a 1024x768 bilingual desktop layout.",
-    "Save and reopen validated JSON session paths and options atomically, keeping a previous-version backup for recovery.",
-    "Export a local diff report without modifying the original documents and with explicit overwrite confirmation.",
-    "Run headless functional tests for reading, invalid files, diff semantics, session recovery and export."
+    "Inspect PNG, JPEG, GIF and BMP image headers locally without decoding pixels or modifying source images.",
+    "Show bounded dimensions, format and byte size for up to 200 user-selected images with per-file errors.",
+    "Provide a bilingual 1024x768 desktop table with a clear first-run action and empty state.",
+    "Save and reopen local JSON sessions atomically with backup recovery for malformed sessions.",
+    "Export a CSV inventory safely with overwrite confirmation and original-file overwrite prevention.",
+    "Run headless functional tests for image formats, corrupt headers, symlinks, limits, recovery and CSV export."
   ],
   "evidence_urls": [
-    "https://github.com/TheLastRKoch/DevToolkit/issues/27",
-    "https://github.com/Blank-Enterprise/spinney/issues/70"
+    "https://github.com/pwyq/Fabricum/issues/29",
+    "https://github.com/cemfirat/mediarama/issues/91"
   ],
-  "research_note": "Distinct public GitHub issues are weak untrusted problem signals only. Original implementation. Cohort 4/5. No copied code/assets or external APIs."
+  "research_note": "Public issues are weak untrusted signals. Original stdlib-only implementation, cohort 5/5."
 }

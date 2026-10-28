@@ -1,9 +1,9 @@
-# Offline Text Diff Desk
+# Offline Image Inventory Desk
 
-Original offline Windows Tkinter utility for comparing two local UTF-8 documents. Select left and right files (max 1 MiB and 10,000 lines each), Compare, optionally ignore whitespace, and export a unified diff. Read-only source panes, bilingual English/Japanese UI, 1024x768 initial window. No login, network, telemetry or privileged access.
+Private offline read-only image-header inventory for PNG/JPEG/GIF/BMP. Python stdlib and Tkinter only. No uploads, login, telemetry or image edits.
 
-Save session writes only file paths and options to JSON using atomic replacement and a previous-version .bak. Reopen after restart to reread both files, or recover a damaged session from the backup. Source files are never modified, renamed, deleted or uploaded. Explicit output paths and overwrite confirmation are required. Invalid UTF-8, symlinks and binary input are rejected.
+Run `python main.py`. Add up to 200 local images; review dimensions, format and byte count. Save/reopen JSON sessions containing only local paths with `.bak` recovery, or export CSV. File replacement requires confirmation.
 
-Run: `python main.py`. Test: `python -m unittest discover -s tests -v`.
+Limitations: header inspection only, not full pixel validation, EXIF inspection, resizing or thumbnails. Files over 64 MiB, symlinks and invalid headers are rejected; JPEG frame header must appear in first 1 MiB. Windows GUI QA remains unverified.
 
-The Windows EXE is unsigned QA-only. No Windows GUI/install, accessibility, Store MSIX or commercial-quality PASS is claimed without separate evidence.
+Headless tests: `python -m unittest discover -s tests -v`.
