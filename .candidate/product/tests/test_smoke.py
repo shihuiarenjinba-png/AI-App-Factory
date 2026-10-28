@@ -96,6 +96,28 @@ class LedgerTests(unittest.TestCase):
         ledger.save_snapshot(out, s)
         self.assertEqual(ledger.load_snapshot(out), s)
 
+    def test_maximum_length_paths_roundtrip(self):
+        """100 accepted 2048-character paths must remain reloadable after saving."""
+        original = self.entry()
+        entries = []
+        for i in range(ledger.MAX_FILES):
+            prefix = str(self.root / f"entry-{i:03d}-")
+            self.assertLess(len(prefix), 2048)
+            path = prefix + "x" * (2048 - len(prefix))
+            entries.append(dict(original, path=path))
+        data = ledger.snapshot(entries)
+        out = self.root / "large-baseline.json"
+        ledger.save_snapshot(out, data)
+        self.assertGreater(out.stat().st_size, 128 * 1024)
+        self.assertEqual(ledger.load_snapshot(out), data)
+
+    def test_oversized_snapshot_is_rejected(self):
+        """The read cap applies to actual bytes, before JSON decoding."""
+        out = self.root / "oversized-baseline.json"
+        out.write_bytes(b" " * (ledger.MAX_SNAPSHOT_BYTES + 1))
+        with self.assertRaises(ValueError):
+            ledger.load_snapshot(out)
+
     def test_valid_previous_backup(self):
         out = self.root / "baseline.json"
         original = ledger.snapshot([self.entry()])
