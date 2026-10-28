@@ -148,3 +148,4 @@ jobs:
           path: dist/preidentity/
           if-no-files-found: error
           retention-days: 5
+# Retry: emit full candidate regression diagnostics on failure.
