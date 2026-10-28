@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "kind": "app",
-  "stage": "build",
+  "stage": "improve",
   "cycle": 1,
-  "revision": 0,
+  "revision": 1,
   "slug": "offline-notes-canary"
 }
