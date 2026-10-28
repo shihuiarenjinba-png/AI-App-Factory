@@ -1,3 +1,4 @@
+# Focus product promotion: controller-only, Draft-branch-only, no Store actions.
 name: Focus cohort real product promotion and request-bound Windows EXE
 on:
   push:
