@@ -1,0 +1,112 @@
+# Final request-bound EXE build. Supersedes first handoff with incorrect title.
+name: Text Diff Desk final correlated EXE and registration handoff
+on:
+  push:
+    branches:
+      - codex/app-cohort-text-diff-20261028
+    paths:
+      - .github/workflows/text-diff-final-exe.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: text-diff-final-exe
+  cancel-in-progress: false
+
+jobs:
+  windows-exe:
+    if: github.ref == 'refs/heads/codex/app-cohort-text-diff-20261028'
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Require clean promoted product and exact branch
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          test "$(git branch --show-current)" = "codex/app-cohort-text-diff-20261028"
+          test -f products/offline-text-diff-desk/main.py
+          test -f proposals/offline-text-diff-desk.json
+          test "$(python -c 'import json;print(json.load(open("factory/state.json"))["stage"])')" = improve
+          test -z "$(git status --porcelain)"
+      - name: Factory and product Windows regression
+        run: |
+          python -m unittest discover -s tests -v
+          python -m unittest discover -s products/offline-text-diff-desk/tests -v
+      - name: Install pinned EXE builder
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - name: Build source and request-bound unsigned EXE
+        shell: pwsh
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          $request = "app-offline-text-diff-desk-" + $sha.Substring(0, 12)
+          python tools/build_windows_exe.py --slug offline-text-diff-desk --expected-sha "$sha" --source-branch codex/app-cohort-text-diff-20261028 --request-id "$request" --output dist/preidentity
+      - name: Independently verify receipt and correct registration contract
+        shell: bash
+        run: |
+          python - <<'PY'
+          import hashlib, json, subprocess
+          from pathlib import Path
+          out = Path("dist/preidentity")
+          receipt = json.loads((out / "exe-receipt.json").read_text(encoding="utf-8"))
+          exe = out / "offline-text-diff-desk.exe"
+          source_sha = subprocess.check_output(["git","rev-parse","HEAD"],text=True).strip()
+          request_id = "app-offline-text-diff-desk-" + source_sha[:12]
+          assert exe.is_file() and exe.read_bytes()[:2] == b"MZ"
+          assert hashlib.sha256(exe.read_bytes()).hexdigest() == receipt["executable_sha256"]
+          assert receipt["source_sha"] == source_sha
+          assert receipt["request_id"] == request_id
+          assert receipt["slug"] == "offline-text-diff-desk"
+          assert receipt["store_id"] is None
+          handoff = {
+              "schema_version": 1,
+              "product": "Offline Text Diff Desk — Private Side-by-Side Comparison",
+              "slug": "offline-text-diff-desk",
+              "repo": "shihuiarenjinba-png/AI-App-Factory",
+              "source_branch": "codex/app-cohort-text-diff-20261028",
+              "source_sha": source_sha,
+              "request_id": request_id,
+              "product_type": "APP",
+              "packaging_family": "MSIX",
+              "partner_center_registration_type": "MSIX_OR_PWA_APP",
+              "partner_center_selection": "MSIX or PWA app",
+              "partner_center_display_name": None,
+              "suggested_display_name": "Offline Text Diff Desk",
+              "reserved_display_name_verified": False,
+              "identity_status": "WAITING_USER_IDENTITY",
+              "required_fields": ["store_id", "reserved_display_name", "identity_name",
+                                  "publisher", "publisher_display_name", "pfn", "package_sid"],
+              "identity_return_target": {
+                  "owner": "36_MIN_WINDOWS_E2E",
+                  "stage": "AUTHENTICATED_IDENTITY_EVIDENCE_AND_CAS",
+                  "source_sha": source_sha,
+                  "request_id": request_id
+              },
+              "pre_identity_exe": {
+                  "status": "EXE_QA_UNSIGNED",
+                  "sha256": receipt["executable_sha256"],
+                  "bytes": receipt["executable_bytes"]
+              },
+              "windows_gui_status": "UNVERIFIED",
+              "msix_status": "NOT_BUILT",
+              "identity_cas_allowed": False
+          }
+          (out / "registration-handoff.json").write_text(
+              json.dumps(handoff, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          print(json.dumps(handoff, ensure_ascii=False))
+          PY
+      - name: Publish final EXE, receipt and registration handoff
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-text-diff-desk-final-preidentity
+          path: dist/preidentity/
+          if-no-files-found: error
+          retention-days: 5
