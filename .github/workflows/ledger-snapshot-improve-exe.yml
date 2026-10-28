@@ -5,6 +5,7 @@ on:
       - codex/app-ledger-snapshot-size-20261028
     paths:
       - .github/workflows/ledger-snapshot-improve-exe.yml
+      - scripts/promote_ledger_snapshot_improvement.py
 
 permissions:
   contents: write
