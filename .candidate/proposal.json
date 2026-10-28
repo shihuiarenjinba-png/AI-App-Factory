@@ -1,0 +1,20 @@
+{
+  "slug": "offline-text-diff-desk",
+  "title": "Offline Text Diff Desk — Private Side-by-Side Comparison",
+  "customer_problem": "People reviewing two local versions of a plain-text document need an easy private way to see edits without copying sensitive contents into an online diff website.",
+  "audience": "Windows users comparing local plain-text notes, configuration files, logs, or CSV text who want a clear bilingual desktop view and a reproducible offline diff.",
+  "differentiation": "Two-file read-only comparison with an explicit whitespace option, bounded UTF-8 inputs, unified diff export, and recoverable session metadata; no upload, telemetry, or source-file edits.",
+  "scope": [
+    "Open two user-selected UTF-8 local text files with strict size, line-count, binary and symlink validation.",
+    "Compare line changes using a bounded unified diff and optional whitespace normalization, with a visible empty/equal state.",
+    "Offer side-by-side read-only text panels and an accessible result panel in a 1024x768 bilingual desktop layout.",
+    "Save and reopen validated JSON session paths and options atomically, keeping a previous-version backup for recovery.",
+    "Export a local diff report without modifying the original documents and with explicit overwrite confirmation.",
+    "Run headless functional tests for reading, invalid files, diff semantics, session recovery and export."
+  ],
+  "evidence_urls": [
+    "https://github.com/TheLastRKoch/DevToolkit/issues/27",
+    "https://github.com/Blank-Enterprise/spinney/issues/70"
+  ],
+  "research_note": "Distinct public GitHub issues are weak untrusted problem signals only. Original implementation. Cohort 4/5. No copied code/assets or external APIs."
+}

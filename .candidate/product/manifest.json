@@ -1,0 +1,5 @@
+{
+  "slug": "offline-text-diff-desk",
+  "kind": "app",
+  "entry": "main.py"
+}
