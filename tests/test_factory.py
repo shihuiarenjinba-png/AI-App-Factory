@@ -35,6 +35,8 @@ class CoreTests(unittest.TestCase):
         promote(self.root)
         s=json.loads((self.root/"factory/state.json").read_text())
         self.assertEqual(s["stage"],"build")
+        self.assertFalse((self.root/".candidate/proposal.json").exists())
+        self.assertEqual(json.loads((self.root/"proposals/simple-product.json").read_text()),self.proposal)
 
     def test_forged_evidence_rejected(self):
         self.research()
@@ -61,7 +63,7 @@ class CoreTests(unittest.TestCase):
 
     def test_full_cycle(self):
         self.research();promote(self.root)
-        (self.root/".candidate/proposal.json").unlink()
+        (self.root/".runtime/market.json").unlink()
         plan(self.root)
         base=self.root/".candidate/product"
         (base/"tests").mkdir(parents=True)
@@ -82,6 +84,15 @@ class CoreTests(unittest.TestCase):
         s=json.loads((self.root/"factory/state.json").read_text())
         self.assertEqual((s["stage"],s["cycle"]),("research",2))
 
+
+    def test_build_validation_still_rejects_stale_research_candidate(self):
+        self.research()
+        promote(self.root)
+        (self.root/".runtime/market.json").unlink()
+        plan(self.root)
+        save(self.root/".candidate/proposal.json",self.proposal)
+        with self.assertRaisesRegex(ValueError,"unexpected candidate root"):
+            validate(self.root)
 
     def test_bad_extension_rejected(self):
         self.research()
@@ -115,7 +126,7 @@ class CoreTests(unittest.TestCase):
 
     def _prototype_for_validation(self,kind="app"):
         self.research();promote(self.root)
-        (self.root/".candidate/proposal.json").unlink()
+        (self.root/".runtime/market.json").unlink()
         plan(self.root)
         base=self.root/".candidate/product"
         (base/"tests").mkdir(parents=True)
