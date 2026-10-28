@@ -109,8 +109,8 @@ def run():
         app.notes, app.current, app.path = [dict(self.note)], self.note["id"], self.path
         app.lang, app.dirty = "en", True
         app.commit_editor, app.error = lambda: None, Mock()
-        with patch("main.filedialog.asksaveasfilename", return_value=str(self.path)), \\
-             patch("main.messagebox.askyesno", return_value=True) as confirm:
+        with (patch("main.filedialog.asksaveasfilename", return_value=str(self.path)),
+              patch("main.messagebox.askyesno", return_value=True) as confirm):
             app.export()
         app.error.assert_called_once()
         confirm.assert_not_called()
