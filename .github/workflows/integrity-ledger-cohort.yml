@@ -1,3 +1,4 @@
+# Retry after aligning old Factory tests with controller cleanup.
 name: Integrity Ledger cohort promotion and Windows EXE
 on:
   push:
