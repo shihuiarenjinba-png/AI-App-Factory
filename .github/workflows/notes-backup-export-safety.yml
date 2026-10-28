@@ -149,3 +149,4 @@ jobs:
           if-no-files-found: error
           retention-days: 5
 # Retry: emit full candidate regression diagnostics on failure.
+# Retry: preserve existing headless App tests with optional unsaved path.
