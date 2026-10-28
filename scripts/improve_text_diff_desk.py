@@ -58,8 +58,9 @@ def run():
     command(sys.executable,"-m","unittest","discover","-s","tests","-v",
             cwd=ROOT,env=env,timeout=180)
     command("git","add","--","factory/state.json",f"products/{SLUG}/main.py",
-            f"products/{SLUG}/tests/test_smoke.py",
-            ".candidate/product/main.py",".candidate/product/tests/test_smoke.py")
+            f"products/{SLUG}/tests/test_smoke.py")
+    command("git","add","-u","--",".candidate/product/main.py",
+            ".candidate/product/tests/test_smoke.py")
     staged=command("git","diff","--cached","--name-only",capture_output=True).stdout.splitlines()
     allowed={"factory/state.json",f"products/{SLUG}/main.py",
              f"products/{SLUG}/tests/test_smoke.py",

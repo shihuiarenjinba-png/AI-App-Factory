@@ -1,3 +1,4 @@
+# Retry after using tracked-only git add for ignored .candidate paths.
 # Retry after aligning old Factory tests with controller cleanup.
 name: Text Diff Desk Windows CRLF fix and EXE
 on:
