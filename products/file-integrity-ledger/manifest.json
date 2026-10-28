@@ -1,0 +1,5 @@
+{
+  "slug": "file-integrity-ledger",
+  "kind": "app",
+  "entry": "main.py"
+}

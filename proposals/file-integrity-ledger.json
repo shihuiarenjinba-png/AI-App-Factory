@@ -1,0 +1,20 @@
+{
+  "slug": "file-integrity-ledger",
+  "title": "File Integrity Ledger — Offline Checksum Snapshot",
+  "customer_problem": "People need to check whether selected local files changed or disappeared after transfer or backup, and preserve a verifiable snapshot without uploading data or modifying the files.",
+  "audience": "Individual Windows users comparing a small set of documents, media, or backup files between sessions who need clear local evidence rather than an automated cleanup utility.",
+  "differentiation": "Read-only SHA-256 snapshot ledger with explicit missing/modified/unchanged results, durable JSON snapshots and CSV reporting; never deletes, renames, uploads, or silently repairs source files.",
+  "scope": [
+    "Choose up to 100 regular local files and calculate SHA-256 digests with bounded file sizes and explicit symlink/error handling.",
+    "Save and reopen validated JSON snapshots atomically with a recoverable previous version; retain paths, sizes and hashes for later verification.",
+    "Verify snapshots against current files, clearly reporting unchanged, modified, missing, or unreadable items without modifying source files.",
+    "Export safe CSV results for user review, including protections against spreadsheet formula injection in file names and paths.",
+    "Provide English/Japanese labels, a helpful first-run empty state, keyboard-accessible actions and a readable 1024x768 desktop layout.",
+    "Include headless tests for hashing, changes, missing files, invalid input, atomic save/load, backup recovery and CSV escaping."
+  ],
+  "evidence_urls": [
+    "https://github.com/qarmin/czkawka/issues/1295",
+    "https://github.com/agalwood/Motrix/issues/2061"
+  ],
+  "research_note": "Public GitHub issues are untrusted weak problem signals from distinct repositories, not product-demand proof. Original implementation; no code or assets copied. APP cohort slot 3 of maximum 5. Distinct read-only file I/O workload from notes and timer. No user file deletion or privileged operation."
+}
