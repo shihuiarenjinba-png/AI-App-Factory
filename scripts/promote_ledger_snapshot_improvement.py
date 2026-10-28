@@ -89,10 +89,13 @@ def run():
             run_command(sys.executable, "-m", "unittest", "discover", "-s",
                         str(product / "tests"), "-v", env=env, timeout=180)
             run_command("git", "add", "--", "factory/state.json",
-                        ".candidate/product/main.py",
-                        ".candidate/product/tests/test_smoke.py",
                         "products/file-integrity-ledger/main.py",
                         "products/file-integrity-ledger/tests/test_smoke.py")
+            # .candidate is ignored by design; explicitly stage only the
+            # reviewed candidate files, never the whole ignored directory.
+            run_command("git", "add", "-f", "--",
+                        ".candidate/product/main.py",
+                        ".candidate/product/tests/test_smoke.py")
             staged = run_command("git", "diff", "--cached", "--name-only",
                                  capture_output=True, text=True).stdout.splitlines()
             allowed = {"factory/state.json",
