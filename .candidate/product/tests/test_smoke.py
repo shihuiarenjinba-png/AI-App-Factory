@@ -1,5 +1,7 @@
 """18 headless functional regression tests."""
 import json
+import os
+from unittest import mock
 from pathlib import Path
 import sys
 import tempfile
@@ -75,6 +77,40 @@ class DiffTests(unittest.TestCase):
     def test_context_validation(self):
         for v in (-1,11,True,"3"):
             with self.assertRaises(ValueError): app.compare("a","b",context=v)
+
+    def test_export_backup_name_cannot_clobber_source(self):
+        source = self.dir / "report.diff.bak"
+        source.write_text("ORIGINAL SOURCE", encoding="utf-8")
+        output = self.dir / "report.diff"
+        output.write_text("old report", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "source document"):
+            app.export_diff(output, app.compare("a", "b"), source, self.right)
+        self.assertEqual(source.read_text(encoding="utf-8"), "ORIGINAL SOURCE")
+        self.assertEqual(output.read_text(encoding="utf-8"), "old report")
+
+    def test_export_rejects_hardlinked_backup_alias(self):
+        source = self.dir / "protected.txt"
+        source.write_text("PRIVATE SOURCE", encoding="utf-8")
+        output = self.dir / "report.diff"
+        output.write_text("old report", encoding="utf-8")
+        try:
+            os.link(source, self.dir / "report.diff.bak")
+        except (OSError, NotImplementedError):
+            self.skipTest("hardlinks unavailable")
+        with self.assertRaisesRegex(ValueError, "source document"):
+            app.export_diff(output, app.compare("a", "b"), source, self.right)
+        self.assertEqual(source.read_text(encoding="utf-8"), "PRIVATE SOURCE")
+
+    def test_failed_backup_replacement_preserves_previous_versions(self):
+        output = self.dir / "report.diff"
+        backup = self.dir / "report.diff.bak"
+        output.write_text("CURRENT", encoding="utf-8")
+        backup.write_text("PREVIOUS", encoding="utf-8")
+        with mock.patch.object(app.os, "replace", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                app.export_diff(output, app.compare("a", "b"), self.left, self.right)
+        self.assertEqual(output.read_text(encoding="utf-8"), "CURRENT")
+        self.assertEqual(backup.read_text(encoding="utf-8"), "PREVIOUS")
 
     def test_session_roundtrip(self):
         s=app.make_session(self.left,self.right,True)
