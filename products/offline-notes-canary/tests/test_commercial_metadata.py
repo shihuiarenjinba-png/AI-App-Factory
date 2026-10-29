@@ -40,6 +40,37 @@ class CommercialMetadataTests(unittest.TestCase):
         self.assertEqual(app.body.tag_remove.call_count, 2)
         self.assertEqual(app.body.tag_add.call_count, 2)
 
+    def test_live_tag_search_uses_unsaved_editor_without_mutating_database(self):
+        app = App.__new__(App)
+        app.notes, app.current, app.loading = [dict(self.note)], self.note["id"], False
+        app.recent_ids = []
+        app.title, app.body, app.tag_text = Mock(), Mock(), Mock()
+        app.title.get.return_value = self.note["title"]
+        app.body.get.return_value = self.note["body"]
+        app.tag_text.get.return_value = "研究,  urgent "
+        app.query, app.listbox = Mock(), Mock()
+        app.query.get.return_value = "研究"
+        app.refresh_list()
+        self.assertEqual(app.visible, [self.note["id"]])
+        self.assertNotIn("tags", app.notes[0], "search preview must never save draft tags")
+        app.tag_text.get.return_value = ""
+        app.refresh_list()
+        self.assertEqual(app.visible, [], "cleared draft tags must disappear from search")
+
+    def test_live_tag_search_handles_incomplete_invalid_draft(self):
+        app = App.__new__(App)
+        app.notes, app.current, app.loading = [dict(self.note)], self.note["id"], False
+        app.recent_ids = []
+        app.title, app.body, app.tag_text = Mock(), Mock(), Mock()
+        app.title.get.return_value = self.note["title"]
+        app.body.get.return_value = self.note["body"]
+        app.tag_text.get.return_value = "work,WORK,、"
+        app.query, app.listbox = Mock(), Mock()
+        app.query.get.return_value = "work"
+        app.refresh_list()
+        self.assertEqual(app.visible, [self.note["id"]])
+        self.assertNotIn("tags", app.notes[0])
+
     def test_schema1_backward_compatibility(self):
         save_notes(self.path, [self.note])
         self.assertEqual(json.loads(self.path.read_text(encoding="utf-8"))["schema"], 1)
