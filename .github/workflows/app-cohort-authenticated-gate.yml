@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: shihuiarenjinba-png/Repository-Provisioner-app
-          ref: 761227cf17a382de2a7648efe11f3b1b709fa081
+          ref: 1eebf06eef88a1a2dca0c1b724eefc5764cdd7e4
           path: provisioner
           persist-credentials: false
       - name: Set up Python
@@ -32,7 +32,7 @@ jobs:
         working-directory: provisioner
         shell: bash
         run: |
-          test "$(git rev-parse HEAD)" = "761227cf17a382de2a7648efe11f3b1b709fa081"
+          test "$(git rev-parse HEAD)" = "1eebf06eef88a1a2dca0c1b724eefc5764cdd7e4"
           python -m unittest discover -s tests -p test_app_cohort_github_gate.py -v
       - name: Fetch five pinned Factory artifacts and verify real ZIP and EXE bytes
         working-directory: provisioner
