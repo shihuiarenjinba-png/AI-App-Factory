@@ -54,7 +54,7 @@ jobs:
           SOURCE_SHA: 0de846e1b451d5b5e9e3b1f6f7e0c7a0d557bc88
           REQUEST_ID: app-offline-notes-canary-0de846e1b451
         run: |
-          python tools/build_windows_exe.py --slug offline-notes-canary --expected-sha "$env:SOURCE_SHA" --source-branch codex/app-notes-exclusive-save-20261030 --request-id "$env:REQUEST_ID" --output dist/preidentity
+          python tools/build_windows_exe.py --slug offline-notes-canary --expected-sha "$env:SOURCE_SHA" --source-branch codex/app-notes-exclusive-product-20261030 --request-id "$env:REQUEST_ID" --output dist/preidentity
       - name: Verify EXE and create guarded registration handoff
         shell: bash
         env:
@@ -76,7 +76,7 @@ jobs:
           job={
             "schema_version":1, "product":"Offline Notes Canary",
             "slug":"offline-notes-canary", "repo":"shihuiarenjinba-png/AI-App-Factory",
-            "source_branch":"codex/app-notes-exclusive-save-20261030",
+            "source_branch":"codex/app-notes-exclusive-product-20261030",
             "source_sha":r["source_sha"],"request_id":r["request_id"],
             "product_type":"APP","packaging_family":"MSIX",
             "partner_center_registration_type":"MSIX_OR_PWA_APP",
