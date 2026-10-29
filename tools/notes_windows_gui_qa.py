@@ -22,7 +22,7 @@ from main import App, read_notes
 
 OUT = Path(os.environ.get("GUI_QA_OUTPUT", "dist/notes-gui-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
-EXPECTED_SOURCE = "e854b60bd0b701e6939bf1776e079d0e5bcb7354"
+EXPECTED_SOURCE = "a1851e8fea4bd8c835ccedadbe18db03cf36c4bc"
 
 
 def assert_fits(root, app):
@@ -64,6 +64,13 @@ def run():
             app.body.delete("1.0", "end")
             app.body.insert("1.0", "Sample body. Sample search.")
             root.update()  # Process real Tk modified events before the Save click.
+            # Live tag filtering must work before Save without modifying the model.
+            app.query.set("研究")
+            root.update()
+            assert app.visible == [app.current], "Draft tag missing from search"
+            assert "tags" not in app.notes[0], "Search must not commit draft tags"
+            app.query.set("")
+            root.update()
             app.commit_editor()
             app.toggle_favorite()
             with patch("main.filedialog.asksaveasfilename", return_value=str(data)):
