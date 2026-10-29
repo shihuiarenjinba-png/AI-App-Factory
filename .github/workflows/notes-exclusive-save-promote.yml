@@ -63,7 +63,7 @@ jobs:
           import json
           from pathlib import Path
           s = json.loads(Path("factory/state.json").read_text(encoding="utf-8"))
-          assert s == {"schema": 1, "kind": "app", "stage": "research", "cycle": 6, "revision": 0, "slug": None}
+          assert s == {"schema": 1, "kind": "app", "stage": "research", "cycle": 7, "revision": 0, "slug": None}
           PY
       - name: Factory and product tests
         run: |
