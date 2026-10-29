@@ -60,6 +60,7 @@ def source_smoke(output):
                 "reset": desk.reset_button, "task_input": desk.entry,
                 "task_list": desk.tree, "language": desk.language_button,
                 **{f"task_button_{i}": button for i, (_, button) in enumerate(desk.buttons)},
+                **{f"preset_{minutes}": button for minutes, button in desk.preset_buttons.items()},
             })
             screenshot(output / "01-first-run.png")
             desk.entry_var.set("QA task 日本語")
@@ -69,17 +70,22 @@ def source_smoke(output):
             desk.tree.selection_set(ident)
             desk.toggle()
             assert desk.data["tasks"][0]["done"] is True
-            desk.minutes_var.set("50")
-            desk.apply_minutes()
+            assert desk.start_preset(50)
             assert desk.timer.minutes == 50
-            desk.start()
             assert desk.timer.state == "running"
+            assert all("disabled" in button.state() for button in desk.preset_buttons.values())
             desk.pause_resume()
             assert desk.timer.state == "paused"
             desk.pause_resume()
             assert desk.timer.state == "running"
             desk.reset()
             assert desk.timer.state == "idle"
+            assert desk.start_preset(25)
+            assert desk.timer.minutes == 25 and desk.timer.state == "running"
+            desk.reset()
+            desk.minutes_var.set("50")
+            desk.apply_minutes()
+            assert desk.timer.minutes == 50 and desk.timer.state == "idle"
             desk.switch_language()
             assert desk.lang == "en"
             visible(root, {"start": desk.start_button, "language": desk.language_button,
@@ -169,9 +175,27 @@ def exe_smoke(exe, output):
             # Capture the real HWND via Windows PrintWindow (Pillow 11.3+)
             # rather than mislabeling a console screenshot as the EXE UI.
             window_image = ImageGrab.grab(window=hwnd)
-            if (window_image.width < 790 or window_image.height < 550
-                    or min(ImageStat.Stat(window_image.convert("RGB")).mean) < 125):
-                raise RuntimeError("Actual EXE HWND capture is blank or too small")
+            def has_real_pixels(image):
+                if image.width < 790 or image.height < 550:
+                    return False
+                stats = ImageStat.Stat(image.convert("RGB"))
+                # A pure white/black PrintWindow result is not EXE GUI proof.
+                return max(stats.stddev) >= 12 and min(stats.mean) >= 80
+
+            if not has_real_pixels(window_image):
+                # PrintWindow can return an entirely white surface on Windows
+                # runners even when the EXE window is actually visible.
+                # Bring the exact HWND to front and capture its desktop rect.
+                user32.ShowWindow(hwnd, 9)
+                user32.SetForegroundWindow(hwnd)
+                time.sleep(0.5)
+                if user32.GetForegroundWindow() != hwnd:
+                    raise RuntimeError("Cannot bring exact EXE HWND to foreground")
+                window_image = ImageGrab.grab(bbox=(
+                    window_rect.left, window_rect.top,
+                    window_rect.right, window_rect.bottom))
+            if not has_real_pixels(window_image):
+                raise RuntimeError("Actual EXE window screenshot is blank or unrendered")
             window_image.save(output / "04-real-exe-window.png")
             # Keep the unmodified desktop capture separately for context.
             screenshot(output / "05-desktop-context.png")
@@ -197,7 +221,7 @@ def main():
         "product": "Focus Session Desk",
         "slug": "focus-session-desk",
         "source_branch": os.environ.get("GITHUB_REF_NAME"),
-        "source_sha": os.environ.get("GITHUB_SHA"),
+        "source_sha": os.environ.get("FOCUS_SOURCE_SHA") or os.environ.get("GITHUB_SHA"),
         "request_id": os.environ.get("FOCUS_REQUEST_ID"),
         "desktop": "Windows 1024x768",
         "human_review": "NOT_PERFORMED",

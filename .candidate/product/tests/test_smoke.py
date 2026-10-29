@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from main import (
     FocusTimer, add_task, blank_document, delete_task, find_task, load_document,
     move_task, new_task, rename_task, save_document, toggle_task,
-    validate_document, validate_minutes, initial_window_geometry
+    validate_document, validate_minutes, initial_window_geometry, FOCUS_PRESETS
 )
 
 
@@ -97,6 +97,47 @@ class FocusDeskTests(unittest.TestCase):
         self.assertEqual(timer.display(), "03:00")
         with self.assertRaises(ValueError):
             timer.pause()
+
+    def test_one_click_focus_presets_and_active_session_guard(self):
+        from main import Desk
+        self.assertEqual(FOCUS_PRESETS, (25, 50))
+        values = []
+
+        class MinutesVar:
+            def set(self, value):
+                values.append(value)
+
+        desk = Desk.__new__(Desk)
+        desk.timer = FocusTimer(25, clock=lambda: 10.0)
+        desk.minutes_var = MinutesVar()
+
+        def action(fn):
+            try:
+                fn()
+            except ValueError:
+                return False
+            return True
+
+        desk.action = action
+        self.assertTrue(desk.start_preset(50))
+        self.assertEqual(desk.timer.minutes, 50)
+        self.assertEqual(desk.timer.state, "running")
+        self.assertEqual(values, ["50"])
+        self.assertFalse(desk.start_preset(25))
+        self.assertEqual(desk.timer.minutes, 50)
+        self.assertEqual(values, ["50"])
+        desk.timer.reset()
+        self.assertTrue(desk.start_preset(25))
+        self.assertEqual(desk.timer.minutes, 25)
+        self.assertEqual(values, ["50", "25"])
+        with self.assertRaisesRegex(ValueError, "Unsupported focus preset"):
+            desk.start_preset(15)
+
+    def test_preset_buttons_have_bilingual_labels(self):
+        from main import WORDS
+        for lang in ("ja", "en"):
+            self.assertTrue(WORDS[lang]["preset_25"])
+            self.assertTrue(WORDS[lang]["preset_50"])
 
     def test_interrupted_session_reloads_without_countdown(self):
         self.data["session"] = "interrupted"
@@ -191,6 +232,9 @@ class FocusDeskTests(unittest.TestCase):
             app = Desk(root, path=self.path)
             self.assertEqual(app.timer_state.winfo_exists(), 1)
             self.assertEqual(app.timer_area.winfo_exists(), 1)
+            self.assertEqual(set(app.preset_buttons), {25, 50})
+            for button in app.preset_buttons.values():
+                self.assertTrue(button.winfo_exists())
         finally:
             root.destroy()
 

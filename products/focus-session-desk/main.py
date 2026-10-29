@@ -12,6 +12,7 @@ MAX_TASKS = 200
 MAX_BYTES = 200000
 MIN_MINUTES = 1
 MAX_MINUTES = 180
+FOCUS_PRESETS = (25, 50)
 
 
 def new_task(title):
@@ -234,7 +235,8 @@ WORDS = {
         "recovered": "バックアップから復旧しました。現在の内容を確認してください。",
         "finish": "集中時間が終了しました。お疲れさまでした！",
         "running": "実行中", "paused": "一時停止中", "idle": "準備完了", "finished": "完了",
-        "duration": "時間を変更", "cancel": "キャンセル", "ok": "OK"
+        "duration": "時間を変更", "cancel": "キャンセル", "ok": "OK",
+        "preset_25": "25分で開始", "preset_50": "50分で開始"
     },
     "en": {
         "name": "Focus Session Desk", "subtitle": "Offline focus timer and task checklist",
@@ -247,7 +249,8 @@ WORDS = {
         "recovered": "Recovered from backup. Review the restored data.",
         "finish": "Focus session finished. Nice work!",
         "running": "Running", "paused": "Paused", "idle": "Ready", "finished": "Finished",
-        "duration": "Apply duration", "cancel": "Cancel", "ok": "OK"
+        "duration": "Apply duration", "cancel": "Cancel", "ok": "OK",
+        "preset_25": "Start 25 min", "preset_50": "Start 50 min"
     }
 }
 
@@ -319,6 +322,11 @@ class Desk:
         self.pause_button.pack(side="left", padx=4)
         self.reset_button = ttk.Button(bar, command=self.reset)
         self.reset_button.pack(side="left", padx=4)
+        self.preset_buttons = {}
+        for preset in FOCUS_PRESETS:
+            button = ttk.Button(bar, command=lambda value=preset: self.start_preset(value))
+            button.pack(side="left", padx=4)
+            self.preset_buttons[preset] = button
         self.tasks_frame = ttk.LabelFrame(self.frame, text=self.words("tasks"), padding=10)
         self.tasks_frame.pack(fill="both", expand=True)
         self.empty = ttk.Label(self.tasks_frame)
@@ -362,6 +370,8 @@ class Desk:
         self.duration_button.configure(text=self.words("duration"))
         self.start_button.configure(text=self.words("start"))
         self.reset_button.configure(text=self.words("reset"))
+        for preset, button in self.preset_buttons.items():
+            button.configure(text=self.words(f"preset_{preset}"))
         self.language_button.configure(text=self.words("language"))
         self.tree.heading("title", text=self.words("tasks"))
         for key, button in self.buttons:
@@ -402,6 +412,8 @@ class Desk:
         self.pause_button.configure(text=self.words("resume") if self.timer.state == "paused" else self.words("pause"))
         self.clock_label.configure(text=self.timer.display())
         self.start_button.state(["disabled"] if self.timer.state != "idle" else ["!disabled"])
+        for button in self.preset_buttons.values():
+            button.state(["disabled"] if self.timer.state != "idle" else ["!disabled"])
 
     def action(self, fn):
         # Failed disk writes must not leave unsaved changes in the live model.
@@ -459,6 +471,20 @@ class Desk:
                 raise ValueError("Enter a whole number of minutes")
             self.timer.set_minutes(int(value))
         self.action(run)
+
+    def start_preset(self, minutes):
+        """Start a saved 25/50-minute session in one click, or leave state unchanged."""
+        if minutes not in FOCUS_PRESETS:
+            raise ValueError("Unsupported focus preset")
+
+        def run():
+            self.timer.set_minutes(minutes)
+            self.timer.start()
+
+        if not self.action(run):
+            return False
+        self.minutes_var.set(str(minutes))
+        return True
 
     def start(self):
         self.action(self.timer.start)
