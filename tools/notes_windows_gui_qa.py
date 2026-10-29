@@ -63,6 +63,7 @@ def run():
             app.tag_text.set("Work, 研究")
             app.body.delete("1.0", "end")
             app.body.insert("1.0", "Sample body. Sample search.")
+            root.update()  # Process real Tk modified events before the Save click.
             app.commit_editor()
             app.toggle_favorite()
             with patch("main.filedialog.asksaveasfilename", return_value=str(data)):
@@ -74,6 +75,7 @@ def run():
             app.language()
             root.update()
             assert app.lang == "en" and root.title() == "Offline Notes"
+            assert not app.dirty and app.status.get() == "Saved", "False unsaved state after Save"
             positions = assert_fits(root, app)
             screenshot = OUT / "offline-notes-1024x768.png"
             ImageGrab.grab(bbox=(0, 0, 1024, 768)).save(screenshot)
