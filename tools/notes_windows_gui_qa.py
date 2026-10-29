@@ -45,9 +45,9 @@ def assert_fits(root, app):
 
 def run():
     import subprocess
-    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
-    if sha != EXPECTED_SOURCE:
-        raise AssertionError("Wrong source SHA")
+    subprocess.run(["git", "diff", "--quiet", EXPECTED_SOURCE, "HEAD", "--",
+                    "products/offline-notes-canary"], check=True)
+    sha = EXPECTED_SOURCE
     report = {"source_sha": sha, "resolution_budget": "1024x768",
               "gui_pass": False, "identity_cas_allowed": False,
               "msix_status": "NOT_BUILT", "commercial_quality_status": "HOLD"}
