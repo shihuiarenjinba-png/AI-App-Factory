@@ -173,7 +173,7 @@ def main():
          "-s", str(candidate / "tests"), "-p", "test*.py", "-v"),
         cwd=ROOT, text=True, capture_output=True, env=env, timeout=180)
     print(result.stdout, result.stderr, flush=True)
-    match = re.search(r"Ran (\\d+) tests in", result.stderr)
+    match = re.search(r"Ran (\d+) tests in", result.stderr)
     if result.returncode or not match or int(match.group(1)) < 45 or "\nOK" not in result.stderr:
         raise ValueError("Candidate tests failed; HOLD without promote")
     if factory.promote(ROOT) != {"stage": "improve", "slug": SLUG}:
