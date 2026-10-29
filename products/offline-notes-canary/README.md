@@ -21,3 +21,5 @@ Commercial Save As: bilingual toolbar action and Ctrl+Shift+S create a separate 
 Exclusive Save As and Restore: new files are written to a synced temporary file and published with an atomic no-clobber hard link. A concurrent file creation, existing symlink, or unsupported hardlink filesystem fails closed without overwriting the other file. Three regression tests exercise concurrent creation and cleanup.
 
 Commercial TXT export safety: exports now use the same atomic no-clobber publication as Save As/Restore. Existing filenames, concurrent creation and unsupported hardlink filesystems fail closed without destroying unrelated customer data. The UI explains the new-filename requirement in Japanese and English; three new regression tests cover success, race and hardlink failure.
+
+Commercial first Save safety: a new notes JSON database is created with atomic no-clobber publication. If another process creates the selected filename before publication, the save fails without overwriting that file. Unsupported hardlink destinations fail closed. Three regression tests cover success, concurrent creation and hardlink-denied cleanup.
