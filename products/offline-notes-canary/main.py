@@ -96,12 +96,37 @@ def read_notes(path):
                 reason = exc
     raise ValueError("Cannot read notes or backup: " + str(reason))
 
-def save_notes(path, notes):
+def notes_payload(notes):
     validate_notes(notes)
     schema = 2 if any("tags" in n or "favorite" in n for n in notes) else 1
     payload = (json.dumps({"schema": schema, "notes": notes}, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     if len(payload) > 5000000:
         raise ValueError("Notes exceed 5 MB")
+    return payload
+
+def save_notes_new(path, notes):
+    """Atomically create a new notes file, never replacing a competing path."""
+    payload = notes_payload(notes)
+    path = Path(path)
+    if not path.parent.is_dir():
+        raise ValueError("Choose an existing destination folder")
+    temp = None
+    try:
+        with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".notes-", delete=False) as f:
+            temp = Path(f.name)
+            f.write(payload)
+            f.flush()
+            os.fsync(f.fileno())
+        # Hard-link creation is atomic and fails if the destination exists,
+        # including when another process creates it after the file dialog.
+        # Unsupported filesystems fail closed rather than falling back to replace.
+        os.link(temp, path)
+    finally:
+        if temp is not None:
+            temp.unlink(missing_ok=True)
+
+def save_notes(path, notes):
+    payload = notes_payload(notes)
     path = Path(path)
     if path.is_symlink():
         raise ValueError("Cannot save through a symbolic link")
@@ -420,9 +445,7 @@ class App:
             if not selected:
                 return False
             destination = Path(selected)
-            if destination.exists() or destination.is_symlink():
-                raise ValueError("Save As requires a new, unused filename")
-            save_notes(destination, self.notes)
+            save_notes_new(destination, self.notes)
             self.path, self.dirty = destination, False
             self.status.set(self.t(11) + " — " + str(destination))
             self.refresh_list()
@@ -475,9 +498,7 @@ class App:
                 return
             destination = Path(output)
             # Never overwrite an existing file during recovery, even if valid.
-            if destination.exists() or destination.is_symlink():
-                raise ValueError("Restore requires a new, unused filename")
-            save_notes(destination, recovered_notes)
+            save_notes_new(destination, recovered_notes)
             self.notes, self.path, self.dirty = recovered_notes, destination, False
             self.query.set("")
             self.show(recovered_notes[0]["id"] if recovered_notes else None)
