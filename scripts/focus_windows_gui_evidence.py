@@ -25,6 +25,7 @@ def screenshot(path):
     image.save(path)
     if max(ImageStat.Stat(image.convert("RGB")).stddev) < 2:
         raise AssertionError("Captured screen is blank/uniform")
+    return image
 
 
 def require_screen(root):
@@ -145,7 +146,6 @@ def exe_smoke(exe, output):
                 time.sleep(0.5)
             if not hwnd:
                 raise RuntimeError("EXE did not expose a visible Focus Session Desk window")
-            screenshot(output / "04-real-exe-window.png")
             # A launched window is not consumer-ready if its controls sit
             # beneath the Windows taskbar. Use the actual desktop work area.
             class Rect(ctypes.Structure):
@@ -165,6 +165,22 @@ def exe_smoke(exe, output):
                     f"{window_rect.right},{window_rect.bottom}), "
                     f"workarea=({work_rect.left},{work_rect.top},"
                     f"{work_rect.right},{work_rect.bottom})")
+            # GitHub-hosted runners may leave a PowerShell console in front
+            # of the app. Require the captured pixels to show the app itself.
+            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
+            if not user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0,
+                                        0x0001 | 0x0002 | 0x0040):
+                raise RuntimeError("Cannot bring EXE window above runner console")
+            user32.SetForegroundWindow(hwnd)
+            time.sleep(0.5)
+            image = screenshot(output / "04-real-exe-window.png")
+            sample = image.crop((
+                max(0, window_rect.left + 120),
+                max(0, window_rect.top + 80),
+                min(1024, window_rect.right - 120),
+                min(768, window_rect.bottom - 100)))
+            if min(ImageStat.Stat(sample.convert("RGB")).mean) < 125:
+                raise RuntimeError("EXE screenshot is obscured by console/other window")
         finally:
             if process.poll() is None:
                 process.terminate()
