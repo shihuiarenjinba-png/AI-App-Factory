@@ -1,5 +1,6 @@
 """Commercial metadata regression tests: no Tk display required."""
 import json
+import os
 import sys
 import tempfile
 import unittest
@@ -135,6 +136,60 @@ class CommercialMetadataTests(unittest.TestCase):
         from main import STRINGS
         self.assertEqual(STRINGS["ja"][24], "名前を付けて保存")
         self.assertEqual(STRINGS["en"][24], "Save As")
+
+    def test_save_as_concurrent_create_preserves_other_process_file(self):
+        original = self.path
+        save_notes(original, [self.note])
+        old_bytes = original.read_bytes()
+        app = App.__new__(App)
+        app.notes, app.path, app.dirty, app.lang = [self.note], original, True, "en"
+        app.commit_editor, app.refresh_list, app.status = Mock(), Mock(), Mock()
+        app.error = Mock()
+        destination = Path(self.tmp.name) / "raced.json"
+        actual_link = os.link
+
+        def competing_create(src, dst):
+            Path(dst).write_bytes(b"OTHER PROCESS DATA")
+            return actual_link(src, dst)
+
+        with patch("main.filedialog.asksaveasfilename", return_value=str(destination)),              patch("main.os.link", side_effect=competing_create):
+            self.assertFalse(app.save_as())
+        self.assertEqual(destination.read_bytes(), b"OTHER PROCESS DATA")
+        self.assertEqual(original.read_bytes(), old_bytes)
+        self.assertEqual(app.path, original)
+        self.assertTrue(app.dirty)
+        self.assertEqual(list(Path(self.tmp.name).glob(".notes-*")), [])
+        app.error.assert_called_once()
+
+    def test_exclusive_create_failure_leaves_no_partial_output(self):
+        from main import save_notes_new
+        destination = Path(self.tmp.name) / "denied.json"
+        with patch("main.os.link", side_effect=PermissionError("Hardlinks unavailable")):
+            with self.assertRaises(PermissionError):
+                save_notes_new(destination, [self.note])
+        self.assertFalse(destination.exists())
+        self.assertEqual(list(Path(self.tmp.name).glob(".notes-*")), [])
+
+    def test_restore_backup_concurrent_create_preserves_competing_file(self):
+        backup = Path(self.tmp.name) / "source.json.bak"
+        save_notes(backup, [self.note])
+        destination = Path(self.tmp.name) / "restore-raced.json"
+        app = App.__new__(App)
+        app.notes, app.path, app.dirty, app.lang = [], self.path, True, "ja"
+        app.confirm, app.error = Mock(return_value=True), Mock()
+        actual_link = os.link
+
+        def competing_create(src, dst):
+            Path(dst).write_bytes(b"DO NOT REPLACE")
+            return actual_link(src, dst)
+
+        with patch("main.filedialog.askopenfilename", return_value=str(backup)),              patch("main.filedialog.asksaveasfilename", return_value=str(destination)),              patch("main.os.link", side_effect=competing_create):
+            app.restore_backup()
+        self.assertEqual(destination.read_bytes(), b"DO NOT REPLACE")
+        self.assertEqual(app.notes, [])
+        self.assertEqual(app.path, self.path)
+        self.assertTrue(app.dirty)
+        app.error.assert_called_once()
 
     def test_schema1_backward_compatibility(self):
         save_notes(self.path, [self.note])

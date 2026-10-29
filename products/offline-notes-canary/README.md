@@ -17,3 +17,5 @@ Commercial search increment: while searching, visible matches in the selected no
 Commercial favorites filter: a bilingual sidebar checkbox narrows search results to starred notes without deleting or changing notes. Headless tests cover filtering, clearing and empty state. Windows GUI evidence for this exact revision is required.
 
 Commercial Save As: bilingual toolbar action and Ctrl+Shift+S create a separate JSON notes file. Existing destinations and symlinks are rejected without changing the original. Saving a new copy changes the current document path only after successful persistence. The regular Save action continues to support backup-safe updates.
+
+Exclusive Save As and Restore: new files are written to a synced temporary file and published with an atomic no-clobber hard link. A concurrent file creation, existing symlink, or unsupported hardlink filesystem fails closed without overwriting the other file. Three regression tests exercise concurrent creation and cleanup.
