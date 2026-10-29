@@ -60,6 +60,7 @@ def source_smoke(output):
                 "reset": desk.reset_button, "task_input": desk.entry,
                 "task_list": desk.tree, "language": desk.language_button,
                 **{f"task_button_{i}": button for i, (_, button) in enumerate(desk.buttons)},
+                **{f"preset_{minutes}": button for minutes, button in desk.preset_buttons.items()},
             })
             screenshot(output / "01-first-run.png")
             desk.entry_var.set("QA task 日本語")
@@ -69,17 +70,22 @@ def source_smoke(output):
             desk.tree.selection_set(ident)
             desk.toggle()
             assert desk.data["tasks"][0]["done"] is True
-            desk.minutes_var.set("50")
-            desk.apply_minutes()
+            assert desk.start_preset(50)
             assert desk.timer.minutes == 50
-            desk.start()
             assert desk.timer.state == "running"
+            assert all("disabled" in button.state() for button in desk.preset_buttons.values())
             desk.pause_resume()
             assert desk.timer.state == "paused"
             desk.pause_resume()
             assert desk.timer.state == "running"
             desk.reset()
             assert desk.timer.state == "idle"
+            assert desk.start_preset(25)
+            assert desk.timer.minutes == 25 and desk.timer.state == "running"
+            desk.reset()
+            desk.minutes_var.set("50")
+            desk.apply_minutes()
+            assert desk.timer.minutes == 50 and desk.timer.state == "idle"
             desk.switch_language()
             assert desk.lang == "en"
             visible(root, {"start": desk.start_button, "language": desk.language_button,
