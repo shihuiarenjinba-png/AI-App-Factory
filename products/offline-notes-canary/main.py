@@ -288,9 +288,10 @@ class App:
             notes = [{**n, "title": title, "body": body} if n["id"] == self.current else n
                      for n in self.notes]
         filtered = search_notes(notes, self.query.get())
+        recent = getattr(self, "recent_ids", [])
         filtered.sort(key=lambda n: (
             not n.get("favorite", False),
-            self.recent_ids.index(n["id"]) if n["id"] in self.recent_ids else len(self.recent_ids)))
+            recent.index(n["id"]) if n["id"] in recent else len(recent)))
         self.visible = [n["id"] for n in filtered]
         self.listbox.delete(0, "end")
         for n in filtered:
