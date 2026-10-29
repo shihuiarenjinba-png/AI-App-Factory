@@ -165,22 +165,16 @@ def exe_smoke(exe, output):
                     f"{window_rect.right},{window_rect.bottom}), "
                     f"workarea=({work_rect.left},{work_rect.top},"
                     f"{work_rect.right},{work_rect.bottom})")
-            # GitHub-hosted runners may leave a PowerShell console in front
-            # of the app. Require the captured pixels to show the app itself.
-            user32.ShowWindow(hwnd, 9)  # SW_RESTORE
-            if not user32.SetWindowPos(hwnd, -1, 0, 0, 0, 0,
-                                        0x0001 | 0x0002 | 0x0040):
-                raise RuntimeError("Cannot bring EXE window above runner console")
-            user32.SetForegroundWindow(hwnd)
-            time.sleep(0.5)
-            image = screenshot(output / "04-real-exe-window.png")
-            sample = image.crop((
-                max(0, window_rect.left + 120),
-                max(0, window_rect.top + 80),
-                min(1024, window_rect.right - 120),
-                min(768, window_rect.bottom - 100)))
-            if min(ImageStat.Stat(sample.convert("RGB")).mean) < 125:
-                raise RuntimeError("EXE screenshot is obscured by console/other window")
+            # The GitHub runner may put its console above the application.
+            # Capture the real HWND via Windows PrintWindow (Pillow 11.3+)
+            # rather than mislabeling a console screenshot as the EXE UI.
+            window_image = ImageGrab.grab(window=hwnd)
+            if (window_image.width < 790 or window_image.height < 550
+                    or min(ImageStat.Stat(window_image.convert("RGB")).mean) < 125):
+                raise RuntimeError("Actual EXE HWND capture is blank or too small")
+            window_image.save(output / "04-real-exe-window.png")
+            # Keep the unmodified desktop capture separately for context.
+            screenshot(output / "05-desktop-context.png")
         finally:
             if process.poll() is None:
                 process.terminate()
