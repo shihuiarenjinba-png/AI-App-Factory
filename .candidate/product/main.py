@@ -257,6 +257,17 @@ def default_path():
     return root / "FocusSessionDesk" / "state.json"
 
 
+def initial_window_geometry(screen_width, screen_height):
+    """Leave room for titlebar and taskbar on a 1024x768 Windows desktop."""
+    if (type(screen_width) is not int or type(screen_height) is not int
+            or screen_width < 830 or screen_height < 650):
+        raise ValueError("Display too small for the Focus Session Desk window")
+    width = min(940, screen_width - 40)
+    height = min(620, screen_height - 100)
+    left = max(0, (screen_width - width) // 2)
+    return f"{width}x{height}+{left}+20"
+
+
 class Desk:
     def __init__(self, root, path=None):
         self.root = root
@@ -266,7 +277,7 @@ class Desk:
         self.timer = FocusTimer(self.data["minutes"])
         self.data["session"] = "idle"
         self.lang = self.data["language"]
-        root.geometry("940x660")
+        root.geometry(initial_window_geometry(root.winfo_screenwidth(), root.winfo_screenheight()))
         root.minsize(790, 550)
         root.protocol("WM_DELETE_WINDOW", self.close)
         self.build()

@@ -1,0 +1,133 @@
+name: Focus window-fit Factory promotion and real Windows GUI QA
+on:
+  push:
+    branches:
+      - codex/app-focus-window-fit-promote-20261030
+    paths:
+      - .github/workflows/focus-window-fit-promote.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: focus-window-fit-owner-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  owner-promote:
+    if: github.ref == 'refs/heads/codex/app-focus-window-fit-promote-20261030'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      source_sha: ${{ steps.promote.outputs.source_sha }}
+      request_id: ${{ steps.promote.outputs.request_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate and promote reviewed Focus candidate through Factory
+        id: promote
+        run: python scripts/promote_focus_window_fit.py
+
+  windows-product-and-gui:
+    needs: owner-promote
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact promoted source and Factory lifecycle
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne "$env:SOURCE_SHA") { throw "Promoted source SHA mismatch" }
+          if ((git branch --show-current).Trim() -ne "codex/app-focus-window-fit-promote-20261030") { throw "Wrong branch" }
+          @'
+          import json
+          from pathlib import Path
+          state = json.loads(Path("factory/state.json").read_text(encoding="utf-8"))
+          assert state == {"schema": 1, "kind": "app", "stage": "research",
+                           "cycle": 2, "revision": 0, "slug": None}
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run all Factory and Focus product functional tests
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s products/focus-session-desk/tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install pinned Windows EXE and screenshot tools
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check "pyinstaller==6.16.0" "Pillow==11.3.0"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build request-bound unsigned Windows EXE from promoted source
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+          REQUEST_ID: ${{ needs.owner-promote.outputs.request_id }}
+        run: |
+          python tools/build_windows_exe.py --slug focus-session-desk --expected-sha "$env:SOURCE_SHA" --source-branch codex/app-focus-window-fit-promote-20261030 --request-id "$env:REQUEST_ID" --output dist/preidentity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Capture actual Windows 1024x768 source and EXE GUI evidence
+        shell: pwsh
+        env:
+          GITHUB_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+          FOCUS_REQUEST_ID: ${{ needs.owner-promote.outputs.request_id }}
+        run: |
+          python scripts/focus_windows_gui_evidence.py --output evidence/focus --exe dist/preidentity/focus-session-desk.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Verify source SHA, request and real EXE screenshot
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+          REQUEST_ID: ${{ needs.owner-promote.outputs.request_id }}
+        run: |
+          @'
+          import hashlib, json, os
+          from pathlib import Path
+          folder = Path("dist/preidentity")
+          receipt = json.loads((folder / "exe-receipt.json").read_text(encoding="utf-8"))
+          evidence = json.loads(Path("evidence/focus/evidence.json").read_text(encoding="utf-8"))
+          exe = folder / "focus-session-desk.exe"
+          assert exe.read_bytes()[:2] == b"MZ"
+          assert hashlib.sha256(exe.read_bytes()).hexdigest() == receipt["executable_sha256"]
+          assert receipt["source_sha"] == os.environ["SOURCE_SHA"]
+          assert receipt["request_id"] == os.environ["REQUEST_ID"]
+          assert receipt["store_id"] is None
+          assert evidence["source_sha"] == receipt["source_sha"]
+          assert evidence["request_id"] == receipt["request_id"]
+          assert evidence["result"] == "AUTOMATED_GUI_EVIDENCE_ONLY"
+          assert evidence["human_review"] == "NOT_PERFORMED"
+          assert evidence["msix_install"] == "NOT_PERFORMED"
+          for name in ("01-first-run.png", "02-actions-en.png",
+                       "03-restart-persisted.png", "04-real-exe-window.png"):
+              assert (Path("evidence/focus") / name).is_file()
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload immutable Focus EXE receipt and Windows GUI screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-window-fit-gui-${{ needs.owner-promote.outputs.source_sha }}
+          path: |
+            evidence/focus/
+            dist/preidentity/exe-receipt.json
+          if-no-files-found: warn
+          retention-days: 7

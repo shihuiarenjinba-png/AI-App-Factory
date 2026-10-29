@@ -25,6 +25,7 @@ def screenshot(path):
     image.save(path)
     if max(ImageStat.Stat(image.convert("RGB")).stddev) < 2:
         raise AssertionError("Captured screen is blank/uniform")
+    return image
 
 
 def require_screen(root):
@@ -145,7 +146,6 @@ def exe_smoke(exe, output):
                 time.sleep(0.5)
             if not hwnd:
                 raise RuntimeError("EXE did not expose a visible Focus Session Desk window")
-            screenshot(output / "04-real-exe-window.png")
             # A launched window is not consumer-ready if its controls sit
             # beneath the Windows taskbar. Use the actual desktop work area.
             class Rect(ctypes.Structure):
@@ -165,6 +165,16 @@ def exe_smoke(exe, output):
                     f"{window_rect.right},{window_rect.bottom}), "
                     f"workarea=({work_rect.left},{work_rect.top},"
                     f"{work_rect.right},{work_rect.bottom})")
+            # The GitHub runner may put its console above the application.
+            # Capture the real HWND via Windows PrintWindow (Pillow 11.3+)
+            # rather than mislabeling a console screenshot as the EXE UI.
+            window_image = ImageGrab.grab(window=hwnd)
+            if (window_image.width < 790 or window_image.height < 550
+                    or min(ImageStat.Stat(window_image.convert("RGB")).mean) < 125):
+                raise RuntimeError("Actual EXE HWND capture is blank or too small")
+            window_image.save(output / "04-real-exe-window.png")
+            # Keep the unmodified desktop capture separately for context.
+            screenshot(output / "05-desktop-context.png")
         finally:
             if process.poll() is None:
                 process.terminate()
