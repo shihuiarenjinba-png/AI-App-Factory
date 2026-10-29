@@ -19,3 +19,5 @@ Commercial favorites filter: a bilingual sidebar checkbox narrows search results
 Commercial Save As: bilingual toolbar action and Ctrl+Shift+S create a separate JSON notes file. Existing destinations and symlinks are rejected without changing the original. Saving a new copy changes the current document path only after successful persistence. The regular Save action continues to support backup-safe updates.
 
 Exclusive Save As and Restore: new files are written to a synced temporary file and published with an atomic no-clobber hard link. A concurrent file creation, existing symlink, or unsupported hardlink filesystem fails closed without overwriting the other file. Three regression tests exercise concurrent creation and cleanup.
+
+Commercial TXT export safety: exports now use the same atomic no-clobber publication as Save As/Restore. Existing filenames, concurrent creation and unsupported hardlink filesystems fail closed without destroying unrelated customer data. The UI explains the new-filename requirement in Japanese and English; three new regression tests cover success, race and hardlink failure.
