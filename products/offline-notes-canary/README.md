@@ -13,3 +13,5 @@ Safety revision 3: Save refuses unrelated JSON, damaged primary files (even with
 Commercial increment: an explicit bilingual Restore backup action loads a selected .bak database and writes recovery to a NEW unused JSON file. Existing files, damaged backups and symlinks are rejected. Three headless regressions cover non-destructive recovery. Consumer GUI and 1024x768 checks remain HOLD.
 
 Commercial search increment: while searching, visible matches in the selected note body are highlighted in place (up to 200 matches). No data is altered by search; matching and clearing are headlessly tested. Windows GUI 1024x768 and consumer review remain unverified.
+
+Commercial favorites filter: a bilingual sidebar checkbox narrows search results to starred notes without deleting or changing notes. Headless tests cover filtering, clearing and empty state. Windows GUI evidence for this exact revision is required.

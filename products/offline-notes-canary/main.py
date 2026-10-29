@@ -153,8 +153,8 @@ def safe_filename(title):
     return (name or "untitled") + ".txt"
 
 STRINGS = {
-    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。", "バックアップから復元", "タグ（カンマ区切り）", "☆ お気に入り", "★ お気に入り"],
-    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again.", "Restore backup", "Tags (comma-separated)", "☆ Favorite", "★ Favorited"]
+    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。", "バックアップから復元", "タグ（カンマ区切り）", "☆ お気に入り", "★ お気に入り", "お気に入りのみ"],
+    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again.", "Restore backup", "Tags (comma-separated)", "☆ Favorite", "★ Favorited", "Favorites only"]
 }
 
 class App:
@@ -168,6 +168,7 @@ class App:
         root.rowconfigure(1, weight=1)
         self.title, self.query, self.status, self.tag_text = tk.StringVar(), tk.StringVar(), tk.StringVar(), tk.StringVar()
         self.recent_ids = []
+        self.favorites_only = tk.BooleanVar(value=False)
         bar = ttk.Frame(root, padding=8)
         bar.grid(row=0, column=0, sticky="ew")
         self.buttons = []
@@ -181,13 +182,16 @@ class App:
         pane.grid(row=1, column=0, sticky="nsew", padx=8)
         left = ttk.Frame(pane, padding=4)
         left.columnconfigure(0, weight=1)
-        left.rowconfigure(2, weight=1)
+        left.rowconfigure(3, weight=1)
         self.search_label = ttk.Label(left)
         self.search_label.grid(row=0, column=0, sticky="w")
         self.search_entry = ttk.Entry(left, textvariable=self.query)
         self.search_entry.grid(row=1, column=0, sticky="ew")
+        self.favorites_check = ttk.Checkbutton(
+            left, variable=self.favorites_only, command=self.refresh_list)
+        self.favorites_check.grid(row=2, column=0, sticky="w", pady=(5, 3))
         self.listbox = tk.Listbox(left, exportselection=False)
-        self.listbox.grid(row=2, column=0, sticky="nsew")
+        self.listbox.grid(row=3, column=0, sticky="nsew")
         self.listbox.bind("<<ListboxSelect>>", self.select)
         pane.add(left, weight=1)
         right = ttk.Frame(pane, padding=4)
@@ -227,6 +231,7 @@ class App:
         for i, b in enumerate(self.buttons):
             b.configure(text=self.t(i + 1 if i < 6 else 19))
         self.search_label.configure(text=self.t(7))
+        self.favorites_check.configure(text=self.t(23))
         self.title_label.configure(text=self.t(8))
         self.tag_label.configure(text=self.t(20))
         self.refresh_favorite_button()
@@ -305,6 +310,9 @@ class App:
             notes = [{**n, "title": title, "body": body, "tags": draft_tags}
                      if n["id"] == self.current else n for n in self.notes]
         filtered = search_notes(notes, self.query.get())
+        only_favorites = getattr(self, "favorites_only", None)
+        if only_favorites is not None and only_favorites.get():
+            filtered = [n for n in filtered if n.get("favorite", False)]
         recent = getattr(self, "recent_ids", [])
         filtered.sort(key=lambda n: (
             not n.get("favorite", False),

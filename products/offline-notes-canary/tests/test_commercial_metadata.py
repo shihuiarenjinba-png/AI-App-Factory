@@ -71,6 +71,36 @@ class CommercialMetadataTests(unittest.TestCase):
         self.assertEqual(app.visible, [self.note["id"]])
         self.assertNotIn("tags", app.notes[0])
 
+    def test_favorites_only_filters_without_mutating_notes(self):
+        favorite = {**self.note, "favorite": True}
+        other = new_note()
+        other.update(title="Report two", body="Other report")
+        favorite["title"] = "Report one"
+        app = App.__new__(App)
+        app.notes, app.current, app.loading = [favorite, other], None, False
+        app.recent_ids = []
+        app.query, app.listbox, app.favorites_only = Mock(), Mock(), Mock()
+        app.query.get.return_value = "report"
+        app.favorites_only.get.return_value = True
+        app.refresh_list()
+        self.assertEqual(app.visible, [favorite["id"]])
+        app.favorites_only.get.return_value = False
+        app.refresh_list()
+        self.assertEqual(set(app.visible), {favorite["id"], other["id"]})
+        self.assertEqual(app.notes, [favorite, other])
+
+    def test_favorites_only_empty_state_and_bilingual_label(self):
+        from main import STRINGS
+        self.assertEqual(STRINGS["ja"][23], "お気に入りのみ")
+        self.assertEqual(STRINGS["en"][23], "Favorites only")
+        app = App.__new__(App)
+        app.notes, app.current, app.loading = [], None, False
+        app.query, app.listbox, app.favorites_only = Mock(), Mock(), Mock()
+        app.query.get.return_value = ""
+        app.favorites_only.get.return_value = True
+        app.refresh_list()
+        self.assertEqual(app.visible, [])
+
     def test_schema1_backward_compatibility(self):
         save_notes(self.path, [self.note])
         self.assertEqual(json.loads(self.path.read_text(encoding="utf-8"))["schema"], 1)
