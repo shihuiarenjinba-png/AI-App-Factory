@@ -5,6 +5,7 @@ on:
       - codex/app-focus-window-fit-promote-20261030
     paths:
       - .github/workflows/focus-window-fit-evidence.yml
+      - scripts/focus_windows_gui_evidence.py
   workflow_dispatch:
 
 permissions:
