@@ -1,8 +1,8 @@
 {
   "schema": 1,
   "kind": "app",
-  "stage": "research",
+  "stage": "improve",
   "cycle": 1,
-  "revision": 0,
-  "slug": null
+  "revision": 1,
+  "slug": "focus-session-desk"
 }
