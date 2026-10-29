@@ -280,7 +280,10 @@ WORDS = {
         "finish": "集中時間が終了しました。お疲れさまでした！",
         "running": "実行中", "paused": "一時停止中", "idle": "準備完了", "finished": "完了",
         "duration": "時間を変更", "cancel": "キャンセル", "ok": "OK",
-        "preset_25": "25分で開始", "preset_50": "50分で開始"
+        "preset_25": "25分で開始", "preset_50": "50分で開始",
+        "history": "履歴", "today_summary": "今日: {count}回 / {minutes}分",
+        "history_empty": "完了したセッションはまだありません。",
+        "history_line": "{day} · {minutes}分"
     },
     "en": {
         "name": "Focus Session Desk", "subtitle": "Offline focus timer and task checklist",
@@ -294,7 +297,10 @@ WORDS = {
         "finish": "Focus session finished. Nice work!",
         "running": "Running", "paused": "Paused", "idle": "Ready", "finished": "Finished",
         "duration": "Apply duration", "cancel": "Cancel", "ok": "OK",
-        "preset_25": "Start 25 min", "preset_50": "Start 50 min"
+        "preset_25": "Start 25 min", "preset_50": "Start 50 min",
+        "history": "History", "today_summary": "Today: {count} sessions / {minutes} min",
+        "history_empty": "No completed sessions yet.",
+        "history_line": "{day} · {minutes} min"
     }
 }
 
@@ -400,6 +406,10 @@ class Desk:
         footer.pack(fill="x", pady=(10, 0))
         self.status = ttk.Label(footer)
         self.status.pack(side="left")
+        self.summary = ttk.Label(footer)
+        self.summary.pack(side="left", padx=(14, 0))
+        self.history_button = ttk.Button(footer, command=self.show_history)
+        self.history_button.pack(side="right", padx=(6, 0))
         self.language_button = ttk.Button(footer, command=self.switch_language)
         self.language_button.pack(side="right")
         self.entry.focus_set()
@@ -417,6 +427,7 @@ class Desk:
         for preset, button in self.preset_buttons.items():
             button.configure(text=self.words(f"preset_{preset}"))
         self.language_button.configure(text=self.words("language"))
+        self.history_button.configure(text=self.words("history"))
         self.tree.heading("title", text=self.words("tasks"))
         for key, button in self.buttons:
             button.configure(text=self.words(key))
@@ -452,6 +463,8 @@ class Desk:
         if previous and self.tree.exists(previous[0]):
             self.tree.selection_set(previous[0])
         self.empty.configure(text=self.words("empty") if not self.data["tasks"] else "")
+        count, minutes = today_totals(self.data)
+        self.summary.configure(text=self.words("today_summary").format(count=count, minutes=minutes))
         self.timer_state.configure(text=self.words(self.timer.state))
         self.pause_button.configure(text=self.words("resume") if self.timer.state == "paused" else self.words("pause"))
         self.clock_label.configure(text=self.timer.display())
@@ -544,12 +557,21 @@ class Desk:
         if self.action(lambda: setattr(self, "lang", target)):
             self.relabel()
 
+    def show_history(self):
+        records = list(reversed(self.data.get("history", [])))
+        if not records:
+            messagebox.showinfo(self.words("history"), self.words("history_empty"))
+            return
+        lines = [self.words("history_line").format(**entry) for entry in records[:30]]
+        messagebox.showinfo(self.words("history"), "\n".join(lines))
+
     def tick(self):
         was = self.timer.state
         self.timer.tick()
         self.clock_label.configure(text=self.timer.display())
         self.timer_state.configure(text=self.words(self.timer.state))
         if was != "finished" and self.timer.state == "finished":
+            record_completed_session(self.data, self.timer.minutes)
             try:
                 self.save()
             except (OSError, ValueError) as exc:
