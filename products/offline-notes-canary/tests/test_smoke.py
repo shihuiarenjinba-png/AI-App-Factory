@@ -301,27 +301,32 @@ class Smoke(unittest.TestCase):
                 self.assertTrue(export_path.is_file())
                 self.assertTrue(app.status.set.call_args.args[0].startswith("TXT書き出し完了" if lang == "ja" else "TXT exported"))
 
-    def test_export_overwrite_confirmation_localized(self):
+    def test_export_existing_file_is_rejected_in_both_languages(self):
         from main import App
         from unittest.mock import Mock
-        for lang, expected in (("ja", "既存ファイルを上書きしますか？"), ("en", "Overwrite existing file?")):
+        for lang, expected in (
+            ("ja", "TXT書き出しには未使用のファイル名を選択してください。"),
+            ("en", "Choose a new, unused filename for TXT export."),
+        ):
             with self.subTest(lang=lang):
                 path = Path(self.tmp.name) / ("existing_" + lang + ".txt")
-                path.write_text("original", encoding="utf-8")
+                path.write_text("OTHER CUSTOMER DATA", encoding="utf-8")
                 app = App.__new__(App)
                 app.notes = [self.note]
                 app.current = self.note["id"]
                 app.lang = lang
                 app.dirty = True
                 app.status = Mock()
+                app.error = Mock()
                 app.commit_editor = lambda: None
                 with patch("main.filedialog.asksaveasfilename", return_value=str(path)), \
-                     patch("main.messagebox.askyesno", return_value=False) as confirm:
+                     patch("main.messagebox.askyesno") as confirm:
                     app.export()
-                self.assertEqual(confirm.call_count, 1)
-                self.assertEqual(confirm.call_args.args[1], expected)
-                self.assertEqual(path.read_text(encoding="utf-8"), "original")
+                confirm.assert_not_called()
+                self.assertEqual(path.read_text(encoding="utf-8"), "OTHER CUSTOMER DATA")
                 self.assertTrue(app.dirty)
+                app.error.assert_called_once()
+                self.assertEqual(str(app.error.call_args.args[0]), expected)
 
     def test_error_guidance_localized(self):
         from main import App

@@ -191,6 +191,55 @@ class CommercialMetadataTests(unittest.TestCase):
         self.assertTrue(app.dirty)
         app.error.assert_called_once()
 
+    def test_txt_export_to_unused_filename_preserves_notes_database(self):
+        save_notes(self.path, [self.note])
+        original = self.path.read_bytes()
+        destination = Path(self.tmp.name) / "new-export.txt"
+        app = App.__new__(App)
+        app.notes, app.current, app.path = [self.note], self.note["id"], self.path
+        app.lang, app.dirty = "en", True
+        app.commit_editor, app.status, app.error = Mock(), Mock(), Mock()
+        with patch("main.filedialog.asksaveasfilename", return_value=str(destination)):
+            app.export()
+        self.assertEqual(destination.read_text(encoding="utf-8"), "Project\n\nDraft text\n")
+        self.assertEqual(self.path.read_bytes(), original)
+        self.assertTrue(app.dirty)
+        app.error.assert_not_called()
+
+    def test_txt_export_concurrent_create_cannot_clobber_foreign_file(self):
+        destination = Path(self.tmp.name) / "race-export.txt"
+        app = App.__new__(App)
+        app.notes, app.current, app.path = [self.note], self.note["id"], self.path
+        app.lang, app.dirty = "ja", True
+        app.commit_editor, app.status, app.error = Mock(), Mock(), Mock()
+        real_link = os.link
+
+        def competing_create(src, dst):
+            Path(dst).write_bytes(b"FOREIGN DATA")
+            return real_link(src, dst)
+
+        with patch("main.filedialog.asksaveasfilename", return_value=str(destination)), \
+             patch("main.os.link", side_effect=competing_create):
+            app.export()
+        self.assertEqual(destination.read_bytes(), b"FOREIGN DATA")
+        self.assertTrue(app.dirty)
+        self.assertEqual(list(Path(self.tmp.name).glob(".notes-*")), [])
+        app.error.assert_called_once()
+
+    def test_txt_export_hardlink_unavailable_fails_closed(self):
+        destination = Path(self.tmp.name) / "denied-export.txt"
+        app = App.__new__(App)
+        app.notes, app.current, app.path = [self.note], self.note["id"], self.path
+        app.lang, app.dirty = "en", True
+        app.commit_editor, app.status, app.error = Mock(), Mock(), Mock()
+        with patch("main.filedialog.asksaveasfilename", return_value=str(destination)), \
+             patch("main.os.link", side_effect=PermissionError("hardlink denied")):
+            app.export()
+        self.assertFalse(destination.exists())
+        self.assertTrue(app.dirty)
+        self.assertEqual(list(Path(self.tmp.name).glob(".notes-*")), [])
+        app.error.assert_called_once()
+
     def test_schema1_backward_compatibility(self):
         save_notes(self.path, [self.note])
         self.assertEqual(json.loads(self.path.read_text(encoding="utf-8"))["schema"], 1)

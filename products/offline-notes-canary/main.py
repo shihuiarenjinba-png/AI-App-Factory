@@ -104,9 +104,8 @@ def notes_payload(notes):
         raise ValueError("Notes exceed 5 MB")
     return payload
 
-def save_notes_new(path, notes):
-    """Atomically create a new notes file, never replacing a competing path."""
-    payload = notes_payload(notes)
+def atomic_create_new(path, data):
+    """Create an unused file atomically; never overwrite a concurrent writer."""
     path = Path(path)
     if not path.parent.is_dir():
         raise ValueError("Choose an existing destination folder")
@@ -114,16 +113,20 @@ def save_notes_new(path, notes):
     try:
         with tempfile.NamedTemporaryFile(dir=path.parent, prefix=".notes-", delete=False) as f:
             temp = Path(f.name)
-            f.write(payload)
+            f.write(data)
             f.flush()
             os.fsync(f.fileno())
-        # Hard-link creation is atomic and fails if the destination exists,
-        # including when another process creates it after the file dialog.
-        # Unsupported filesystems fail closed rather than falling back to replace.
+        # Atomic no-clobber publication, including existing symlinks.
+        # Unsupported hardlink filesystems fail closed.
         os.link(temp, path)
     finally:
         if temp is not None:
             temp.unlink(missing_ok=True)
+
+
+def save_notes_new(path, notes):
+    atomic_create_new(path, notes_payload(notes))
+
 
 def save_notes(path, notes):
     payload = notes_payload(notes)
@@ -178,8 +181,8 @@ def safe_filename(title):
     return (name or "untitled") + ".txt"
 
 STRINGS = {
-    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。", "バックアップから復元", "タグ（カンマ区切り）", "☆ お気に入り", "★ お気に入り", "お気に入りのみ", "名前を付けて保存"],
-    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again.", "Restore backup", "Tags (comma-separated)", "☆ Favorite", "★ Favorited", "Favorites only", "Save As"]
+    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。", "バックアップから復元", "タグ（カンマ区切り）", "☆ お気に入り", "★ お気に入り", "お気に入りのみ", "名前を付けて保存", "TXT書き出しには未使用のファイル名を選択してください。"],
+    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again.", "Restore backup", "Tags (comma-separated)", "☆ Favorite", "★ Favorited", "Favorites only", "Save As", "Choose a new, unused filename for TXT export."]
 }
 
 class App:
@@ -525,9 +528,10 @@ class App:
                     path.exists() and item.exists() and os.path.samefile(path, item)
                 ) for item in protected):
                     raise ValueError("TXT export cannot overwrite the notes database or backup")
-            if path.exists() and not messagebox.askyesno(self.t(0), self.t(17)):
-                return
-            atomic_write(path, (n["title"] + "\n\n" + n["body"] + "\n").encode("utf-8"))
+            try:
+                atomic_create_new(path, (n["title"] + "\n\n" + n["body"] + "\n").encode("utf-8"))
+            except FileExistsError as exc:
+                raise ValueError(self.t(25)) from exc
             self.status.set(self.t(16) + " — " + str(path))
         except (OSError, ValueError) as exc:
             self.error(exc)
