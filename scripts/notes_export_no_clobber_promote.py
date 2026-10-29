@@ -171,7 +171,7 @@ def save_notes_new(path, notes):
         app.commit_editor, app.status, app.error = Mock(), Mock(), Mock()
         with patch("main.filedialog.asksaveasfilename", return_value=str(destination)):
             app.export()
-        self.assertEqual(destination.read_text(encoding="utf-8"), "Project\\\\n\\\\nDraft text\\\\n")
+        self.assertEqual(destination.read_text(encoding="utf-8"), "Project\\n\\nDraft text\\n")
         self.assertEqual(self.path.read_bytes(), original)
         self.assertTrue(app.dirty)
         app.error.assert_not_called()
