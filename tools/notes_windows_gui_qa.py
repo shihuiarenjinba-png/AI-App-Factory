@@ -22,7 +22,7 @@ from main import App, read_notes
 
 OUT = Path(os.environ.get("GUI_QA_OUTPUT", "dist/notes-gui-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
-EXPECTED_SOURCE = "06a076fcbc5b06760fc489aace43725eb62d9c47"
+EXPECTED_SOURCE = os.environ.get("EXPECTED_SOURCE_SHA", "06a076fcbc5b06760fc489aace43725eb62d9c47")
 
 
 def assert_fits(root, app):
@@ -31,7 +31,7 @@ def assert_fits(root, app):
     right = left + root.winfo_width()
     top = root.winfo_rooty()
     bottom = top + root.winfo_height()
-    elements = list(app.buttons) + [app.favorite_button, app.favorites_check, app.search_entry,
+    elements = list(app.buttons) + [app.favorite_button, app.save_as_button, app.favorites_check, app.search_entry,
                                    app.listbox, app.title_entry, app.tag_entry, app.body]
     for widget in elements:
         x, y = widget.winfo_rootx(), widget.winfo_rooty()
@@ -76,10 +76,18 @@ def run():
             with patch("main.filedialog.asksaveasfilename", return_value=str(data)):
                 assert app.save() is True
             assert data.is_file()
+            # Exercise real bilingual Save As with a new filename, without overwriting.
+            copy_path = Path(tmp) / "notes-safe-copy.json"
+            with patch("main.filedialog.asksaveasfilename", return_value=str(copy_path)):
+                assert app.save_as() is True
+            assert copy_path.is_file() and app.path == copy_path
+            assert read_notes(copy_path) == read_notes(data)
+            report["save_as_new_file"] = True
             app.query.set("Sample")
             root.update()
             assert len(app.body.tag_ranges("search_match")) == 4
             assert app.favorites_check.cget("text") == "お気に入りのみ"
+            assert app.save_as_button.cget("text") == "名前を付けて保存"
             app.favorites_check.invoke()
             root.update()
             assert app.favorites_only.get() and app.visible == [app.current]
@@ -89,6 +97,7 @@ def run():
             app.language()
             root.update()
             assert app.favorites_check.cget("text") == "Favorites only"
+            assert app.save_as_button.cget("text") == "Save As"
             assert app.lang == "en" and root.title() == "Offline Notes"
             assert not app.dirty and app.status.get() == "Saved", "False unsaved state after Save"
             positions = assert_fits(root, app)
