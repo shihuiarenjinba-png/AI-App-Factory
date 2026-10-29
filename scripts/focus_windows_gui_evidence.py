@@ -203,7 +203,7 @@ def main():
         "product": "Focus Session Desk",
         "slug": "focus-session-desk",
         "source_branch": os.environ.get("GITHUB_REF_NAME"),
-        "source_sha": os.environ.get("GITHUB_SHA"),
+        "source_sha": os.environ.get("FOCUS_SOURCE_SHA") or os.environ.get("GITHUB_SHA"),
         "request_id": os.environ.get("FOCUS_REQUEST_ID"),
         "desktop": "Windows 1024x768",
         "human_review": "NOT_PERFORMED",
