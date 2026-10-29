@@ -5,6 +5,9 @@ on:
       - codex/app-notes-search-highlight-promote-20261029
     paths:
       - .github/workflows/notes-windows-gui-qa.yml
+      - products/offline-notes-canary/main.py
+      - products/offline-notes-canary/tests/**
+      - tools/notes_windows_gui_qa.py
   workflow_dispatch:
 
 permissions:
