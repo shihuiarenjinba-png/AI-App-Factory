@@ -1,0 +1,101 @@
+name: Focus promoted window-fit exact-source Windows GUI evidence
+on:
+  push:
+    branches:
+      - codex/app-focus-window-fit-promote-20261030
+    paths:
+      - .github/workflows/focus-window-fit-evidence.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focus-window-fit-evidence-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  real-windows-gui:
+    if: github.ref == 'refs/heads/codex/app-focus-window-fit-promote-20261030'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify promoted source and prepare immutable request
+        shell: pwsh
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne "$env:GITHUB_SHA") { throw "Exact source mismatch" }
+          if ((git branch --show-current).Trim() -ne "$env:GITHUB_REF_NAME") { throw "Branch mismatch" }
+          @'
+          import json
+          from pathlib import Path
+          state = json.loads(Path("factory/state.json").read_text(encoding="utf-8"))
+          assert state == {"schema": 1, "kind": "app", "stage": "research",
+                           "cycle": 2, "revision": 0, "slug": None}
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $id = "app-focus-window-fit-" + $env:GITHUB_SHA.Substring(0, 12)
+          "FOCUS_REQUEST_ID=$id" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+      - name: Run Factory and product functional tests
+        shell: pwsh
+        run: |
+          python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s products/focus-session-desk/tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install pinned EXE builder and image evidence dependency
+        shell: pwsh
+        run: |
+          python -m pip install --disable-pip-version-check "pyinstaller==6.16.0" "Pillow==11.3.0"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Build actual unsigned Windows EXE from this exact source
+        shell: pwsh
+        run: |
+          python tools/build_windows_exe.py --slug focus-session-desk --expected-sha "$env:GITHUB_SHA" --source-branch "$env:GITHUB_REF_NAME" --request-id "$env:FOCUS_REQUEST_ID" --output dist/preidentity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Run 1024x768 desktop, persistence and EXE work-area checks
+        shell: pwsh
+        run: |
+          python scripts/focus_windows_gui_evidence.py --output evidence/focus --exe dist/preidentity/focus-session-desk.exe
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate evidence correlation and screenshots
+        shell: pwsh
+        run: |
+          @'
+          import hashlib, json, os
+          from pathlib import Path
+          receipt = json.loads(Path("dist/preidentity/exe-receipt.json").read_text(encoding="utf-8"))
+          evidence = json.loads(Path("evidence/focus/evidence.json").read_text(encoding="utf-8"))
+          exe = Path("dist/preidentity/focus-session-desk.exe")
+          assert receipt["source_sha"] == os.environ["GITHUB_SHA"]
+          assert receipt["request_id"] == os.environ["FOCUS_REQUEST_ID"]
+          assert receipt["store_id"] is None
+          assert exe.read_bytes()[:2] == b"MZ"
+          assert hashlib.sha256(exe.read_bytes()).hexdigest() == receipt["executable_sha256"]
+          assert evidence["source_sha"] == receipt["source_sha"]
+          assert evidence["request_id"] == receipt["request_id"]
+          assert evidence["result"] == "AUTOMATED_GUI_EVIDENCE_ONLY"
+          assert evidence["human_review"] == "NOT_PERFORMED"
+          assert evidence["msix_install"] == "NOT_PERFORMED"
+          for name in ("01-first-run.png", "02-actions-en.png",
+                       "03-restart-persisted.png", "04-real-exe-window.png"):
+              assert (Path("evidence/focus") / name).is_file()
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Upload exact-source GUI and EXE receipt evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-window-fit-final-${{ github.sha }}
+          path: |
+            evidence/focus/
+            dist/preidentity/exe-receipt.json
+          if-no-files-found: warn
+          retention-days: 7
