@@ -1,0 +1,33 @@
+name: Offline Notes commercial metadata tests
+on:
+  push:
+    branches:
+      - codex/app-notes-tags-favorites-20261029
+    paths:
+      - products/offline-notes-canary/**
+      - .github/workflows/notes-commercial-metadata-ci.yml
+  pull_request:
+    paths:
+      - products/offline-notes-canary/**
+      - .github/workflows/notes-commercial-metadata-ci.yml
+permissions:
+  contents: read
+jobs:
+  product-functional:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile product entrypoint
+        run: python -m py_compile products/offline-notes-canary/main.py
+      - name: Run all Offline Notes product tests (headless)
+        run: python -m unittest discover -s products/offline-notes-canary/tests -p "test*.py" -v
