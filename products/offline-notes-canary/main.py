@@ -297,8 +297,13 @@ class App:
         notes = self.notes
         if self.current and not self.loading:
             title, body = self.title.get(), self.body.get("1.0", "end-1c")
-            notes = [{**n, "title": title, "body": body} if n["id"] == self.current else n
-                     for n in self.notes]
+            # Include draft tags in search results without committing them.
+            # Partial/invalid input is allowed while typing; Save validates it.
+            tag_widget = getattr(self, "tag_text", None)
+            draft_tags = ([part.strip() for part in re.split(r"[,、]", tag_widget.get())
+                           if part.strip()] if tag_widget is not None else [])
+            notes = [{**n, "title": title, "body": body, "tags": draft_tags}
+                     if n["id"] == self.current else n for n in self.notes]
         filtered = search_notes(notes, self.query.get())
         recent = getattr(self, "recent_ids", [])
         filtered.sort(key=lambda n: (
