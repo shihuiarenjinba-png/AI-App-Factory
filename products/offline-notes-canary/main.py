@@ -136,6 +136,16 @@ def search_notes(notes, term):
     q = term.strip().casefold()
     return [n for n in notes if q in (n["title"] + "\n" + n["body"] + "\n" + " ".join(n.get("tags", []))).casefold()]
 
+def find_matches(text, query, limit=200):
+    """Return bounded, non-overlapping offsets for a visible search highlight."""
+    if not isinstance(text, str) or not isinstance(query, str):
+        raise ValueError("Search requires text")
+    needle = query.strip()
+    if not needle or len(needle) > 200:
+        return []
+    return [(match.start(), match.end()) for _, match in zip(
+        range(limit), re.finditer(re.escape(needle), text, flags=re.IGNORECASE))]
+
 def safe_filename(title):
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", title).strip(" .")[:80]
     if name.split(".", 1)[0].rstrip(" ").upper() in {"CON", "PRN", "AUX", "NUL", *(f"COM{i}" for i in (*range(1, 10), "¹", "²", "³")), *(f"LPT{i}" for i in (*range(1, 10), "¹", "²", "³"))}:
@@ -194,10 +204,11 @@ class App:
         self.body = tk.Text(right, wrap="word", undo=True)
         self.body.grid(row=4, column=0, sticky="nsew")
         self.body.bind("<<Modified>>", self.body_changed)
+        self.body.tag_configure("search_match", background="#ffe59a")
         pane.add(right, weight=3)
         ttk.Label(root, textvariable=self.status, padding=8).grid(row=2, column=0, sticky="ew")
         self.visible = []
-        self.query.trace_add("write", lambda *_: self.refresh_list())
+        self.query.trace_add("write", lambda *_: (self.refresh_list(), self.highlight_search()))
         self.title.trace_add("write", lambda *_: self.changed())
         self.tag_text.trace_add("write", lambda *_: self.changed())
         root.bind("<Control-n>", lambda _: self.new())
@@ -261,6 +272,7 @@ class App:
         if self.body.edit_modified():
             self.body.edit_modified(False)
             self.changed()
+            self.highlight_search()
 
     def commit_editor(self):
         n = next((n for n in self.notes if n["id"] == self.current), None)
@@ -318,6 +330,19 @@ class App:
         self.body.edit_modified(False)
         self.loading = False
         self.refresh_list()
+        self.highlight_search()
+
+    def highlight_search(self):
+        """Highlight matches in the active note body; never modify note data."""
+        self.body.tag_remove("search_match", "1.0", "end")
+        if not self.current:
+            return
+        query = self.query.get()
+        if not query.strip():
+            return
+        text = self.body.get("1.0", "end-1c")
+        for start, end in find_matches(text, query):
+            self.body.tag_add("search_match", f"1.0+{start}c", f"1.0+{end}c")
 
     def select(self, _event=None):
         sel = self.listbox.curselection()
