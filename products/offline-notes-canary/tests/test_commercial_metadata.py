@@ -7,7 +7,7 @@ from pathlib import Path
 from unittest.mock import Mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
-from main import App, new_note, normalize_tags, read_notes, save_notes, search_notes, validate_notes
+from main import App, find_matches, new_note, normalize_tags, read_notes, save_notes, search_notes, validate_notes
 
 
 class CommercialMetadataTests(unittest.TestCase):
@@ -17,6 +17,89 @@ class CommercialMetadataTests(unittest.TestCase):
         self.path = Path(self.tmp.name) / "notes.json"
         self.note = new_note()
         self.note.update(title="Project", body="Draft text")
+
+    def test_search_match_offsets_unicode_case_and_bounds(self):
+        self.assertEqual(find_matches("alpha ALPHA alpha", "alpha"),
+                         [(0, 5), (6, 11), (12, 17)])
+        self.assertEqual(find_matches("メモで検索メモ", "メモ"), [(0, 2), (5, 7)])
+        self.assertEqual(find_matches("abc", ""), [])
+        self.assertEqual(find_matches("aaaaa", "a", limit=2), [(0, 1), (1, 2)])
+
+    def test_body_highlights_are_visual_only_and_cleared(self):
+        app = App.__new__(App)
+        app.current = self.note["id"]
+        app.body, app.query = Mock(), Mock()
+        app.body.get.return_value = "Alpha alpha"
+        app.query.get.return_value = "alpha"
+        app.highlight_search()
+        self.assertEqual(app.body.tag_add.call_count, 2)
+        app.body.tag_add.assert_any_call("search_match", "1.0+0c", "1.0+5c")
+        app.body.tag_add.assert_any_call("search_match", "1.0+6c", "1.0+11c")
+        app.query.get.return_value = ""
+        app.highlight_search()
+        self.assertEqual(app.body.tag_remove.call_count, 2)
+        self.assertEqual(app.body.tag_add.call_count, 2)
+
+    def test_live_tag_search_uses_unsaved_editor_without_mutating_database(self):
+        app = App.__new__(App)
+        app.notes, app.current, app.loading = [dict(self.note)], self.note["id"], False
+        app.recent_ids = []
+        app.title, app.body, app.tag_text = Mock(), Mock(), Mock()
+        app.title.get.return_value = self.note["title"]
+        app.body.get.return_value = self.note["body"]
+        app.tag_text.get.return_value = "研究,  urgent "
+        app.query, app.listbox = Mock(), Mock()
+        app.query.get.return_value = "研究"
+        app.refresh_list()
+        self.assertEqual(app.visible, [self.note["id"]])
+        self.assertNotIn("tags", app.notes[0], "search preview must never save draft tags")
+        app.tag_text.get.return_value = ""
+        app.refresh_list()
+        self.assertEqual(app.visible, [], "cleared draft tags must disappear from search")
+
+    def test_live_tag_search_handles_incomplete_invalid_draft(self):
+        app = App.__new__(App)
+        app.notes, app.current, app.loading = [dict(self.note)], self.note["id"], False
+        app.recent_ids = []
+        app.title, app.body, app.tag_text = Mock(), Mock(), Mock()
+        app.title.get.return_value = self.note["title"]
+        app.body.get.return_value = self.note["body"]
+        app.tag_text.get.return_value = "work,WORK,、"
+        app.query, app.listbox = Mock(), Mock()
+        app.query.get.return_value = "work"
+        app.refresh_list()
+        self.assertEqual(app.visible, [self.note["id"]])
+        self.assertNotIn("tags", app.notes[0])
+
+    def test_favorites_only_filters_without_mutating_notes(self):
+        favorite = {**self.note, "favorite": True}
+        other = new_note()
+        other.update(title="Report two", body="Other report")
+        favorite["title"] = "Report one"
+        app = App.__new__(App)
+        app.notes, app.current, app.loading = [favorite, other], None, False
+        app.recent_ids = []
+        app.query, app.listbox, app.favorites_only = Mock(), Mock(), Mock()
+        app.query.get.return_value = "report"
+        app.favorites_only.get.return_value = True
+        app.refresh_list()
+        self.assertEqual(app.visible, [favorite["id"]])
+        app.favorites_only.get.return_value = False
+        app.refresh_list()
+        self.assertEqual(set(app.visible), {favorite["id"], other["id"]})
+        self.assertEqual(app.notes, [favorite, other])
+
+    def test_favorites_only_empty_state_and_bilingual_label(self):
+        from main import STRINGS
+        self.assertEqual(STRINGS["ja"][23], "お気に入りのみ")
+        self.assertEqual(STRINGS["en"][23], "Favorites only")
+        app = App.__new__(App)
+        app.notes, app.current, app.loading = [], None, False
+        app.query, app.listbox, app.favorites_only = Mock(), Mock(), Mock()
+        app.query.get.return_value = ""
+        app.favorites_only.get.return_value = True
+        app.refresh_list()
+        self.assertEqual(app.visible, [])
 
     def test_schema1_backward_compatibility(self):
         save_notes(self.path, [self.note])
