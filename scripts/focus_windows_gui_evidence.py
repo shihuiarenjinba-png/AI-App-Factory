@@ -146,6 +146,25 @@ def exe_smoke(exe, output):
             if not hwnd:
                 raise RuntimeError("EXE did not expose a visible Focus Session Desk window")
             screenshot(output / "04-real-exe-window.png")
+            # A launched window is not consumer-ready if its controls sit
+            # beneath the Windows taskbar. Use the actual desktop work area.
+            class Rect(ctypes.Structure):
+                _fields_ = [("left", wintypes.LONG), ("top", wintypes.LONG),
+                            ("right", wintypes.LONG), ("bottom", wintypes.LONG)]
+            window_rect, work_rect = Rect(), Rect()
+            if not user32.GetWindowRect(hwnd, ctypes.byref(window_rect)):
+                raise RuntimeError("Cannot inspect EXE window bounds")
+            if not user32.SystemParametersInfoW(48, 0, ctypes.byref(work_rect), 0):
+                raise RuntimeError("Cannot inspect Windows desktop work area")
+            if (window_rect.left < work_rect.left or window_rect.top < work_rect.top
+                    or window_rect.right > work_rect.right
+                    or window_rect.bottom > work_rect.bottom):
+                raise RuntimeError(
+                    f"EXE window overlaps taskbar or desktop edge: "
+                    f"window=({window_rect.left},{window_rect.top},"
+                    f"{window_rect.right},{window_rect.bottom}), "
+                    f"workarea=({work_rect.left},{work_rect.top},"
+                    f"{work_rect.right},{work_rect.bottom})")
         finally:
             if process.poll() is None:
                 process.terminate()
