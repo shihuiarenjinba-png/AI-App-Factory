@@ -130,7 +130,7 @@ def main():
             Path(dst).write_bytes(b"OTHER PROCESS DATA")
             return actual_link(src, dst)
 
-        with patch("main.filedialog.asksaveasfilename", return_value=str(destination)), \\
+        with patch("main.filedialog.asksaveasfilename", return_value=str(destination)), \
              patch("main.os.link", side_effect=competing_create):
             self.assertFalse(app.save_as())
         self.assertEqual(destination.read_bytes(), b"OTHER PROCESS DATA")
@@ -162,8 +162,8 @@ def main():
             Path(dst).write_bytes(b"DO NOT REPLACE")
             return actual_link(src, dst)
 
-        with patch("main.filedialog.askopenfilename", return_value=str(backup)), \\
-             patch("main.filedialog.asksaveasfilename", return_value=str(destination)), \\
+        with patch("main.filedialog.askopenfilename", return_value=str(backup)), \
+             patch("main.filedialog.asksaveasfilename", return_value=str(destination)), \
              patch("main.os.link", side_effect=competing_create):
             app.restore_backup()
         self.assertEqual(destination.read_bytes(), b"DO NOT REPLACE")
