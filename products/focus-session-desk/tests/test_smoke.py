@@ -8,7 +8,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from main import (
     FocusTimer, add_task, blank_document, delete_task, find_task, load_document,
     move_task, new_task, rename_task, save_document, toggle_task,
-    validate_document, validate_minutes
+    validate_document, validate_minutes, initial_window_geometry
 )
 
 
@@ -18,6 +18,15 @@ class FocusDeskTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.path = Path(self.temp.name) / "state.json"
         self.data = blank_document()
+
+    def test_window_geometry_keeps_1024x768_controls_above_taskbar(self):
+        self.assertEqual(initial_window_geometry(1024, 768), "940x620+42+20")
+        self.assertEqual(initial_window_geometry(1280, 720), "940x620+170+20")
+        self.assertEqual(initial_window_geometry(1920, 1080), "940x620+490+20")
+        for width, height in ((800, 600), (1024, 600), (True, 768)):
+            with self.subTest(width=width, height=height):
+                with self.assertRaises(ValueError):
+                    initial_window_geometry(width, height)
 
     def test_initial_state_and_roundtrip(self):
         self.assertEqual(self.data["tasks"], [])
