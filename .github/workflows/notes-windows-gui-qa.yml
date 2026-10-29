@@ -1,0 +1,41 @@
+name: Offline Notes real Windows GUI 1024x768 QA
+on:
+  push:
+    branches:
+      - codex/app-notes-search-highlight-promote-20261029
+    paths:
+      - .github/workflows/notes-windows-gui-qa.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  gui:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: e854b60bd0b701e6939bf1776e079d0e5bcb7354
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install screenshot capture dependency (QA only)
+        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0"
+      - name: Run actual Tk UI, save/reopen, JA/EN, search and screenshot
+        env:
+          GUI_QA_OUTPUT: dist/notes-gui-qa
+        run: |
+          python -m unittest discover -s products/offline-notes-canary/tests -p "test*.py" -v
+          python tools/notes_windows_gui_qa.py
+      - name: Publish screenshot and QA JSON (not Store evidence)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: offline-notes-windows-gui-qa
+          path: dist/notes-gui-qa/
+          if-no-files-found: warn
+          retention-days: 3
