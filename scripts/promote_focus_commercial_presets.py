@@ -46,6 +46,29 @@ def main():
     cfg, state = factory.settings(ROOT)
     expected = {"schema": 1, "kind": "app", "stage": "research",
                 "cycle": 2, "revision": 0, "slug": None}
+    # Repeated owner checks after a successful promotion are read-only.
+    # Never reset the lifecycle or rewrite product files on a retry.
+    already_promoted = {"schema": 1, "kind": "app", "stage": "improve",
+                        "cycle": 2, "revision": 2, "slug": SLUG}
+    if cfg["kind"] == "app" and state == already_promoted:
+        product = ROOT / "products" / SLUG
+        candidate = ROOT / ".candidate" / "product"
+        for name in FILES:
+            if not (product / name).is_file() or not (candidate / name).is_file():
+                raise ValueError("Promoted product or reviewed candidate missing")
+            if (product / name).read_bytes() != (candidate / name).read_bytes():
+                raise ValueError("Promoted product differs from reviewed candidate")
+        if "def start_preset" not in (product / "main.py").read_text(encoding="utf-8"):
+            raise ValueError("Commercial preset feature missing")
+        request_id = "app-focus-presets-" + initial[:12]
+        output = os.environ.get("GITHUB_OUTPUT")
+        if output:
+            with open(output, "a", encoding="utf-8") as stream:
+                stream.write(f"source_sha={initial}\nrequest_id={request_id}\n")
+        print(json.dumps({"status": "ALREADY_PROMOTED_VERIFIED",
+                          "slug": SLUG, "source_branch": BRANCH,
+                          "source_sha": initial, "request_id": request_id}))
+        return
     if cfg["kind"] != "app" or state != expected:
         raise ValueError("Unexpected Factory lifecycle; do not reset state")
     product = ROOT / "products" / SLUG
