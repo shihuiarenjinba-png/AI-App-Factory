@@ -76,6 +76,45 @@ class Smoke(unittest.TestCase):
         self.assertEqual(alias.read_bytes(), original)
         self.assertEqual(self.path.read_bytes(), original)
 
+    def test_existing_unrelated_json_is_not_overwritten(self):
+        foreign = b'{"schema": 99, "private": "do not overwrite"}\\n'
+        self.path.write_bytes(foreign)
+        with self.assertRaisesRegex(ValueError, "choose another filename"):
+            save_notes(self.path, [self.note])
+        self.assertEqual(self.path.read_bytes(), foreign)
+        self.assertFalse(self.path.with_name("notes.json.bak").exists())
+
+    def test_damaged_primary_with_valid_backup_is_not_overwritten(self):
+        save_notes(self.path, [self.note])
+        good = self.path.read_bytes()
+        backup = self.path.with_name("notes.json.bak")
+        backup.write_bytes(good)
+        damaged = b"not a notes database"
+        self.path.write_bytes(damaged)
+        with self.assertRaisesRegex(ValueError, "damaged"):
+            save_notes(self.path, [new_note()])
+        self.assertEqual(self.path.read_bytes(), damaged)
+        self.assertEqual(backup.read_bytes(), good)
+
+    def test_existing_unrelated_backup_is_not_overwritten(self):
+        save_notes(self.path, [self.note])
+        good = self.path.read_bytes()
+        backup = self.path.with_name("notes.json.bak")
+        foreign = b"foreign backup contents"
+        backup.write_bytes(foreign)
+        with self.assertRaisesRegex(ValueError, "Existing backup"):
+            save_notes(self.path, [new_note()])
+        self.assertEqual(self.path.read_bytes(), good)
+        self.assertEqual(backup.read_bytes(), foreign)
+
+    def test_existing_valid_notes_can_still_save_and_rotate_backup(self):
+        save_notes(self.path, [self.note])
+        old = self.path.read_bytes()
+        second = new_note()
+        save_notes(self.path, [self.note, second])
+        self.assertEqual(self.path.with_name("notes.json.bak").read_bytes(), old)
+        self.assertEqual(read_notes(self.path), ([self.note, second], False))
+
     def test_roundtrip(self):
         save_notes(self.path, [self.note])
         self.assertEqual(read_notes(self.path), ([self.note], False))

@@ -78,17 +78,33 @@ def save_notes(path, notes):
     if len(payload) > 5000000:
         raise ValueError("Notes exceed 5 MB")
     path = Path(path)
+    if path.is_symlink():
+        raise ValueError("Cannot save through a symbolic link")
     if path.exists():
         try:
             _, recovered = read_notes(path)
-        except (OSError, ValueError):
-            # A damaged primary is allowed to be saved over; an existing
-            # recoverable backup must not be replaced with damaged data.
-            recovered = True
-        if not recovered:
-            # If this fails, abort the save: never replace the only good
-            # primary after silently losing the previous-version backup.
-            atomic_write(path.with_name(path.name + ".bak"), path.read_bytes())
+        except (OSError, ValueError) as exc:
+            raise ValueError(
+                "Existing file is not a valid notes database; choose another filename"
+            ) from exc
+        if recovered:
+            raise ValueError(
+                "Primary notes file is damaged; save recovered notes to a new filename"
+            )
+        backup = path.with_name(path.name + ".bak")
+        if backup.is_symlink():
+            raise ValueError("Cannot overwrite a symbolic-link backup")
+        if backup.exists():
+            try:
+                _, backup_recovered = read_notes(backup)
+            except (OSError, ValueError) as exc:
+                raise ValueError(
+                    "Existing backup is not a valid notes database; choose another filename"
+                ) from exc
+            if backup_recovered:
+                raise ValueError("Existing backup is damaged; choose another filename")
+        # Backup failure is fatal; never replace the primary in that case.
+        atomic_write(backup, path.read_bytes())
     atomic_write(path, payload)
 
 def search_notes(notes, term):
