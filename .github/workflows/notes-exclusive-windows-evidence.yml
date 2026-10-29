@@ -94,6 +94,36 @@ jobs:
             "commercial_quality_status":"HOLD","msix_status":"NOT_BUILT","identity_cas_allowed":False
           }
           (p/"registration-handoff.json").write_text(json.dumps(job,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          # Machine-readable Provisioner v1.0 job, not a Partner Center command.
+          provisioner_job={
+            "schema_version":"1.0",
+            "product_type":"APP",
+            "source_factory":"AI-App-Factory",
+            "source_repository":r["source_repository"],
+            "source_branch":r["source_branch"],
+            "source_sha":r["source_sha"],
+            "request_id":r["request_id"],
+            "slug":r["slug"],
+            "display_name":r["display_name"],
+            "requested_actions":["BUILD_WINDOWS"],
+            "packaging_family":"MSIX",
+            "partner_center_registration_type":"MSIX_OR_PWA_APP",
+            "partner_center_selection":"MSIX or PWA app",
+            "identity_return_target":{
+              "owner":"36_MIN_WINDOWS_E2E",
+              "stage":"AUTHENTICATED_IDENTITY_EVIDENCE_AND_CAS",
+              "source_repository":r["source_repository"],
+              "source_branch":r["source_branch"],
+              "source_sha":r["source_sha"],
+              "request_id":r["request_id"],
+              "slug":r["slug"]
+            }
+          }
+          assert provisioner_job["display_name"] == "Offline Notes Canary — Searchable Scratchpad"
+          assert provisioner_job["source_branch"] == "codex/app-notes-exclusive-product-20261030"
+          assert provisioner_job["source_sha"] == os.environ["SOURCE_SHA"]
+          (p/"provisioner-job.json").write_text(
+            json.dumps(provisioner_job,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
           PY
       - name: Upload source-bound unsigned EXE and job
         uses: actions/upload-artifact@v4
