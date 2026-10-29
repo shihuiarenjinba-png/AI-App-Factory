@@ -1,5 +1,6 @@
 """Focus Session Desk: local-only task checklist and honest focus timer."""
 import json
+from datetime import date
 import os
 import tempfile
 import time
@@ -10,6 +11,7 @@ from tkinter import messagebox, ttk
 
 MAX_TASKS = 200
 MAX_BYTES = 200000
+MAX_HISTORY = 500
 MIN_MINUTES = 1
 MAX_MINUTES = 180
 FOCUS_PRESETS = (25, 50)
@@ -35,7 +37,8 @@ def validate_minutes(value):
 
 
 def validate_document(data):
-    if not isinstance(data, dict) or set(data) != {"schema", "language", "minutes", "tasks", "session"}:
+    expected = {"schema", "language", "minutes", "tasks", "session"}
+    if not isinstance(data, dict) or not expected.issubset(data) or set(data) - expected - {"history"}:
         raise ValueError("Unsupported data format")
     if type(data["schema"]) is not int or data["schema"] != 1:
         raise ValueError("Unsupported data schema")
@@ -58,11 +61,50 @@ def validate_document(data):
             raise ValueError("Invalid task completion state")
     if data["session"] not in ("idle", "interrupted"):
         raise ValueError("Invalid session marker")
+    history = data.get("history", [])
+    if not isinstance(history, list) or len(history) > MAX_HISTORY:
+        raise ValueError("Invalid focus history")
+    seen_sessions = set()
+    for item in history:
+        if not isinstance(item, dict) or set(item) != {"id", "day", "minutes"}:
+            raise ValueError("Invalid focus history entry")
+        ident, day, minutes = item["id"], item["day"], item["minutes"]
+        if (not isinstance(ident, str) or len(ident) != 32
+                or any(c not in "0123456789abcdef" for c in ident)
+                or ident in seen_sessions):
+            raise ValueError("Invalid or duplicate session ID")
+        seen_sessions.add(ident)
+        if not isinstance(day, str) or len(day) != 10:
+            raise ValueError("Invalid focus history date")
+        try:
+            if date.fromisoformat(day).isoformat() != day:
+                raise ValueError("Noncanonical date")
+        except ValueError as exc:
+            raise ValueError("Invalid focus history date") from exc
+        validate_minutes(minutes)
     return data
 
 
+def record_completed_session(document, minutes, day=None):
+    """Only call when the timer reaches finished, not on pause or restart."""
+    validate_minutes(minutes)
+    day = day or date.today().isoformat()
+    if date.fromisoformat(day).isoformat() != day:
+        raise ValueError("Invalid session date")
+    document.setdefault("history", []).append({
+        "id": uuid.uuid4().hex, "day": day, "minutes": minutes})
+    document["history"] = document["history"][-MAX_HISTORY:]
+    validate_document(document)
+
+
+def today_totals(document, day=None):
+    day = day or date.today().isoformat()
+    sessions = [entry for entry in document.get("history", []) if entry["day"] == day]
+    return len(sessions), sum(entry["minutes"] for entry in sessions)
+
+
 def blank_document():
-    return {"schema": 1, "language": "ja", "minutes": 25, "tasks": [], "session": "idle"}
+    return {"schema": 1, "language": "ja", "minutes": 25, "tasks": [], "session": "idle", "history": []}
 
 
 def _unique_pairs(pairs):
@@ -78,7 +120,9 @@ def _read_one(path):
     path = Path(path)
     if path.is_symlink() or path.stat().st_size > MAX_BYTES:
         raise ValueError("Unsafe or oversized state file")
-    return validate_document(json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_pairs))
+    document = validate_document(json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=_unique_pairs))
+    document.setdefault("history", [])  # Migrate older schema-1 state in memory.
+    return document
 
 
 def load_document(path):
@@ -236,7 +280,10 @@ WORDS = {
         "finish": "集中時間が終了しました。お疲れさまでした！",
         "running": "実行中", "paused": "一時停止中", "idle": "準備完了", "finished": "完了",
         "duration": "時間を変更", "cancel": "キャンセル", "ok": "OK",
-        "preset_25": "25分で開始", "preset_50": "50分で開始"
+        "preset_25": "25分で開始", "preset_50": "50分で開始",
+        "history": "履歴", "today_summary": "今日: {count}回 / {minutes}分",
+        "history_empty": "完了したセッションはまだありません。",
+        "history_line": "{day} · {minutes}分"
     },
     "en": {
         "name": "Focus Session Desk", "subtitle": "Offline focus timer and task checklist",
@@ -250,7 +297,10 @@ WORDS = {
         "finish": "Focus session finished. Nice work!",
         "running": "Running", "paused": "Paused", "idle": "Ready", "finished": "Finished",
         "duration": "Apply duration", "cancel": "Cancel", "ok": "OK",
-        "preset_25": "Start 25 min", "preset_50": "Start 50 min"
+        "preset_25": "Start 25 min", "preset_50": "Start 50 min",
+        "history": "History", "today_summary": "Today: {count} sessions / {minutes} min",
+        "history_empty": "No completed sessions yet.",
+        "history_line": "{day} · {minutes} min"
     }
 }
 
@@ -356,6 +406,10 @@ class Desk:
         footer.pack(fill="x", pady=(10, 0))
         self.status = ttk.Label(footer)
         self.status.pack(side="left")
+        self.summary = ttk.Label(footer)
+        self.summary.pack(side="left", padx=(14, 0))
+        self.history_button = ttk.Button(footer, command=self.show_history)
+        self.history_button.pack(side="right", padx=(6, 0))
         self.language_button = ttk.Button(footer, command=self.switch_language)
         self.language_button.pack(side="right")
         self.entry.focus_set()
@@ -373,6 +427,7 @@ class Desk:
         for preset, button in self.preset_buttons.items():
             button.configure(text=self.words(f"preset_{preset}"))
         self.language_button.configure(text=self.words("language"))
+        self.history_button.configure(text=self.words("history"))
         self.tree.heading("title", text=self.words("tasks"))
         for key, button in self.buttons:
             button.configure(text=self.words(key))
@@ -408,6 +463,8 @@ class Desk:
         if previous and self.tree.exists(previous[0]):
             self.tree.selection_set(previous[0])
         self.empty.configure(text=self.words("empty") if not self.data["tasks"] else "")
+        count, minutes = today_totals(self.data)
+        self.summary.configure(text=self.words("today_summary").format(count=count, minutes=minutes))
         self.timer_state.configure(text=self.words(self.timer.state))
         self.pause_button.configure(text=self.words("resume") if self.timer.state == "paused" else self.words("pause"))
         self.clock_label.configure(text=self.timer.display())
@@ -500,12 +557,21 @@ class Desk:
         if self.action(lambda: setattr(self, "lang", target)):
             self.relabel()
 
+    def show_history(self):
+        records = list(reversed(self.data.get("history", [])))
+        if not records:
+            messagebox.showinfo(self.words("history"), self.words("history_empty"))
+            return
+        lines = [self.words("history_line").format(**entry) for entry in records[:30]]
+        messagebox.showinfo(self.words("history"), "\n".join(lines))
+
     def tick(self):
         was = self.timer.state
         self.timer.tick()
         self.clock_label.configure(text=self.timer.display())
         self.timer_state.configure(text=self.words(self.timer.state))
         if was != "finished" and self.timer.state == "finished":
+            record_completed_session(self.data, self.timer.minutes)
             try:
                 self.save()
             except (OSError, ValueError) as exc:
