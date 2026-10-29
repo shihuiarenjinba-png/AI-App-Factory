@@ -86,8 +86,11 @@ def source_smoke(output):
             screenshot(output / "02-actions-en.png")
             desk.close()
         finally:
-            if root.winfo_exists():
+            # Desk.close() may already have destroyed the Tcl interpreter.
+            try:
                 root.destroy()
+            except tk.TclError:
+                pass
         root = tk.Tk()
         try:
             require_screen(root)
@@ -100,8 +103,11 @@ def source_smoke(output):
             screenshot(output / "03-restart-persisted.png")
             desk.close()
         finally:
-            if root.winfo_exists():
+            # Desk.close() may already have destroyed the Tcl interpreter.
+            try:
                 root.destroy()
+            except tk.TclError:
+                pass
 
 
 def exe_smoke(exe, output):
