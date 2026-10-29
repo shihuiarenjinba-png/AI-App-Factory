@@ -84,7 +84,7 @@ jobs:
       - name: Exercise actual 1024x768 Windows source and EXE UI
         shell: pwsh
         env:
-          GITHUB_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+          FOCUS_SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
           FOCUS_REQUEST_ID: ${{ needs.owner-promote.outputs.request_id }}
         run: |
           python scripts/focus_windows_gui_evidence.py --output evidence/focus --exe dist/preidentity/focus-session-desk.exe
