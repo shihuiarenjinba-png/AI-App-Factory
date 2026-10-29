@@ -1,0 +1,52 @@
+name: APP cohort authenticated artifact byte gate
+on:
+  push:
+    branches:
+      - codex/app-notes-backup-export-safety-20261029
+    paths:
+      - .github/workflows/app-cohort-authenticated-gate.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: app-cohort-authenticated-gate-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  verify-pinned-artifacts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - name: Checkout exact reviewed Provisioner implementation
+        uses: actions/checkout@v4
+        with:
+          repository: shihuiarenjinba-png/Repository-Provisioner-app
+          ref: 24b415c44abfc00b9630321a34f5028741370cd3
+          path: provisioner
+          persist-credentials: false
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Check pinned Provisioner revision
+        working-directory: provisioner
+        shell: bash
+        run: |
+          test "$(git rev-parse HEAD)" = "24b415c44abfc00b9630321a34f5028741370cd3"
+          python -m unittest discover -s tests -p test_app_cohort_github_gate.py -v
+      - name: Fetch five pinned Factory artifacts and verify real ZIP and EXE bytes
+        working-directory: provisioner
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_PROMPT_DISABLED: '1'
+        run: |
+          python -m tools.app_cohort_github_gate --output app-cohort-authenticated-gate.json
+      - name: Publish verified evidence only on complete success
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-cohort-authenticated-binary-gate
+          path: provisioner/app-cohort-authenticated-gate.json
+          if-no-files-found: error
+          retention-days: 2
