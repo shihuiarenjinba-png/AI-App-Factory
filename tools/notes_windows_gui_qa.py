@@ -22,7 +22,7 @@ from main import App, read_notes
 
 OUT = Path(os.environ.get("GUI_QA_OUTPUT", "dist/notes-gui-qa"))
 OUT.mkdir(parents=True, exist_ok=True)
-EXPECTED_SOURCE = "a1851e8fea4bd8c835ccedadbe18db03cf36c4bc"
+EXPECTED_SOURCE = "06a076fcbc5b06760fc489aace43725eb62d9c47"
 
 
 def assert_fits(root, app):
@@ -31,7 +31,7 @@ def assert_fits(root, app):
     right = left + root.winfo_width()
     top = root.winfo_rooty()
     bottom = top + root.winfo_height()
-    elements = list(app.buttons) + [app.favorite_button, app.search_entry,
+    elements = list(app.buttons) + [app.favorite_button, app.favorites_check, app.search_entry,
                                    app.listbox, app.title_entry, app.tag_entry, app.body]
     for widget in elements:
         x, y = widget.winfo_rootx(), widget.winfo_rooty()
@@ -79,8 +79,16 @@ def run():
             app.query.set("Sample")
             root.update()
             assert len(app.body.tag_ranges("search_match")) == 4
+            assert app.favorites_check.cget("text") == "お気に入りのみ"
+            app.favorites_check.invoke()
+            root.update()
+            assert app.favorites_only.get() and app.visible == [app.current]
+            app.favorites_check.invoke()
+            root.update()
+            assert not app.favorites_only.get() and app.visible == [app.current]
             app.language()
             root.update()
+            assert app.favorites_check.cget("text") == "Favorites only"
             assert app.lang == "en" and root.title() == "Offline Notes"
             assert not app.dirty and app.status.get() == "Saved", "False unsaved state after Save"
             positions = assert_fits(root, app)
@@ -89,6 +97,8 @@ def run():
             report["screenshot_sha256"] = hashlib.sha256(screenshot.read_bytes()).hexdigest()
             report["widget_bounds"] = positions
             report["en_ja_toggle"] = True
+            report["favorites_filter_toggled"] = True
+            report["favorites_filter_ja_en"] = True
             report["search_highlight_ranges"] = 2
             report["saved_file_sha256"] = hashlib.sha256(data.read_bytes()).hexdigest()
         finally:
@@ -106,6 +116,9 @@ def run():
             assert notes[0]["favorite"] is True
             assert notes[0]["title"] == "Sample Note"
             assert app2.notes == notes
+            app2.favorites_check.invoke()
+            root2.update()
+            assert app2.visible == [notes[0]["id"]]
             assert_fits(root2, app2)
             report["restart_reopen"] = True
             report["persisted_tags_and_favorite"] = True
