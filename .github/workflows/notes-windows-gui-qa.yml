@@ -39,3 +39,4 @@ jobs:
           path: dist/notes-gui-qa/
           if-no-files-found: warn
           retention-days: 3
+# QA assertion: Save must remain clean after Tk event processing and language toggle.
