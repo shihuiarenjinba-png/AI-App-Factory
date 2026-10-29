@@ -5,6 +5,7 @@ on:
       - codex/app-notes-search-highlight-promote-20261029
     paths:
       - .github/workflows/notes-search-highlight-promote.yml
+      - scripts/notes_search_highlight_promote.py
   workflow_dispatch:
 
 permissions:
@@ -64,7 +65,7 @@ jobs:
           from pathlib import Path
           state = json.loads(Path("factory/state.json").read_text(encoding="utf-8"))
           assert state == {"schema": 1, "kind": "app", "stage": "research",
-                           "cycle": 4, "revision": 0, "slug": None}
+                           "cycle": 5, "revision": 0, "slug": None}
           manifest = json.loads(Path("products/offline-notes-canary/manifest.json").read_text(encoding="utf-8"))
           assert manifest == {"slug": "offline-notes-canary", "kind": "app", "entry": "main.py"}
           PY
