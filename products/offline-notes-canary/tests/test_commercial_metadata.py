@@ -240,6 +240,35 @@ class CommercialMetadataTests(unittest.TestCase):
         self.assertEqual(list(Path(self.tmp.name).glob(".notes-*")), [])
         app.error.assert_called_once()
 
+    def test_new_notes_database_save_uses_exclusive_creation(self):
+        save_notes(self.path, [self.note])
+        notes, recovered = read_notes(self.path)
+        self.assertEqual(notes, [self.note])
+        self.assertFalse(recovered)
+        self.assertFalse(self.path.with_name(self.path.name + ".bak").exists())
+        self.assertEqual(list(Path(self.tmp.name).glob(".notes-*")), [])
+
+    def test_new_notes_database_save_cannot_clobber_concurrent_file(self):
+        real_link = os.link
+
+        def competing_writer(src, dst):
+            Path(dst).write_bytes(b"OTHER PROCESS DATA")
+            return real_link(src, dst)
+
+        with patch("main.os.link", side_effect=competing_writer):
+            with self.assertRaises(FileExistsError):
+                save_notes(self.path, [self.note])
+        self.assertEqual(self.path.read_bytes(), b"OTHER PROCESS DATA")
+        self.assertFalse(self.path.with_name(self.path.name + ".bak").exists())
+        self.assertEqual(list(Path(self.tmp.name).glob(".notes-*")), [])
+
+    def test_new_notes_database_save_fails_closed_without_hardlinks(self):
+        with patch("main.os.link", side_effect=PermissionError("hardlinks unavailable")):
+            with self.assertRaises(PermissionError):
+                save_notes(self.path, [self.note])
+        self.assertFalse(self.path.exists())
+        self.assertEqual(list(Path(self.tmp.name).glob(".notes-*")), [])
+
     def test_schema1_backward_compatibility(self):
         save_notes(self.path, [self.note])
         self.assertEqual(json.loads(self.path.read_text(encoding="utf-8"))["schema"], 1)

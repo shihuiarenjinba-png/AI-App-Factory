@@ -158,7 +158,11 @@ def save_notes(path, notes):
                 raise ValueError("Existing backup is damaged; choose another filename")
         # Backup failure is fatal; never replace the primary in that case.
         atomic_write(backup, path.read_bytes())
-    atomic_write(path, payload)
+        atomic_write(path, payload)
+    else:
+        # New-file Save must never replace a file created after the dialog.
+        # Atomic hardlink publication fails closed on any name collision.
+        atomic_create_new(path, payload)
 
 def search_notes(notes, term):
     q = term.strip().casefold()

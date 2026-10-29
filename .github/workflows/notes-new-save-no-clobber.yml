@@ -1,0 +1,153 @@
+name: Offline Notes safe new notes-file Save owner promotion and Windows QA
+on:
+  push:
+    branches:
+      - codex/app-notes-new-save-no-clobber-20261030
+    paths:
+      - scripts/notes_new_save_no_clobber_promote.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: notes-new-save-no-clobber-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  owner-promote:
+    if: github.ref == 'refs/heads/codex/app-notes-new-save-no-clobber-20261030'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    outputs:
+      source_sha: ${{ steps.promote.outputs.source_sha }}
+      request_id: ${{ steps.promote.outputs.request_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Candidate tests, Factory validate, guarded promote
+        id: promote
+        run: python scripts/notes_new_save_no_clobber_promote.py
+
+  windows-exe:
+    needs: owner-promote
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.owner-promote.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify immutable Factory source
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+        run: |
+          test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+          test ! -e .candidate/product
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          assert json.loads(Path("factory/state.json").read_text(encoding="utf-8")) == {"schema":1,"kind":"app","stage":"research","cycle":9,"revision":0,"slug":None}
+          PY
+      - name: Factory and product functional tests
+        run: |
+          python -m unittest discover -s tests -v
+          python -m unittest discover -s products/offline-notes-canary/tests -p "test*.py" -v
+      - name: Install pinned Windows EXE builder
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - name: Build real unsigned EXE
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+          REQUEST_ID: ${{ needs.owner-promote.outputs.request_id }}
+        run: |
+          python tools/build_windows_exe.py --slug offline-notes-canary --expected-sha "$env:SOURCE_SHA" --source-branch codex/app-notes-new-save-no-clobber-20261030 --request-id "$env:REQUEST_ID" --output dist/preidentity
+      - name: Verify binary and prepare 36-minute owner handoff
+        shell: bash
+        env:
+          SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+          REQUEST_ID: ${{ needs.owner-promote.outputs.request_id }}
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          p=Path("dist/preidentity")
+          r=json.loads((p/"exe-receipt.json").read_text(encoding="utf-8"))
+          exe=(p/"offline-notes-canary.exe").read_bytes()
+          assert exe[:2]==b"MZ" and len(exe)==r["executable_bytes"]
+          assert hashlib.sha256(exe).hexdigest()==r["executable_sha256"]
+          assert r["source_sha"]==os.environ["SOURCE_SHA"]
+          assert r["request_id"]==os.environ["REQUEST_ID"]
+          assert r["store_id"] is None
+          assert r["source_branch"]=="codex/app-notes-new-save-no-clobber-20261030"
+          job={
+            "schema_version":"1.0","source_factory":"AI-App-Factory",
+            "source_repository":r["source_repository"],"source_branch":r["source_branch"],
+            "source_sha":r["source_sha"],"request_id":r["request_id"],
+            "slug":r["slug"],"display_name":r["display_name"],"product_type":"APP",
+            "requested_actions":["BUILD_WINDOWS"],
+            "packaging_family":"MSIX","partner_center_registration_type":"MSIX_OR_PWA_APP",
+            "partner_center_selection":"MSIX or PWA app",
+            "identity_status":"REFERENCE_AVAILABLE","identity_cas_allowed":False,
+            "identity_return_target":{"owner":"36_MIN_WINDOWS_E2E","source_sha":r["source_sha"],"request_id":r["request_id"]},
+            "msix_status":"NOT_BUILT","commercial_quality_status":"HOLD",
+            "user_provided_store_id_reference":"9MZ8ZZTRTS17",
+            "reserved_display_name_verified":False
+          }
+          for key in ("source_repository","source_branch","source_sha","request_id","slug","product_type","display_name"):
+            assert job[key]==r[key],key
+          (p/"provisioner-job.json").write_text(json.dumps(job,ensure_ascii=False,indent=2)+"\n",encoding="utf-8")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: offline-notes-new-save-safe-${{ needs.owner-promote.outputs.source_sha }}
+          path: dist/preidentity/
+          if-no-files-found: error
+          retention-days: 5
+
+  real-windows-gui:
+    needs: owner-promote
+    runs-on: windows-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ needs.owner-promote.outputs.source_sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install screenshot QA dependency
+        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0"
+      - name: Real Windows 1024x768 GUI smoke
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+          GUI_QA_OUTPUT: dist/notes-gui-qa
+        run: |
+          python -m unittest discover -s products/offline-notes-canary/tests -p "test*.py" -v
+          python tools/notes_windows_gui_qa.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: offline-notes-new-save-safe-gui
+          path: dist/notes-gui-qa/
+          if-no-files-found: warn
+          retention-days: 3
