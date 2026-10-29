@@ -28,6 +28,56 @@ class FocusDeskTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     initial_window_geometry(width, height)
 
+    def test_completed_history_roundtrip_and_daily_totals(self):
+        from main import record_completed_session, today_totals
+        record_completed_session(self.data, 25, "2026-10-30")
+        record_completed_session(self.data, 50, "2026-10-30")
+        record_completed_session(self.data, 25, "2026-10-29")
+        self.assertEqual(today_totals(self.data, "2026-10-30"), (2, 75))
+        self.assertEqual(today_totals(self.data, "2026-10-29"), (1, 25))
+        save_document(self.path, self.data)
+        restored, recovered = load_document(self.path)
+        self.assertFalse(recovered)
+        self.assertEqual(restored["history"], self.data["history"])
+
+    def test_legacy_schema_one_loads_without_losing_tasks(self):
+        add_task(self.data, "Keep me")
+        legacy = dict(self.data)
+        legacy.pop("history")
+        self.path.write_text(json.dumps(legacy), encoding="utf-8")
+        restored, recovered = load_document(self.path)
+        self.assertFalse(recovered)
+        self.assertEqual(restored["tasks"], legacy["tasks"])
+        self.assertEqual(restored["history"], [])
+        save_document(self.path, restored)
+        self.assertEqual(load_document(self.path)[0]["tasks"], legacy["tasks"])
+
+    def test_invalid_history_rejected_and_backup_recovers(self):
+        from main import record_completed_session
+        record_completed_session(self.data, 25, "2026-10-30")
+        save_document(self.path, self.data)
+        save_document(self.path, self.data)
+        bad = dict(self.data)
+        bad["history"] = [dict(self.data["history"][0], day="2026-02-30")]
+        self.path.write_text(json.dumps(bad), encoding="utf-8")
+        restored, recovered = load_document(self.path)
+        self.assertTrue(recovered)
+        self.assertEqual(restored["history"], self.data["history"])
+        bad["history"] = self.data["history"] * 2
+        with self.assertRaises(ValueError):
+            validate_document(bad)
+
+    def test_history_bounded_and_never_counts_unfinished_timer(self):
+        from main import record_completed_session, today_totals, MAX_HISTORY
+        timer = FocusTimer(25, clock=lambda: 100.0)
+        timer.start()
+        timer.pause()
+        self.assertEqual(today_totals(self.data, "2026-10-30"), (0, 0))
+        for _ in range(MAX_HISTORY + 1):
+            record_completed_session(self.data, 1, "2026-10-30")
+        self.assertEqual(len(self.data["history"]), MAX_HISTORY)
+        self.assertEqual(today_totals(self.data, "2026-10-30"), (MAX_HISTORY, MAX_HISTORY))
+
     def test_initial_state_and_roundtrip(self):
         self.assertEqual(self.data["tasks"], [])
         save_document(self.path, self.data)
