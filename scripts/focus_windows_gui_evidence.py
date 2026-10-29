@@ -121,13 +121,13 @@ def exe_smoke(exe, output):
             def collect(window, _):
                 nonlocal hwnd
                 if user32.IsWindowVisible(window):
-                    pid = wintypes.DWORD()
-                    user32.GetWindowThreadProcessId(window, ctypes.byref(pid))
-                    if pid.value == process.pid:
-                        buffer = ctypes.create_unicode_buffer(256)
-                        user32.GetWindowTextW(window, buffer, len(buffer))
-                        if "Focus Session Desk" in buffer.value or "集中セッション" in buffer.value:
-                            hwnd = window
+                    # PyInstaller onefile may host Tk in a child process.
+                    # The isolated runner plus a live launched EXE and exact
+                    # window title are required; PID equality is not reliable.
+                    buffer = ctypes.create_unicode_buffer(256)
+                    user32.GetWindowTextW(window, buffer, len(buffer))
+                    if "Focus Session Desk" in buffer.value or "集中セッション" in buffer.value:
+                        hwnd = window
                 return True
             cb = callback_type(collect)
             for _ in range(40):
