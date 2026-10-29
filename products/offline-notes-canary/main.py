@@ -118,8 +118,8 @@ def safe_filename(title):
     return (name or "untitled") + ".txt"
 
 STRINGS = {
-    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。"],
-    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again."]
+    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。", "バックアップから復元"],
+    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again.", "Restore backup"]
 }
 
 class App:
@@ -135,7 +135,7 @@ class App:
         bar = ttk.Frame(root, padding=8)
         bar.grid(row=0, column=0, sticky="ew")
         self.buttons = []
-        for i, fn in enumerate((self.new, self.open_file, self.save, self.export, self.delete, self.language)):
+        for i, fn in enumerate((self.new, self.open_file, self.save, self.export, self.delete, self.language, self.restore_backup)):
             b = ttk.Button(bar, command=fn)
             b.grid(row=0, column=i, padx=3)
             self.buttons.append(b)
@@ -181,7 +181,7 @@ class App:
     def labels(self):
         self.root.title(self.t(0))
         for i, b in enumerate(self.buttons):
-            b.configure(text=self.t(i + 1))
+            b.configure(text=self.t(i + 1 if i < 6 else 19))
         self.search_label.configure(text=self.t(7))
         self.title_label.configure(text=self.t(8))
         if self.current is None:
@@ -313,6 +313,38 @@ class App:
             self.query.set("")
             self.show(notes[0]["id"] if notes else None)
             self.status.set(self.t(15) if recovered else self.t(11))
+        except (OSError, ValueError) as exc:
+            self.error(exc)
+
+    def restore_backup(self):
+        """Explicit, non-destructive restore to a NEW JSON file."""
+        try:
+            if not self.confirm():
+                return
+            selected = filedialog.askopenfilename(
+                filetypes=[("Notes backup", "*.bak"), ("All files", "*.*")])
+            if not selected:
+                return
+            backup = Path(selected)
+            if not backup.name.lower().endswith(".bak") or backup.is_symlink():
+                raise ValueError("Choose a regular .bak notes backup")
+            recovered_notes, used_fallback = read_notes(backup)
+            if used_fallback:
+                raise ValueError("Selected backup is damaged")
+            output = filedialog.asksaveasfilename(
+                initialfile="restored-notes.json", defaultextension=".json",
+                filetypes=[("JSON", "*.json")])
+            if not output:
+                return
+            destination = Path(output)
+            # Never overwrite an existing file during recovery, even if valid.
+            if destination.exists() or destination.is_symlink():
+                raise ValueError("Restore requires a new, unused filename")
+            save_notes(destination, recovered_notes)
+            self.notes, self.path, self.dirty = recovered_notes, destination, False
+            self.query.set("")
+            self.show(recovered_notes[0]["id"] if recovered_notes else None)
+            self.status.set(self.t(11) + " — " + str(destination))
         except (OSError, ValueError) as exc:
             self.error(exc)
 

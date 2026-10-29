@@ -9,3 +9,5 @@ Headless tests: python -m unittest discover -s tests -v. Real Windows EXE and 10
 Safety revision 2: if writing the previous-version backup fails, saving stops without replacing the primary notes database. TXT export refuses the currently open notes JSON file, its .bak path, and hardlink aliases even when the file chooser suggests an overwrite. Four headless regressions cover these protections; Windows GUI remains unverified.
 
 Safety revision 3: Save refuses unrelated JSON, damaged primary files (even with a valid backup), and unrelated/damaged backup paths. Users must choose a new filename rather than lose existing data. Four new headless regressions cover these cases; GUI remains unverified.
+
+Commercial increment: an explicit bilingual Restore backup action loads a selected .bak database and writes recovery to a NEW unused JSON file. Existing files, damaged backups and symlinks are rejected. Three headless regressions cover non-destructive recovery. Consumer GUI and 1024x768 checks remain HOLD.
