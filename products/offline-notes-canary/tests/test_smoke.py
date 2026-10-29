@@ -115,6 +115,58 @@ class Smoke(unittest.TestCase):
         self.assertEqual(self.path.with_name("notes.json.bak").read_bytes(), old)
         self.assertEqual(read_notes(self.path), ([self.note, second], False))
 
+    def test_explicit_backup_restore_creates_new_database(self):
+        from main import App
+        from unittest.mock import Mock
+        save_notes(self.path, [self.note])
+        backup = self.path.with_name(self.path.name + ".bak")
+        backup.write_bytes(self.path.read_bytes())
+        target = Path(self.tmp.name) / "restored.json"
+        app = App.__new__(App)
+        app.confirm, app.show, app.error = Mock(return_value=True), Mock(), Mock()
+        app.query, app.status = Mock(), Mock()
+        app.lang = "en"
+        with patch("main.filedialog.askopenfilename", return_value=str(backup)), \
+             patch("main.filedialog.asksaveasfilename", return_value=str(target)):
+            app.restore_backup()
+        app.error.assert_not_called()
+        self.assertEqual(read_notes(target), ([self.note], False))
+        self.assertEqual(app.path, target)
+        self.assertFalse(app.dirty)
+        self.assertEqual(backup.read_bytes(), self.path.read_bytes())
+        app.show.assert_called_once_with(self.note["id"])
+
+    def test_backup_restore_refuses_existing_destination(self):
+        from main import App
+        from unittest.mock import Mock
+        save_notes(self.path, [self.note])
+        backup = self.path.with_name(self.path.name + ".bak")
+        backup.write_bytes(self.path.read_bytes())
+        target = Path(self.tmp.name) / "unrelated.json"
+        target.write_bytes(b"foreign content")
+        app = App.__new__(App)
+        app.confirm, app.error = Mock(return_value=True), Mock()
+        app.lang = "ja"
+        with patch("main.filedialog.askopenfilename", return_value=str(backup)), \
+             patch("main.filedialog.asksaveasfilename", return_value=str(target)):
+            app.restore_backup()
+        app.error.assert_called_once()
+        self.assertEqual(target.read_bytes(), b"foreign content")
+
+    def test_backup_restore_refuses_damaged_backup(self):
+        from main import App
+        from unittest.mock import Mock
+        backup = self.path.with_name(self.path.name + ".bak")
+        backup.write_text("corrupt", encoding="utf-8")
+        app = App.__new__(App)
+        app.confirm, app.error = Mock(return_value=True), Mock()
+        app.lang = "en"
+        with patch("main.filedialog.askopenfilename", return_value=str(backup)), \
+             patch("main.filedialog.asksaveasfilename") as save_dialog:
+            app.restore_backup()
+        app.error.assert_called_once()
+        save_dialog.assert_not_called()
+
     def test_roundtrip(self):
         save_notes(self.path, [self.note])
         self.assertEqual(read_notes(self.path), ([self.note], False))
