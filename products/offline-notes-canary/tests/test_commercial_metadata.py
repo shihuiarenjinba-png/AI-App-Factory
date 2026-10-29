@@ -4,7 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from main import App, find_matches, new_note, normalize_tags, read_notes, save_notes, search_notes, validate_notes
@@ -100,6 +100,41 @@ class CommercialMetadataTests(unittest.TestCase):
         app.favorites_only.get.return_value = True
         app.refresh_list()
         self.assertEqual(app.visible, [])
+
+    def test_save_as_new_file_preserves_original_and_sets_current_path(self):
+        original = self.path
+        save_notes(original, [self.note])
+        original_bytes = original.read_bytes()
+        other = {**self.note, "title": "A different draft"}
+        app = App.__new__(App)
+        app.notes, app.path, app.dirty, app.lang = [other], original, True, "en"
+        app.commit_editor, app.refresh_list, app.status = Mock(), Mock(), Mock()
+        app.error = Mock()
+        destination = Path(self.tmp.name) / "copy.json"
+        with patch("main.filedialog.asksaveasfilename", return_value=str(destination)):
+            self.assertTrue(app.save_as())
+        self.assertEqual(original.read_bytes(), original_bytes)
+        self.assertEqual(read_notes(destination), ([other], False))
+        self.assertEqual(app.path, destination)
+        self.assertFalse(app.dirty)
+        app.error.assert_not_called()
+
+    def test_save_as_existing_destination_is_fail_closed(self):
+        existing = Path(self.tmp.name) / "existing.json"
+        existing.write_bytes(b"FOREIGN CUSTOMER DATA")
+        app = App.__new__(App)
+        app.notes, app.path, app.dirty, app.lang = [self.note], self.path, True, "ja"
+        app.commit_editor, app.refresh_list, app.status = Mock(), Mock(), Mock()
+        app.error = Mock()
+        with patch("main.filedialog.asksaveasfilename", return_value=str(existing)):
+            self.assertFalse(app.save_as())
+        self.assertEqual(existing.read_bytes(), b"FOREIGN CUSTOMER DATA")
+        self.assertEqual(app.path, self.path)
+        self.assertTrue(app.dirty)
+        app.error.assert_called_once()
+        from main import STRINGS
+        self.assertEqual(STRINGS["ja"][24], "名前を付けて保存")
+        self.assertEqual(STRINGS["en"][24], "Save As")
 
     def test_schema1_backward_compatibility(self):
         save_notes(self.path, [self.note])

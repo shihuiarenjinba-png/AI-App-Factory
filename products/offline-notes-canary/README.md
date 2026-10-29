@@ -15,3 +15,5 @@ Commercial increment: an explicit bilingual Restore backup action loads a select
 Commercial search increment: while searching, visible matches in the selected note body are highlighted in place (up to 200 matches). No data is altered by search; matching and clearing are headlessly tested. Windows GUI 1024x768 and consumer review remain unverified.
 
 Commercial favorites filter: a bilingual sidebar checkbox narrows search results to starred notes without deleting or changing notes. Headless tests cover filtering, clearing and empty state. Windows GUI evidence for this exact revision is required.
+
+Commercial Save As: bilingual toolbar action and Ctrl+Shift+S create a separate JSON notes file. Existing destinations and symlinks are rejected without changing the original. Saving a new copy changes the current document path only after successful persistence. The regular Save action continues to support backup-safe updates.

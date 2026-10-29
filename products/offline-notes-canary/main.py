@@ -153,8 +153,8 @@ def safe_filename(title):
     return (name or "untitled") + ".txt"
 
 STRINGS = {
-    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。", "バックアップから復元", "タグ（カンマ区切り）", "☆ お気に入り", "★ お気に入り", "お気に入りのみ"],
-    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again.", "Restore backup", "Tags (comma-separated)", "☆ Favorite", "★ Favorited", "Favorites only"]
+    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。", "バックアップから復元", "タグ（カンマ区切り）", "☆ お気に入り", "★ お気に入り", "お気に入りのみ", "名前を付けて保存"],
+    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again.", "Restore backup", "Tags (comma-separated)", "☆ Favorite", "★ Favorited", "Favorites only", "Save As"]
 }
 
 class App:
@@ -178,6 +178,8 @@ class App:
             self.buttons.append(b)
         self.favorite_button = ttk.Button(bar, command=self.toggle_favorite)
         self.favorite_button.grid(row=0, column=7, padx=3)
+        self.save_as_button = ttk.Button(bar, command=self.save_as)
+        self.save_as_button.grid(row=0, column=8, padx=3)
         pane = ttk.Panedwindow(root, orient="horizontal")
         pane.grid(row=1, column=0, sticky="nsew", padx=8)
         left = ttk.Frame(pane, padding=4)
@@ -217,6 +219,7 @@ class App:
         self.tag_text.trace_add("write", lambda *_: self.changed())
         root.bind("<Control-n>", lambda _: self.new())
         root.bind("<Control-s>", lambda _: self.save())
+        root.bind("<Control-Shift-S>", lambda _: self.save_as())
         root.bind("<Control-o>", lambda _: self.open_file())
         root.bind("<Control-f>", lambda _: self.search_entry.focus_set())
         root.protocol("WM_DELETE_WINDOW", self.close)
@@ -232,6 +235,7 @@ class App:
             b.configure(text=self.t(i + 1 if i < 6 else 19))
         self.search_label.configure(text=self.t(7))
         self.favorites_check.configure(text=self.t(23))
+        self.save_as_button.configure(text=self.t(24))
         self.title_label.configure(text=self.t(8))
         self.tag_label.configure(text=self.t(20))
         self.refresh_favorite_button()
@@ -400,6 +404,27 @@ class App:
             save_notes(path, self.notes)
             self.path, self.dirty = path, False
             self.status.set(self.t(11) + " — " + str(path))
+            self.refresh_list()
+            return True
+        except (OSError, ValueError) as exc:
+            self.error(exc)
+            return False
+
+    def save_as(self):
+        """Save a separate notes copy; never overwrite another existing file."""
+        try:
+            self.commit_editor()
+            selected = filedialog.asksaveasfilename(
+                initialfile=self.path.name if self.path else "notes.json",
+                defaultextension=".json", filetypes=[("JSON", "*.json")])
+            if not selected:
+                return False
+            destination = Path(selected)
+            if destination.exists() or destination.is_symlink():
+                raise ValueError("Save As requires a new, unused filename")
+            save_notes(destination, self.notes)
+            self.path, self.dirty = destination, False
+            self.status.set(self.t(11) + " — " + str(destination))
             self.refresh_list()
             return True
         except (OSError, ValueError) as exc:
