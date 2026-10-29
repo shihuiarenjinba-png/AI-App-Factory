@@ -175,9 +175,27 @@ def exe_smoke(exe, output):
             # Capture the real HWND via Windows PrintWindow (Pillow 11.3+)
             # rather than mislabeling a console screenshot as the EXE UI.
             window_image = ImageGrab.grab(window=hwnd)
-            if (window_image.width < 790 or window_image.height < 550
-                    or min(ImageStat.Stat(window_image.convert("RGB")).mean) < 125):
-                raise RuntimeError("Actual EXE HWND capture is blank or too small")
+            def has_real_pixels(image):
+                if image.width < 790 or image.height < 550:
+                    return False
+                stats = ImageStat.Stat(image.convert("RGB"))
+                # A pure white/black PrintWindow result is not EXE GUI proof.
+                return max(stats.stddev) >= 12 and min(stats.mean) >= 80
+
+            if not has_real_pixels(window_image):
+                # PrintWindow can return an entirely white surface on Windows
+                # runners even when the EXE window is actually visible.
+                # Bring the exact HWND to front and capture its desktop rect.
+                user32.ShowWindow(hwnd, 9)
+                user32.SetForegroundWindow(hwnd)
+                time.sleep(0.5)
+                if user32.GetForegroundWindow() != hwnd:
+                    raise RuntimeError("Cannot bring exact EXE HWND to foreground")
+                window_image = ImageGrab.grab(bbox=(
+                    window_rect.left, window_rect.top,
+                    window_rect.right, window_rect.bottom))
+            if not has_real_pixels(window_image):
+                raise RuntimeError("Actual EXE window screenshot is blank or unrendered")
             window_image.save(output / "04-real-exe-window.png")
             # Keep the unmodified desktop capture separately for context.
             screenshot(output / "05-desktop-context.png")
