@@ -11,18 +11,39 @@ from tkinter import filedialog, messagebox, ttk
 def new_note():
     return {"id": uuid.uuid4().hex, "title": "", "body": ""}
 
+def normalize_tags(text):
+    """Parse user-entered tags without silently truncating or merging labels."""
+    if not isinstance(text, str):
+        raise ValueError("Tags must be text")
+    tags = [part.strip() for part in re.split(r"[,、]", text) if part.strip()]
+    if len(tags) > 8 or any(len(tag) > 30 for tag in tags):
+        raise ValueError("Use at most 8 tags, up to 30 characters each")
+    if len({tag.casefold() for tag in tags}) != len(tags):
+        raise ValueError("Duplicate tags are not allowed")
+    if any(0xD800 <= ord(ch) <= 0xDFFF for tag in tags for ch in tag):
+        raise ValueError("Invalid Unicode surrogate in tag")
+    return tags
+
 def validate_notes(notes):
     if not isinstance(notes, list) or len(notes) > 1000:
         raise ValueError("Invalid note list")
     ids = set()
     for n in notes:
-        if not isinstance(n, dict) or set(n) != {"id", "title", "body"}:
+        if not isinstance(n, dict) or not {"id", "title", "body"}.issubset(n) or set(n) - {"id", "title", "body", "tags", "favorite"}:
             raise ValueError("Invalid note structure")
         if not isinstance(n["id"], str) or not re.fullmatch("[0-9a-f]{32}", n["id"]) or n["id"] in ids:
             raise ValueError("Duplicate or invalid note ID")
         ids.add(n["id"])
         if not isinstance(n["title"], str) or not isinstance(n["body"], str) or len(n["title"]) > 300 or len(n["body"]) > 300000:
             raise ValueError("Invalid or oversized note text")
+        if "favorite" in n and type(n["favorite"]) is not bool:
+            raise ValueError("Favorite must be true or false")
+        if "tags" in n:
+            tags = n["tags"]
+            if not isinstance(tags, list) or not all(isinstance(t, str) for t in tags):
+                raise ValueError("Invalid tags")
+            if normalize_tags(",".join(tags)) != tags:
+                raise ValueError("Invalid or noncanonical tags")
         # JSON permits escaped lone surrogates, but UTF-8 saving and Tkinter do not.
         # Reject them while loading so a corrupt file can fall back to its backup.
         for field in ("title", "body"):
@@ -64,9 +85,12 @@ def read_notes(path):
                 raise ValueError("File exceeds 5 MB")
             value = json.loads(candidate.read_text(encoding="utf-8"),
                                object_pairs_hook=reject_duplicate_json_keys)
-            if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] != 1:
+            if not isinstance(value, dict) or type(value.get("schema")) is not int or value["schema"] not in (1, 2):
                 raise ValueError("Unsupported notes schema")
-            return [dict(n) for n in validate_notes(value.get("notes"))], candidate != path
+            notes = validate_notes(value.get("notes"))
+            if value["schema"] == 1 and any("tags" in n or "favorite" in n for n in notes):
+                raise ValueError("Schema 1 cannot contain note metadata")
+            return [dict(n) for n in notes], candidate != path
         except (OSError, ValueError, UnicodeError, RecursionError) as exc:
             if reason is None:
                 reason = exc
@@ -74,7 +98,8 @@ def read_notes(path):
 
 def save_notes(path, notes):
     validate_notes(notes)
-    payload = (json.dumps({"schema": 1, "notes": notes}, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    schema = 2 if any("tags" in n or "favorite" in n for n in notes) else 1
+    payload = (json.dumps({"schema": schema, "notes": notes}, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
     if len(payload) > 5000000:
         raise ValueError("Notes exceed 5 MB")
     path = Path(path)
@@ -109,7 +134,7 @@ def save_notes(path, notes):
 
 def search_notes(notes, term):
     q = term.strip().casefold()
-    return [n for n in notes if q in (n["title"] + "\n" + n["body"]).casefold()]
+    return [n for n in notes if q in (n["title"] + "\n" + n["body"] + "\n" + " ".join(n.get("tags", []))).casefold()]
 
 def safe_filename(title):
     name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", title).strip(" .")[:80]
@@ -118,8 +143,8 @@ def safe_filename(title):
     return (name or "untitled") + ".txt"
 
 STRINGS = {
-    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。", "バックアップから復元"],
-    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again.", "Restore backup"]
+    "ja": ["オフラインメモ", "新規", "開く", "保存", "TXT書出", "削除", "English", "メモを検索", "タイトル", "「新規」からメモを作成してください。", "未保存の変更", "保存済み", "このメモを削除しますか？", "変更を保存しますか？", "操作に失敗しました", "バックアップから復元。別名保存してください。", "TXT書き出し完了", "既存ファイルを上書きしますか？", "入力内容とファイルの保存先を確認し、もう一度お試しください。", "バックアップから復元", "タグ（カンマ区切り）", "☆ お気に入り", "★ お気に入り"],
+    "en": ["Offline Notes", "New", "Open", "Save", "Export TXT", "Delete", "日本語", "Search notes", "Title", "Create your first note with New.", "Unsaved changes", "Saved", "Delete this note?", "Save changes?", "Action failed", "Recovered from backup. Save to a new file.", "TXT exported", "Overwrite existing file?", "Check your input and file location, then try again.", "Restore backup", "Tags (comma-separated)", "☆ Favorite", "★ Favorited"]
 }
 
 class App:
@@ -131,7 +156,8 @@ class App:
         root.minsize(780, 520)
         root.columnconfigure(0, weight=1)
         root.rowconfigure(1, weight=1)
-        self.title, self.query, self.status = tk.StringVar(), tk.StringVar(), tk.StringVar()
+        self.title, self.query, self.status, self.tag_text = tk.StringVar(), tk.StringVar(), tk.StringVar(), tk.StringVar()
+        self.recent_ids = []
         bar = ttk.Frame(root, padding=8)
         bar.grid(row=0, column=0, sticky="ew")
         self.buttons = []
@@ -139,6 +165,8 @@ class App:
             b = ttk.Button(bar, command=fn)
             b.grid(row=0, column=i, padx=3)
             self.buttons.append(b)
+        self.favorite_button = ttk.Button(bar, command=self.toggle_favorite)
+        self.favorite_button.grid(row=0, column=7, padx=3)
         pane = ttk.Panedwindow(root, orient="horizontal")
         pane.grid(row=1, column=0, sticky="nsew", padx=8)
         left = ttk.Frame(pane, padding=4)
@@ -154,19 +182,24 @@ class App:
         pane.add(left, weight=1)
         right = ttk.Frame(pane, padding=4)
         right.columnconfigure(0, weight=1)
-        right.rowconfigure(2, weight=1)
+        right.rowconfigure(4, weight=1)
         self.title_label = ttk.Label(right)
         self.title_label.grid(row=0, column=0, sticky="w")
         self.title_entry = ttk.Entry(right, textvariable=self.title)
         self.title_entry.grid(row=1, column=0, sticky="ew")
+        self.tag_label = ttk.Label(right)
+        self.tag_label.grid(row=2, column=0, sticky="w", pady=(6, 0))
+        self.tag_entry = ttk.Entry(right, textvariable=self.tag_text)
+        self.tag_entry.grid(row=3, column=0, sticky="ew")
         self.body = tk.Text(right, wrap="word", undo=True)
-        self.body.grid(row=2, column=0, sticky="nsew")
+        self.body.grid(row=4, column=0, sticky="nsew")
         self.body.bind("<<Modified>>", self.body_changed)
         pane.add(right, weight=3)
         ttk.Label(root, textvariable=self.status, padding=8).grid(row=2, column=0, sticky="ew")
         self.visible = []
         self.query.trace_add("write", lambda *_: self.refresh_list())
         self.title.trace_add("write", lambda *_: self.changed())
+        self.tag_text.trace_add("write", lambda *_: self.changed())
         root.bind("<Control-n>", lambda _: self.new())
         root.bind("<Control-s>", lambda _: self.save())
         root.bind("<Control-o>", lambda _: self.open_file())
@@ -184,9 +217,34 @@ class App:
             b.configure(text=self.t(i + 1 if i < 6 else 19))
         self.search_label.configure(text=self.t(7))
         self.title_label.configure(text=self.t(8))
+        self.tag_label.configure(text=self.t(20))
+        self.refresh_favorite_button()
         if self.current is None:
             self.show(None)
         self.status.set(self.t(10) if self.dirty else self.t(9) if not self.notes else self.t(11))
+
+    def refresh_favorite_button(self):
+        note = next((n for n in self.notes if n["id"] == self.current), None)
+        self.favorite_button.configure(
+            text=self.t(22 if note and note.get("favorite", False) else 21),
+            state="normal" if note else "disabled")
+
+    def toggle_favorite(self):
+        try:
+            self.commit_editor()
+            note = next((n for n in self.notes if n["id"] == self.current), None)
+            if note is None:
+                return
+            if note.get("favorite", False):
+                note.pop("favorite", None)
+            else:
+                note["favorite"] = True
+            self.dirty = True
+            self.status.set(self.t(10))
+            self.refresh_favorite_button()
+            self.refresh_list()
+        except (OSError, ValueError) as exc:
+            self.error(exc)
 
     def language(self):
         self.lang = "en" if self.lang == "ja" else "ja"
@@ -210,6 +268,13 @@ class App:
             title, body = self.title.get(), self.body.get("1.0", "end-1c")
             if len(title) > 300 or len(body) > 300000:
                 raise ValueError("Note is too long")
+            tags = normalize_tags(self.tag_text.get())
+            if n.get("tags", []) != tags:
+                if tags:
+                    n["tags"] = tags
+                else:
+                    n.pop("tags", None)
+                self.dirty = True
             if (n["title"], n["body"]) != (title, body):
                 n["title"], n["body"] = title, body
                 self.dirty = True
@@ -223,19 +288,27 @@ class App:
             notes = [{**n, "title": title, "body": body} if n["id"] == self.current else n
                      for n in self.notes]
         filtered = search_notes(notes, self.query.get())
+        filtered.sort(key=lambda n: (
+            not n.get("favorite", False),
+            self.recent_ids.index(n["id"]) if n["id"] in self.recent_ids else len(self.recent_ids)))
         self.visible = [n["id"] for n in filtered]
         self.listbox.delete(0, "end")
         for n in filtered:
-            self.listbox.insert("end", n["title"] or "(untitled)")
+            self.listbox.insert("end", ("★ " if n.get("favorite", False) else "") + (n["title"] or "(untitled)"))
         if self.current in self.visible:
             self.listbox.selection_set(self.visible.index(self.current))
 
     def show(self, note_id):
         self.current = note_id
+        if note_id is not None:
+            self.recent_ids = [note_id] + [i for i in self.recent_ids if i != note_id][:999]
         n = next((n for n in self.notes if n["id"] == note_id), None)
         self.loading = True
         self.title_entry.configure(state="normal" if n else "disabled")
         self.title.set(n["title"] if n else "")
+        self.tag_entry.configure(state="normal" if n else "disabled")
+        self.tag_text.set(", ".join(n.get("tags", [])) if n else "")
+        self.refresh_favorite_button()
         self.body.configure(state="normal")
         self.body.delete("1.0", "end")
         self.body.insert("1.0", n["body"] if n else self.t(9))
