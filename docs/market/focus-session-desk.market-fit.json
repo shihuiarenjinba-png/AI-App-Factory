@@ -87,6 +87,20 @@
       "store_link": "https://apps.microsoft.com/",
       "checked": "2026-10-30",
       "evidence_type": "Vendor's official published feature claims; no independent Windows QA or Store-review verification"
+    },
+    {
+      "name": "Tempo (asyncat)",
+      "price": "Free, open-source MIT license; vendor says no account/cloud",
+      "features": [
+        "Windows/macOS/Linux local-first Pomodoro",
+        "task-linked sessions and checklist",
+        "daily/weekly/monthly focus analytics",
+        "streak tracking",
+        "configurable intervals and sounds"
+      ],
+      "source": "https://tempo.asyncat.com/",
+      "checked": "2026-10-30",
+      "evidence_type": "Official vendor feature claims; no independent install, user reviews or Microsoft Store listing verified"
     }
   ],
   "free_alternatives": [
@@ -94,7 +108,8 @@
     "FocusCommit free",
     "Sessions PWA free",
     "Focus To-Do free",
-    "Pomro (free, no ads; local history, offline, no account)"
+    "Pomro (free, no ads; local history, offline, no account)",
+    "Tempo (free MIT-licensed local-first timer, tasks and analytics)"
   ],
   "paid_price_range": "FocusCommit $14.99/year or $29.99 lifetime; Freedom $3.33/month annual or $8.99 monthly; additional in-app prices vary by country.",
   "common_review_complaints": [
@@ -207,9 +222,10 @@
     "Paid willingness-to-pay interviews",
     "Assess free Windows Clock+To Do parity",
     "Prototype taskbar visibility and interruption tracking",
-    "Capture actual Pomro Microsoft Store listing and dated customer reviews; vendor website is feature evidence, not demand evidence"
+    "Capture actual Pomro Microsoft Store listing and dated customer reviews; vendor website is feature evidence, not demand evidence",
+    "Test proposed interrupted-session export against Tempo task-linked session history and reports; official claims not independently QA-tested"
   ],
-  "provenance_note": "2026-10-30 desk research; regional prices vary; forum posts are anecdotal. No code/Windows UI/EXE QA performed. Added 2026-10-30 direct free competitor Pomro from official vendor site; feature claims not independently QA-tested. Recalibrated score 50->47; gate remains HOLD.",
+  "provenance_note": "2026-10-30 desk research; regional prices vary; forum posts are anecdotal. No code/Windows UI/EXE QA performed. Added 2026-10-30 direct free competitor Pomro from official vendor site; feature claims not independently QA-tested. Recalibrated score 50->47; gate remains HOLD. Additional free Tempo competitor verified on its official website 2026-10-30; score unchanged at 47 because market-fit already HOLD and no buyer evidence.",
   "workflow_guard": {
     "market_fit_pass": false,
     "do_not_dispatch_to_msix": true,
@@ -222,6 +238,9 @@
     "impact": "Material direct overlap in core free features; reinforces MARKET_FIT_HOLD",
     "evidence_url": "https://pomro.app/",
     "checked": "2026-10-30",
-    "feature_parity_claims_not_independently_tested": true
+    "feature_parity_claims_not_independently_tested": true,
+    "additional_competitor": "Tempo",
+    "additional_evidence_url": "https://tempo.asyncat.com/",
+    "additional_impact": "Free local-first task-linked timer with analytics further weakens generic paid timer positioning; does not prove its Windows quality."
   }
 }
