@@ -1,0 +1,94 @@
+name: Focus completed-session durable save Factory owner
+on:
+  push:
+    branches:
+      - codex/app-focus-completion-persistence-20261030
+    paths:
+      - scripts/promote_focus_completion_persistence.py
+      - .github/workflows/focus-completion-persistence.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: focus-completion-owner-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  owner-promote:
+    if: github.ref == 'refs/heads/codex/app-focus-completion-persistence-20261030'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    outputs:
+      source_sha: ${{ steps.promote.outputs.source_sha }}
+      request_id: ${{ steps.promote.outputs.request_id }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Reviewed candidate tests, Factory validate and owner promotion
+        id: promote
+        run: python scripts/promote_focus_completion_persistence.py
+
+  windows-exe:
+    needs: owner-promote
+    runs-on: windows-latest
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact promoted source and regression suite
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+        run: |
+          if ((git rev-parse HEAD).Trim() -ne "$env:SOURCE_SHA") { throw "Source SHA mismatch" }
+          python -m unittest discover -s products/focus-session-desk/tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install pinned unsigned Windows EXE builder
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - name: Build source/request-bound Windows EXE
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ needs.owner-promote.outputs.source_sha }}
+          REQUEST_ID: ${{ needs.owner-promote.outputs.request_id }}
+        run: |
+          python tools/build_windows_exe.py --slug focus-session-desk --expected-sha "$env:SOURCE_SHA" --source-branch codex/app-focus-completion-persistence-20261030 --request-id "$env:REQUEST_ID" --output dist/preidentity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          @'
+          import hashlib, json, os
+          from pathlib import Path
+          exe = Path("dist/preidentity/focus-session-desk.exe")
+          receipt = json.loads(Path("dist/preidentity/exe-receipt.json").read_text(encoding="utf-8"))
+          assert exe.read_bytes()[:2] == b"MZ"
+          assert hashlib.sha256(exe.read_bytes()).hexdigest() == receipt["executable_sha256"]
+          assert receipt["source_sha"] == os.environ["SOURCE_SHA"]
+          assert receipt["request_id"] == os.environ["REQUEST_ID"]
+          assert receipt["store_id"] is None and receipt["msix_status"] == "NOT_BUILT"
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve exact-source EXE receipt and strict job
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-completion-exe-${{ needs.owner-promote.outputs.source_sha }}
+          path: |
+            dist/preidentity/
+            dist/preidentity-provisioner-job.json
+          if-no-files-found: error
+          retention-days: 7
