@@ -1,0 +1,157 @@
+{
+  "schema_version": "app5-competitive-parity-v1",
+  "researched_on": "2026-10-31",
+  "product": "Offline Notes Canary",
+  "slug": "offline-notes-canary",
+  "parent_market_fit": "docs/market/offline-notes-canary.market-fit.json",
+  "baseline_market_fit_head": "a8b48e34802bbbcf620cafd3d289dab940a97ac0",
+  "decision": "MARKET_FIT_HOLD",
+  "score_unchanged": 45,
+  "commercial_msix_allowed": false,
+  "commercial_feature_expansion_allowed": false,
+  "research_question": "Does the proposed offline project evidence journal's local revision history and revision-inclusive export still differ from free Obsidian history plugins?",
+  "competitor_evidence": [
+    {
+      "name": "Obsidian Time Machine",
+      "url": "https://community.obsidian.md/plugins/time-machine",
+      "checked": "2026-10-31",
+      "source_type": "Obsidian community listing; author-described features",
+      "claimed_features": [
+        "Visual version rail and side-by-side/colored diff",
+        "Restore whole versions or selected paragraphs",
+        "Local File Recovery and Git history together",
+        "Export Markdown history including diffs or full versions and source metadata"
+      ],
+      "commercial_implication": "Revision-inclusive readable export and diff are already offered by a community plugin. Do not claim this feature alone is unique or monetizable.",
+      "limitations": "No installation or export quality/recipient testing; plugin requires Obsidian 1.13.0+ per listing."
+    },
+    {
+      "name": "Obsidian Local Version History",
+      "url": "https://community.obsidian.md/plugins/local-version-history",
+      "checked": "2026-10-31",
+      "source_type": "Obsidian community listing; author-described features",
+      "claimed_features": [
+        "Fully local note and folder timelines",
+        "Line/word/side-by-side diff, copied patch",
+        "Pinned versions, restore, deleted/moved file recovery",
+        "Folder history and cross-vault change list"
+      ],
+      "commercial_implication": "Local per-project/folder version tracking and comparison are already covered by a free plugin; project-scope history alone is not a paid reason.",
+      "limitations": "Community plugin listing says pending review; no independent install or reliability validation."
+    },
+    {
+      "name": "Obsidian MyHistory",
+      "url": "https://community.obsidian.md/plugins/myhistory",
+      "checked": "2026-10-31",
+      "source_type": "Obsidian community listing; author-described features",
+      "claimed_features": [
+        "Local private database per vault",
+        "History scoped to all notes or a folder",
+        "History survives rename, move and delete",
+        "Preview, pin and restore historical versions"
+      ],
+      "commercial_implication": "Local private, folder-scoped recovery is not a unique paid feature.",
+      "limitations": "Restoration overwrites current note according to author warning; no independent security or QA audit."
+    },
+    {
+      "name": "Standard Notes free",
+      "url": "https://standardnotes.com/plans",
+      "checked": "2026-10-31",
+      "source_type": "Vendor official pricing page",
+      "claimed_features": [
+        "Free offline access and tags",
+        "Free end-to-end encrypted notes and sync",
+        "Free plaintext/encrypted data export"
+      ],
+      "commercial_implication": "Offline privacy, tags and export do not differentiate a paid product. Paid history exists in its Productivity plan.",
+      "limitations": "Vendor advertised pricing $90/year Productivity, $120/year Professional; no transaction verification."
+    }
+  ],
+  "revised_competitive_gap": {
+    "eliminated_claims": [
+      "Local version history",
+      "Folder/project scoped version history",
+      "Before/after diff and selective restore",
+      "Export of note history in readable Markdown",
+      "Offline operation, no account, tags, basic export"
+    ],
+    "remaining_hypothesis": "A guided human handover workflow that requires explicit event/reason attribution, assembles a recipient-oriented revision-and-context dossier, and validates the recipient's comprehension could reduce task time compared with free plugins. This is NOT proven.",
+    "uniqueness_status": "UNVERIFIED",
+    "why_pay_statement": "NOT PROVEN: free Obsidian history plugins now overlap with both local revision tracking and history export.",
+    "prohibited_claims": [
+      "Tamper-proof",
+      "Immutable audit evidence",
+      "Compliance-certified",
+      "Independent timestamp proof",
+      "Secure encryption without security review"
+    ]
+  },
+  "controlled_validation_matrix": [
+    {
+      "task": "Capture a project event with human-entered reason and evidence reference",
+      "compare": [
+        "Offline Notes prototype",
+        "Obsidian Time Machine plus template",
+        "Obsidian Local Version History plus template"
+      ],
+      "measure": [
+        "task completion",
+        "steps",
+        "seconds",
+        "errors",
+        "reason completeness"
+      ]
+    },
+    {
+      "task": "Hand off 3 notes with 2 prior revisions each and a readable chronological explanation",
+      "compare": [
+        "Offline Notes prototype",
+        "Obsidian Time Machine Markdown history export",
+        "Obsidian Export Studio plus history",
+        "Joplin note history plus backup"
+      ],
+      "measure": [
+        "bundle completeness",
+        "recipient time to identify change reason",
+        "missing versions",
+        "manual steps"
+      ]
+    },
+    {
+      "task": "Recover one revision without silently overwriting unrelated current content",
+      "compare": [
+        "Offline Notes prototype",
+        "Obsidian MyHistory",
+        "Obsidian Time Machine"
+      ],
+      "measure": [
+        "data loss",
+        "preview comprehension",
+        "recovery time",
+        "errors"
+      ]
+    }
+  ],
+  "required_human_evidence": {
+    "target_buyer_interviews": 5,
+    "completed": 0,
+    "dated_direct_store_reviews": 10,
+    "verified": 0,
+    "independent_windows_comparison_runs": 0,
+    "paid_willingness_to_pay_confirmations": 0
+  },
+  "pass_requirements": [
+    "At least two measured advantages over a realistic free workflow",
+    "At least one documented competitor complaint addressed in observed usability testing",
+    "Five buyer interviews and ten dated Store review links",
+    "One-sentence credible paid reason and independently re-scored rubric >=80",
+    "1024x768 bilingual Windows GUI and safe recovery tests"
+  ],
+  "provenance": "Desk research based on Obsidian plugin catalog and Standard Notes official vendor descriptions on 2026-10-31. Claims were not independently installed or QA tested. No customer interviews, Store review sample or sales evidence. This supplement does not replace the parent rubric and must not be interpreted as MARKET_FIT_PASS.",
+  "safety": {
+    "partner_center_selection": "MSIX or PWA app",
+    "identity_status": "REFERENCE_AVAILABLE; no re-request or CAS",
+    "store_submission": false,
+    "msix_dispatch": false
+  }
+}
