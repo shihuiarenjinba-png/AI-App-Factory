@@ -82,6 +82,30 @@
       ],
       "implication": "One-time payment is plausible in adjacent notes software, but existing paid product has more general-purpose features.",
       "caveat": "Price is vendor list price, not Store transaction or verified sales volume."
+    },
+    {
+      "name": "Snoq",
+      "url": "https://snoq.io/",
+      "source_type": "official vendor website",
+      "checked": "2026-10-31",
+      "verified_claims": [
+        "Vendor advertises a free Windows offline notes application with no account or sync",
+        "Vendor advertises password-protected local encryption, rich-text editing, categories, full-text search, PDF export and encrypted backup"
+      ],
+      "implication": "Even encrypted local storage, no account, search, and backup are covered by a free alternative. Do not use privacy or encryption alone as a paid differentiator.",
+      "caveat": "Claims are vendor-published, not independently installed or audited; security implementation not verified."
+    },
+    {
+      "name": "Mini Diarium",
+      "url": "https://mini-diarium.com/",
+      "source_type": "official vendor website",
+      "checked": "2026-10-31",
+      "verified_claims": [
+        "Vendor advertises a free open-source offline encrypted desktop journal for Windows",
+        "Vendor advertises local history-oriented calendar navigation, import/export and automatic backups"
+      ],
+      "implication": "A local chronological journal, encrypted storage and export are also available at no charge; evidence handover must solve a distinct task.",
+      "caveat": "Vendor-published feature claims; no independent installation, security audit or Store purchaser reviews."
     }
   ],
   "comparison": {
@@ -89,7 +113,9 @@
       "Obsidian",
       "Joplin",
       "Myelin Notes",
-      "Ariv"
+      "Ariv",
+      "Snoq",
+      "Mini Diarium"
     ],
     "paid_reference": "TSNotes USD 10 one-time (vendor advertised; not comparable verified Store sale)",
     "generic_notes_willingness_to_pay": "UNPROVEN",
@@ -145,5 +171,17 @@
     "store_submission": false,
     "msix_dispatch": false
   },
-  "provenance": "Official documentation and vendor pages inspected 2026-10-30; no buyer interviews, Store reviews, or Windows installs were performed in this research run."
+  "provenance": "2026-10-30 official documentation/vendor desk research; 2026-10-31 supplementary vendor checks. No buyer interviews, independent installs, Store review samples or Windows GUI QA. Vendor claims not independently verified.",
+  "research_updates": [
+    {
+      "checked": "2026-10-31",
+      "finding": "Two additional free offline Windows competitors (Snoq and Mini Diarium) overlap with privacy, encryption, journal history and backup/export claims. This reinforces MARKET_FIT_HOLD; no independent buyer reviews, installations or willingness-to-pay data were obtained.",
+      "effect_on_score": "Unchanged at 45; no score inflation or pass promotion",
+      "store_gate": "MARKET_FIT_HOLD",
+      "sources": [
+        "https://snoq.io/",
+        "https://mini-diarium.com/"
+      ]
+    }
+  ]
 }
