@@ -121,6 +121,28 @@ class MarketFitGateTests(unittest.TestCase):
         with self.assertRaisesRegex(MarketFitHold, "source changed"):
             assert_market_fit(self.root, self.slug)
 
+    def test_uncommitted_source_change_holds(self):
+        (self.product / "main.py").write_text("print('dirty')\\n", encoding="utf-8")
+        with self.assertRaisesRegex(MarketFitHold, "uncommitted product"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_staged_source_change_holds(self):
+        (self.product / "main.py").write_text("print('staged')\\n", encoding="utf-8")
+        self.git("add", "products")
+        with self.assertRaisesRegex(MarketFitHold, "staged product"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_untracked_product_code_holds(self):
+        (self.product / "unexpected.py").write_text("print('new')\\n", encoding="utf-8")
+        with self.assertRaisesRegex(MarketFitHold, "untracked product"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_uncommitted_identity_return_is_excluded(self):
+        store = self.product / "store"
+        store.mkdir()
+        (store / "approved-identity.json").write_text('{"test": true}\\n', encoding="utf-8")
+        self.assertEqual(assert_market_fit(self.root, self.slug)["slug"], self.slug)
+
     def test_identity_return_does_not_invalidate_product_source(self):
         store = self.product / "store"
         store.mkdir()
