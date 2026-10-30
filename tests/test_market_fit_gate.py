@@ -79,6 +79,26 @@ class MarketFitGateTests(unittest.TestCase):
     def test_valid_pass_with_unchanged_source(self):
         self.assertEqual(assert_market_fit(self.root, self.slug)["scoring"]["total"], 80)
 
+    def test_uncommitted_market_pass_edit_holds(self):
+        # A local PASS claim must not be accepted before the reviewed JSON
+        # is committed; otherwise a direct builder could bypass review.
+        self.document["why_pay_statement"] = "Unreviewed new commercial claim"
+        self.write_doc()
+        with self.assertRaisesRegex(MarketFitHold, "uncommitted or staged"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_staged_market_pass_edit_holds(self):
+        self.document["why_pay_statement"] = "Staged unreviewed claim"
+        self.write_doc()
+        self.git("add", "docs/market")
+        with self.assertRaisesRegex(MarketFitHold, "uncommitted or staged"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_untracked_market_pass_doc_holds(self):
+        self.git("rm", "--cached", "docs/market/" + self.slug + ".market-fit.json")
+        with self.assertRaisesRegex(MarketFitHold, "not tracked"):
+            assert_market_fit(self.root, self.slug)
+
     def test_missing_market_doc_holds(self):
         self.path.unlink()
         with self.assertRaisesRegex(MarketFitHold, "missing"):
@@ -87,6 +107,7 @@ class MarketFitGateTests(unittest.TestCase):
     def test_existing_market_hold_cannot_be_overridden_by_identity(self):
         self.document["decision"] = "MARKET_FIT_HOLD"
         self.write_doc()
+        self.commit("review altered market decision")
         with self.assertRaisesRegex(MarketFitHold, "MARKET_FIT_PASS"):
             assert_market_fit(self.root, self.slug)
 
@@ -94,24 +115,28 @@ class MarketFitGateTests(unittest.TestCase):
         self.document["scoring"]["discoverability"]["score"] = 7
         self.document["scoring"]["total"] = 79
         self.write_doc()
+        self.commit("review altered market decision")
         with self.assertRaisesRegex(MarketFitHold, "below 80"):
             assert_market_fit(self.root, self.slug)
 
     def test_forged_total_holds(self):
         self.document["scoring"]["willingness_to_pay"]["score"] = 1
         self.write_doc()
+        self.commit("review altered market decision")
         with self.assertRaisesRegex(MarketFitHold, "inconsistent"):
             assert_market_fit(self.root, self.slug)
 
     def test_go_condition_false_holds(self):
         self.document["go_criteria"]["two_distinctions_from_free_alternatives"] = False
         self.write_doc()
+        self.commit("review altered market decision")
         with self.assertRaisesRegex(MarketFitHold, "GO conditions"):
             assert_market_fit(self.root, self.slug)
 
     def test_false_commercial_permission_holds(self):
         self.document["commercial_msix_allowed"] = False
         self.write_doc()
+        self.commit("review altered market decision")
         with self.assertRaisesRegex(MarketFitHold, "not explicitly allowed"):
             assert_market_fit(self.root, self.slug)
 
@@ -153,12 +178,14 @@ class MarketFitGateTests(unittest.TestCase):
     def test_wrong_baseline_holds(self):
         self.document["baseline_sha"] = "0" * 40
         self.write_doc()
+        self.commit("review altered market decision")
         with self.assertRaisesRegex(MarketFitHold, "not an ancestor"):
             assert_market_fit(self.root, self.slug)
 
     def test_invalid_score_type_holds(self):
         self.document["scoring"]["problem_severity"]["score"] = True
         self.write_doc()
+        self.commit("review altered market decision")
         with self.assertRaisesRegex(MarketFitHold, "invalid scoring"):
             assert_market_fit(self.root, self.slug)
 

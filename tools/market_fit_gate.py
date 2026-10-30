@@ -61,6 +61,14 @@ def assert_market_fit(root: Path, slug: str) -> dict:
         raise MarketFitHold("linked market evidence prohibited")
     if not path.is_file() or path.stat().st_size > 65536:
         raise MarketFitHold("market-fit evidence missing or oversized")
+    # A local builder must not accept a self-promoted, uncommitted PASS.
+    # Require the reviewed market decision to be present in HEAD and clean
+    # in both the index and worktree, just like the product source.
+    evidence_path = "docs/market/" + slug + ".market-fit.json"
+    if not _git(root, "ls-files", "--error-unmatch", "--", evidence_path):
+        raise MarketFitHold("market-fit evidence is not tracked")
+    if not _git(root, "diff", "--quiet", "HEAD", "--", evidence_path):
+        raise MarketFitHold("market-fit evidence has uncommitted or staged edits")
     try:
         doc = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, UnicodeError, ValueError) as exc:
