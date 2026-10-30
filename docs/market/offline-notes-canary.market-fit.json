@@ -1,0 +1,194 @@
+{
+  "schema_version": "app5-market-fit-v1",
+  "researched_on": "2026-10-30",
+  "product": "Offline Notes Canary",
+  "slug": "offline-notes-canary",
+  "repo": "shihuiarenjinba-png/AI-App-Factory",
+  "baseline_branch": "codex/app-notes-exclusive-product-20261030",
+  "baseline_sha": "0de846e1b451d5b5e9e3b1f6f7e0c7a0d557bc88",
+  "decision": "MARKET_FIT_HOLD",
+  "decision_scope": "Current general-purpose notes feature set; not an irreversible cancellation",
+  "commercial_msix_allowed": false,
+  "feature_expansion_allowed": false,
+  "direct_competitors": [
+    {
+      "name": "Obsidian",
+      "price": "Core free; optional Sync $4/month annual or $5 monthly",
+      "features": [
+        "local Markdown vault",
+        "full-text search",
+        "plugins",
+        "history with paid Sync"
+      ],
+      "source": "https://obsidian.md/pricing.html",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Joplin",
+      "price": "Desktop free/open source; optional hosted sync",
+      "features": [
+        "offline-first",
+        "tags",
+        "search",
+        "Markdown",
+        "encrypted optional sync"
+      ],
+      "source": "https://joplinapp.org/help/",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Standard Notes",
+      "price": "Free; Productivity $90/year; Professional $120/year",
+      "features": [
+        "free encrypted notes",
+        "offline access",
+        "tags",
+        "paid editor and history"
+      ],
+      "source": "https://standardnotes.com/plans",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Microsoft OneNote",
+      "price": "Standalone Windows app free",
+      "features": [
+        "notebooks",
+        "search",
+        "Windows integration",
+        "local notebook option"
+      ],
+      "source": "https://support.microsoft.com/en-us/onenote/what-s-the-difference-between-the-onenote-versions",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "UpNote",
+      "price": "Free; Premium $1.99/month; lifetime $39.99 one time (secondary source, verify in purchase UI)",
+      "features": [
+        "offline access",
+        "multi-platform notes",
+        "premium export and attachments"
+      ],
+      "source": "https://www.softwares.com/software/upnote/pricing",
+      "checked": "2026-10-30"
+    }
+  ],
+  "free_alternatives": [
+    "Obsidian core",
+    "Joplin desktop",
+    "Microsoft OneNote",
+    "Standard Notes Standard"
+  ],
+  "paid_price_range": "Comparable optional services range from $1.99/month to $120/year; UpNote lifetime secondary quote $39.99 once. Not a validated price for this product.",
+  "common_review_complaints": [
+    {
+      "complaint": "Joplin interface perceived dated; notebook search friction",
+      "source": "https://www.reddit.com/r/joplinapp/comments/1vo7m2y/i_really_wish_joplin_would_put_more_effort_into/",
+      "post_date": "2026-08-14",
+      "caveat": "Anecdotal user discussion, not representative sample"
+    },
+    {
+      "complaint": "Obsidian multi-device sync conflicts and setup complexity",
+      "source": "https://www.reddit.com/r/ObsidianMD/comments/1xcbaht/how_do_i_sync/",
+      "post_date": "2026-10-22",
+      "caveat": "Anecdotal; single-PC offline product cannot solve multi-device sync"
+    },
+    {
+      "complaint": "Standard Notes desktop/mobile usability and subscription value questioned",
+      "source": "https://www.reddit.com/r/StandardNotes/comments/1u4lido/anyone_else_disappointed_with_standard_notes/",
+      "post_date": "2026-06-13",
+      "caveat": "Anecdotal review"
+    }
+  ],
+  "unmet_need_hypothesis": "Small Windows-only, air-gapped or restricted-network teams may want a no-account evidence notebook with explicit project-level immutable-ish export snapshots, clear restore comparison and human-readable audit bundle. Need not yet validated by buyer interviews or Store reviews.",
+  "offline_local_only_advantage": "No account or cloud dependency, controlled export to local files, verifiable user-visible recovery; this alone is NOT differentiated because Obsidian and Joplin are already local-first.",
+  "buyer_persona": "Windows-only independent field auditor or operations specialist working on restricted-network projects; hypothetical, not validated.",
+  "store_search_keywords": [
+    "offline project log",
+    "local audit notes",
+    "air gapped notes",
+    "offline evidence journal",
+    "Windows local notes",
+    "作業記録 オフライン",
+    "証跡メモ"
+  ],
+  "why_pay_statement": "NOT PROVEN: no clear reason to pay for the current general notes app instead of free Obsidian, Joplin or OneNote.",
+  "price_hypothesis": {
+    "current_product": "JPY 0 (no paid launch)",
+    "redesigned_candidate": "JPY 500–1200 one-time only after demand validation, usability tests and differentiated audit workflow",
+    "validated": false
+  },
+  "proposed_redefinition": {
+    "name": "Offline Project Evidence Journal (working concept only)",
+    "differentiators": [
+      "Per-project time-stamped change journal with explicit before/after snapshot comparison and exportable human-readable evidence package",
+      "Recovery verification wizard with preview and no-clobber restore; local-only operation with no cloud/account"
+    ],
+    "constraints": [
+      "No encryption/security compliance claims without independent verification",
+      "No immutability or tamper-proof claims; user-editable local files cannot be assumed tamper-proof",
+      "Do not duplicate File Integrity Ledger's file hashing/snapshot product; this product must focus on human project narratives and note revisions"
+    ],
+    "needs_validation": [
+      "5+ target-buyer interviews",
+      "Review at least 10 relevant Windows Store reviews with date and direct links",
+      "Clickable prototype usability test at 1024x768 JA/EN",
+      "Compare true differentiation with Obsidian templates/plugins and Joplin note history"
+    ]
+  },
+  "scoring": {
+    "problem_severity": {
+      "score": 10,
+      "max": 20
+    },
+    "differentiation": {
+      "score": 6,
+      "max": 20
+    },
+    "willingness_to_pay": {
+      "score": 4,
+      "max": 20
+    },
+    "usability": {
+      "score": 10,
+      "max": 15
+    },
+    "trust_privacy": {
+      "score": 8,
+      "max": 10
+    },
+    "discoverability": {
+      "score": 4,
+      "max": 10
+    },
+    "implementation_risk": {
+      "score": 3,
+      "max": 5
+    },
+    "total": 45,
+    "max": 100
+  },
+  "go_criteria": {
+    "one_sentence_why_pay": false,
+    "two_distinctions_from_free_alternatives": false,
+    "addresses_review_complaint": true,
+    "feasible_windows_local": true,
+    "no_saas_dependency": true,
+    "minimum_score_70": false
+  },
+  "gate_policy": "<70: Store work forbidden; 70-79 redesign; >=80 candidate only if all GO conditions met",
+  "current_feature_evidence": "Products README documents tags, favorites, search highlighting, Save As, backup/restore and no-clobber safety. These are not sufficient differentiators.",
+  "evidence_repo_path": "products/offline-notes-canary/README.md",
+  "remaining_market_research": [
+    "Microsoft Store direct competitor listing prices/reviews not yet independently captured",
+    "Additional review sample and buyer interviews",
+    "Validate proposed workflow versus Obsidian plugins and OneNote local notebooks"
+  ],
+  "provenance_note": "Source URLs were accessed 2026-10-30. Prices may vary by region. Review complaints are qualitative, not prevalence estimates. This is market desk research, not product QA.",
+  "workflow_guard": {
+    "market_fit_pass": false,
+    "do_not_dispatch_to_msix": true,
+    "do_not_claim_store_ready": true,
+    "partner_center_selection": "MSIX or PWA app",
+    "identity_status": "REFERENCE_AVAILABLE / source-bound revalidation required; do not request duplicate identity"
+  }
+}
