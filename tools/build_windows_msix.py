@@ -128,6 +128,13 @@ def locate_makeappx()->Path:
 
 def build(repo_root:Path,slug:str,out:Path)->Path:
     if sys.platform!="win32":raise ValueError("Windows runner required")
+    # Enforce the commercial gate even when the builder is invoked directly,
+    # bypassing the workflow selector.
+    try:
+        from tools.market_fit_gate import assert_market_fit
+    except ModuleNotFoundError:
+        from market_fit_gate import assert_market_fit
+    assert_market_fit(repo_root, slug)
     product,identity=verify_inputs(repo_root,slug)
     if out.exists() and any(out.iterdir()):raise ValueError("refusing to overwrite existing output")
     out.mkdir(parents=True,exist_ok=True)
