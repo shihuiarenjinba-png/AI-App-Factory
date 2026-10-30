@@ -1,0 +1,181 @@
+{
+  "schema_version": "app5-market-fit-v1",
+  "researched_on": "2026-10-30",
+  "product": "Offline Text Diff Desk",
+  "slug": "offline-text-diff-desk",
+  "repo": "shihuiarenjinba-png/AI-App-Factory",
+  "baseline_branch": "codex/app-cohort-text-diff-20261028",
+  "baseline_sha": "a7d37280089893a9ea4b9ac3336020a920e73e0c",
+  "decision": "MARKET_FIT_HOLD",
+  "commercial_msix_allowed": false,
+  "feature_expansion_allowed": false,
+  "direct_competitors": [
+    {
+      "name": "WinMerge",
+      "price": "Free/open source",
+      "features": [
+        "side-by-side text diff",
+        "inline highlighting",
+        "folder compare",
+        "merge",
+        "Windows"
+      ],
+      "source": "https://github.com/WinMerge/winmerge",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Beyond Compare 5",
+      "price": "$35 Standard/$70 Pro per user, perpetual",
+      "features": [
+        "text and folder diff",
+        "advanced comparison",
+        "merge",
+        "filters"
+      ],
+      "source": "https://beyond-compare.com/shop",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Araxis Merge",
+      "price": "$129 Standard/$269 Pro US, perpetual; Japanese Standard ¥39,000",
+      "features": [
+        "text/image/binary diff",
+        "folder comparison",
+        "PDF and Office text comparison",
+        "three-way merge in Pro"
+      ],
+      "source": "https://www.araxis.com/buy/",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "KDiff3",
+      "price": "Free/open source",
+      "features": [
+        "two/three-way file compare",
+        "merge"
+      ],
+      "source": "https://invent.kde.org/sdk/kdiff3",
+      "checked": "2026-10-30"
+    }
+  ],
+  "free_alternatives": [
+    "WinMerge",
+    "KDiff3",
+    "Windows fc command",
+    "Notepad++ with Compare plugin (plugin availability must be checked)"
+  ],
+  "paid_price_range": "Beyond Compare $35–$70 once; Araxis Merge $129–$269 once (US). These include substantially more functionality.",
+  "common_review_complaints": [
+    {
+      "complaint": "Non-technical user wants instant pasted-text comparison rather than save files",
+      "source": "https://www.reddit.com/r/software/comments/1irm4f0",
+      "post_date": "2025-02-17",
+      "caveat": "User found WinMerge already solves the request"
+    },
+    {
+      "complaint": "Export only differences can be confusing in a complex folder compare workflow",
+      "source": "https://www.reddit.com/r/software/comments/1cpevz9",
+      "post_date": "2024-05-11",
+      "caveat": "Old anecdotal report, not verified software defect"
+    },
+    {
+      "complaint": "Large folder compare can be slow",
+      "source": "https://www.reddit.com/r/software/comments/1eaedl9",
+      "post_date": "2024-07-23",
+      "caveat": "Large-scale folder case outside this product's 1 MiB text scope"
+    }
+  ],
+  "unmet_need_hypothesis": "Non-developer Windows users occasionally comparing short contract or instruction revisions may value a two-button, plain-language change summary and safe local report, but WinMerge already offers powerful free diff.",
+  "offline_local_only_advantage": "No cloud upload of sensitive documents, read-only inputs and explicit local export; WinMerge also runs locally, so not sufficient on its own.",
+  "buyer_persona": "Small office clerk or nontechnical editor comparing short local UTF-8 documents; unvalidated.",
+  "store_search_keywords": [
+    "text compare offline",
+    "document difference Windows",
+    "simple text diff",
+    "UTF-8 diff",
+    "文章比較",
+    "差分 比較"
+  ],
+  "why_pay_statement": "NOT PROVEN: a basic two-file line diff cannot command a price against free WinMerge. Plain-language human review reporting is a hypothesis only.",
+  "price_hypothesis": {
+    "current_product": "JPY 0 / do not sell",
+    "redesigned_candidate": "JPY 300–700 once if user studies prove a nontechnical workflow advantage",
+    "validated": false
+  },
+  "proposed_redefinition": {
+    "name": "Plain-language Local Revision Review",
+    "differentiators": [
+      "Nontechnical change summary with added/deleted counts, only-changes mode and one-click redline handoff",
+      "Safe pasted-text and file comparison with explicit no-upload explanation and readable Japanese report"
+    ],
+    "constraints": [
+      "No DOCX/PDF claims without parsers and tests",
+      "Reject invalid UTF-8, binary, symlinks and oversized inputs",
+      "No false claim of legal document verification",
+      "Avoid unsafe merge or overwrite of source files"
+    ],
+    "needs_validation": [
+      "Test against WinMerge paste/file workflow",
+      "5 buyer interviews",
+      "10 dated Microsoft Store competitor reviews",
+      "Windows GUI 1024x768 EN/JA usability study"
+    ]
+  },
+  "scoring": {
+    "problem_severity": {
+      "score": 9,
+      "max": 20
+    },
+    "differentiation": {
+      "score": 6,
+      "max": 20
+    },
+    "willingness_to_pay": {
+      "score": 4,
+      "max": 20
+    },
+    "usability": {
+      "score": 10,
+      "max": 15
+    },
+    "trust_privacy": {
+      "score": 8,
+      "max": 10
+    },
+    "discoverability": {
+      "score": 5,
+      "max": 10
+    },
+    "implementation_risk": {
+      "score": 4,
+      "max": 5
+    },
+    "total": 46,
+    "max": 100
+  },
+  "go_criteria": {
+    "one_sentence_why_pay": false,
+    "two_distinctions_from_free_alternatives": false,
+    "addresses_review_complaint": false,
+    "feasible_windows_local": true,
+    "no_saas_dependency": true,
+    "minimum_score_70": false
+  },
+  "gate_policy": "<70: Store work forbidden; 70-79 redesign; >=80 candidate only if all GO criteria met",
+  "current_feature_evidence": "README: UTF-8 files up to 1 MiB/10,000 lines, ignore whitespace, unified diff export, session backup; not a rich change explanation.",
+  "evidence_repo_path": "products/offline-text-diff-desk/README.md",
+  "remaining_market_research": [
+    "Microsoft Store direct listing and user review evidence",
+    "Validate whether nontechnical redline is an unmet paid need",
+    "Current KDiff3 pricing/license verification",
+    "Product-specific Windows GUI usability"
+  ],
+  "provenance_note": "2026-10-30 desk research, anecdotal forum reviews, no new EXE or GUI testing.",
+  "workflow_guard": {
+    "market_fit_pass": false,
+    "do_not_dispatch_to_msix": true,
+    "do_not_claim_store_ready": true,
+    "partner_center_selection": "MSIX or PWA app",
+    "identity_status": "NOT_VERIFIED_THIS_RUN"
+  }
+}
