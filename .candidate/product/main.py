@@ -103,6 +103,20 @@ def today_totals(document, day=None):
     return len(sessions), sum(entry["minutes"] for entry in sessions)
 
 
+def persist_completed_session(document, path, minutes, day=None):
+    """Persist one finished session before exposing it in the live UI.
+
+    On any write failure the caller's document stays unchanged. Retrying
+    after a failed write cannot create a phantom completed session.
+    """
+    import copy
+    candidate = copy.deepcopy(document)
+    record_completed_session(candidate, minutes, day)
+    candidate["session"] = "idle"
+    save_document(path, candidate)
+    return candidate
+
+
 def blank_document():
     return {"schema": 1, "language": "ja", "minutes": 25, "tasks": [], "session": "idle", "history": []}
 
@@ -283,7 +297,8 @@ WORDS = {
         "preset_25": "25分で開始", "preset_50": "50分で開始",
         "history": "履歴", "today_summary": "今日: {count}回 / {minutes}分",
         "history_empty": "完了したセッションはまだありません。",
-        "history_line": "{day} · {minutes}分"
+        "history_line": "{day} · {minutes}分",
+        "completion_unsaved": "完了履歴を保存できません。自動再試行中"
     },
     "en": {
         "name": "Focus Session Desk", "subtitle": "Offline focus timer and task checklist",
@@ -300,7 +315,8 @@ WORDS = {
         "preset_25": "Start 25 min", "preset_50": "Start 50 min",
         "history": "History", "today_summary": "Today: {count} sessions / {minutes} min",
         "history_empty": "No completed sessions yet.",
-        "history_line": "{day} · {minutes} min"
+        "history_line": "{day} · {minutes} min",
+        "completion_unsaved": "Session history not saved. Retrying"
     }
 }
 
@@ -328,6 +344,9 @@ class Desk:
         self.data, recovered = load_document(self.path)
         interrupted = self.data["session"] == "interrupted"
         self.timer = FocusTimer(self.data["minutes"])
+        self._completion_pending = False
+        self._completion_retry_after = 0.0
+        self._completion_error_shown = False
         self.data["session"] = "idle"
         self.lang = self.data["language"]
         root.geometry(initial_window_geometry(root.winfo_screenwidth(), root.winfo_screenheight()))
@@ -571,18 +590,35 @@ class Desk:
         self.clock_label.configure(text=self.timer.display())
         self.timer_state.configure(text=self.words(self.timer.state))
         if was != "finished" and self.timer.state == "finished":
-            record_completed_session(self.data, self.timer.minutes)
+            self._completion_pending = True
+        if self._completion_pending and time.monotonic() >= self._completion_retry_after:
             try:
-                self.save()
-            except (OSError, ValueError) as exc:
-                messagebox.showerror(self.words("error"), str(exc))
-            messagebox.showinfo(self.words("name"), self.words("finish"))
-            self.refresh()
+                updated = persist_completed_session(self.data, self.path, self.timer.minutes)
+            except (OSError, ValueError, UnicodeError) as exc:
+                self._completion_retry_after = time.monotonic() + 5.0
+                self.status.configure(text=self.words("completion_unsaved"))
+                if not self._completion_error_shown:
+                    messagebox.showerror(self.words("error"), str(exc))
+                    self._completion_error_shown = True
+            else:
+                self.data = updated
+                self._completion_pending = False
+                self._completion_error_shown = False
+                self.status.configure(text=self.words("saved"))
+                messagebox.showinfo(self.words("name"), self.words("finish"))
+                self.refresh()
         self.root.after(250, self.tick)
 
     def close(self):
         if self.timer.state in ("running", "paused") and not messagebox.askyesno(self.words("name"), self.words("exit")):
             return
+        if self._completion_pending:
+            try:
+                self.data = persist_completed_session(self.data, self.path, self.timer.minutes)
+            except (OSError, ValueError, UnicodeError) as exc:
+                messagebox.showerror(self.words("error"), str(exc))
+                return  # Do not silently discard a finished but unsaved session.
+            self._completion_pending = False
         try:
             self.save()
         except (OSError, ValueError) as exc:

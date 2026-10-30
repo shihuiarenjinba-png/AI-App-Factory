@@ -28,6 +28,88 @@ class FocusDeskTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     initial_window_geometry(width, height)
 
+    def test_completed_session_disk_failure_does_not_create_phantom_history(self):
+        from unittest.mock import patch
+        from main import persist_completed_session, today_totals
+        save_document(self.path, self.data)
+        before = self.path.read_bytes()
+        with patch("main.save_document", side_effect=OSError("disk full")):
+            with self.assertRaises(OSError):
+                persist_completed_session(self.data, self.path, 25, "2026-10-30")
+        self.assertEqual(today_totals(self.data, "2026-10-30"), (0, 0))
+        self.assertEqual(self.path.read_bytes(), before)
+        persisted = persist_completed_session(self.data, self.path, 25, "2026-10-30")
+        self.assertEqual(today_totals(persisted, "2026-10-30"), (1, 25))
+        self.assertEqual(today_totals(self.data, "2026-10-30"), (0, 0))
+        self.assertEqual(load_document(self.path)[0]["history"], persisted["history"])
+
+    def test_finished_timer_retries_without_double_counting(self):
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        from main import Desk
+        now = [100.0]
+        desk = Desk.__new__(Desk)
+        desk.data = blank_document()
+        desk.path = self.path
+        desk.timer = FocusTimer(1, clock=lambda: now[0])
+        desk.timer.start()
+        desk._completion_pending = False
+        desk._completion_retry_after = 0.0
+        desk._completion_error_shown = False
+        desk.words = lambda key: key
+        labels = []
+        fake = SimpleNamespace(configure=lambda **kwargs: labels.append(kwargs))
+        desk.clock_label = desk.timer_state = desk.status = fake
+        desk.root = SimpleNamespace(after=lambda *args: None)
+        refreshed = []
+        desk.refresh = lambda: refreshed.append(True)
+        now[0] += 61
+        with patch("main.save_document", side_effect=OSError("disk full")), \
+             patch("main.messagebox.showerror") as error, \
+             patch("main.messagebox.showinfo") as info:
+            desk.tick()
+            self.assertTrue(desk._completion_pending)
+            self.assertEqual(desk.data["history"], [])
+            self.assertEqual(error.call_count, 1)
+            info.assert_not_called()
+        # An immediate timer tick does not hammer the disk or repeat the dialog.
+        with patch("main.save_document", side_effect=AssertionError("retry too early")):
+            desk.tick()
+        desk._completion_retry_after = 0.0
+        with patch("main.messagebox.showinfo") as info:
+            desk.tick()
+            info.assert_called_once()
+        self.assertFalse(desk._completion_pending)
+        self.assertEqual(len(desk.data["history"]), 1)
+        self.assertEqual(len(load_document(self.path)[0]["history"]), 1)
+        desk.tick()
+        self.assertEqual(len(desk.data["history"]), 1)
+        self.assertEqual(len(refreshed), 1)
+
+    def test_close_refuses_to_lose_unsaved_finished_session(self):
+        from unittest.mock import patch
+        from types import SimpleNamespace
+        from main import Desk
+        desk = Desk.__new__(Desk)
+        desk.data = blank_document()
+        desk.path = self.path
+        desk.timer = FocusTimer(25)
+        desk.timer.state = "finished"
+        desk._completion_pending = True
+        desk.words = lambda key: key
+        destroyed = []
+        desk.root = SimpleNamespace(destroy=lambda: destroyed.append(True))
+        desk.save = lambda: None
+        with patch("main.save_document", side_effect=OSError("disk full")), \
+             patch("main.messagebox.showerror") as error:
+            desk.close()
+            error.assert_called_once()
+        self.assertEqual(destroyed, [])
+        self.assertTrue(desk._completion_pending)
+        desk.close()
+        self.assertEqual(destroyed, [True])
+        self.assertEqual(len(load_document(self.path)[0]["history"]), 1)
+
     def test_completed_history_roundtrip_and_daily_totals(self):
         from main import record_completed_session, today_totals
         record_completed_session(self.data, 25, "2026-10-30")
