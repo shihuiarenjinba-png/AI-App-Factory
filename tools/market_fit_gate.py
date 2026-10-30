@@ -115,9 +115,26 @@ def assert_market_fit(root: Path, slug: str) -> dict:
         raise MarketFitHold("market review baseline is not an ancestor")
     # Store Identity return may change, but product source must remain identical.
     source = "products/" + slug
+    excluded_store = ":(exclude)" + source + "/store"
     if not _git(root, "diff", "--quiet", baseline, "HEAD", "--",
-                source, ":(exclude)" + source + "/store"):
+                source, excluded_store):
         raise MarketFitHold("product source changed after market review")
+    # A direct local builder may read modified/staged files not present in HEAD.
+    # The reviewed source must match the actual bytes that would be packaged.
+    if not _git(root, "diff", "--quiet", "--", source, excluded_store):
+        raise MarketFitHold("uncommitted product source changes")
+    if not _git(root, "diff", "--cached", "--quiet", "--", source, excluded_store):
+        raise MarketFitHold("staged product source changes")
+    try:
+        pending = subprocess.run(
+            ["git", "ls-files", "--others", "--exclude-standard", "--", source,
+             excluded_store], cwd=root, stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE, timeout=15, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise MarketFitHold("cannot inspect untracked product source") from exc
+    if pending.returncode != 0 or pending.stdout.strip():
+        raise MarketFitHold("untracked product source files")
     return doc
 
 
