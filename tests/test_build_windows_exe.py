@@ -74,8 +74,10 @@ class PreIdentityWindowsBuildTests(unittest.TestCase):
         ):
             receipt = build_exe(self.root, "example-tool", self.sha, self.output,
                                 request_id=request_id)
-        job = json.loads((self.output / "provisioner-job.json").read_text(encoding="utf-8"))
+        job = json.loads(self.output.with_name("preidentity-provisioner-job.json").read_text(encoding="utf-8"))
         self.assertEqual(job, strict_provisioner_job(receipt))
+        self.assertEqual({p.name for p in self.output.iterdir()},
+                         {"example-tool.exe", "exe-receipt.json"})
         self.assertEqual(set(job), {
             "schema_version", "request_id", "product_type", "source_factory",
             "source_repository", "source_branch", "source_sha", "slug",
@@ -97,7 +99,7 @@ class PreIdentityWindowsBuildTests(unittest.TestCase):
         ):
             receipt = build_exe(self.root, "example-tool", self.sha, self.output)
         self.assertIsNone(receipt["request_id"])
-        self.assertFalse((self.output / "provisioner-job.json").exists())
+        self.assertFalse(self.output.with_name("preidentity-provisioner-job.json").exists())
         with self.assertRaisesRegex(ValueError, "invalid source-bound"):
             strict_provisioner_job(receipt)
 
