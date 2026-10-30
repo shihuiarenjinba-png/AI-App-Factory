@@ -1,0 +1,154 @@
+{
+  "schema_version": "app5-niche-competitive-gap-v1",
+  "researched_on": "2026-10-31",
+  "product": "Offline Notes Canary",
+  "slug": "offline-notes-canary",
+  "parent_market_fit": "docs/market/offline-notes-canary.market-fit.json",
+  "parent_niche_validation": "docs/market/offline-notes-niche-validation-20261030.json",
+  "decision": "MARKET_FIT_HOLD",
+  "score_unchanged": 45,
+  "score_max": 100,
+  "source_snapshot_sha": "f3abdb5c36ec5660e9c34730180063b0eafaef18",
+  "research_question": "Can a project-scoped, revision-aware, human-readable offline evidence handover command justify payment versus free Obsidian/Joplin workflows?",
+  "competitive_evidence": [
+    {
+      "name": "Obsidian Project Versioning community plugin",
+      "url": "https://github.com/mikeperl/obsidian-project-versioning",
+      "source_type": "open-source repository README; developer claims, not independently installed",
+      "checked": "2026-10-31",
+      "features_claimed": [
+        "Project-scoped ZIP snapshots and comparison",
+        "Line-level diff and Markdown/JSON audit reports",
+        "Persistent version history",
+        "Export selected snapshots without overwriting existing files",
+        "Local execution without external tools"
+      ],
+      "overlap": "Project-level versioned archive, diff report and export overlap heavily with the proposed evidence handover workflow.",
+      "limitations": "README says community-directory installation is pending acceptance; manual installation may be required. Adoption, Windows reliability and user demand not independently verified.",
+      "competitive_implication": "Do not claim project snapshots, diff reports or offline export are unique paid features."
+    },
+    {
+      "name": "Obsidian Export Studio community plugin",
+      "url": "https://community.obsidian.md/plugins/export-studio",
+      "source_type": "Obsidian community plugin listing; developer claims, not independently installed",
+      "checked": "2026-10-31",
+      "features_claimed": [
+        "Selected notes and linked notes to PDF or HTML",
+        "Clickable links between exported notes",
+        "Cover page, table of contents, page numbers",
+        "Export does not overwrite existing files"
+      ],
+      "overlap": "A readable one-command handover bundle is not automatically a unique feature; a free core app plus plugin can export a structured collection.",
+      "limitations": "No verified export of historical note revisions; plugin installation and cross-plugin interoperability not tested.",
+      "competitive_implication": "Compare a real revision-inclusive handover workflow against this plugin before claiming a paid advantage."
+    },
+    {
+      "name": "Obsidian built-in File Recovery",
+      "url": "https://obsidian.md/help/plugins/file-recovery",
+      "source_type": "official product documentation",
+      "checked": "2026-10-31",
+      "features_claimed": [
+        "Local file snapshots",
+        "Compare snapshot changes",
+        "Restore previous note content",
+        "Default seven-day retention"
+      ],
+      "overlap": "Basic note versioning, before/after comparison and restore already exist in a free core product.",
+      "competitive_implication": "Version history alone cannot justify payment."
+    },
+    {
+      "name": "Joplin desktop note history",
+      "url": "https://joplinapp.org/help/apps/note_history/",
+      "source_type": "official product documentation",
+      "checked": "2026-10-31",
+      "features_claimed": [
+        "Automatic note revisions",
+        "Desktop revision viewing and restore",
+        "Default 90-day retention"
+      ],
+      "overlap": "Free desktop note revisions and restore already exist.",
+      "competitive_implication": "Only an independently demonstrated workflow advantage, not generic revisions, could differentiate."
+    },
+    {
+      "name": "Joplin Backup plugin",
+      "url": "https://joplinapp.org/plugins/plugin/io.github.jackgruber.backup/",
+      "source_type": "official plugin listing",
+      "checked": "2026-10-31",
+      "features_claimed": [
+        "JEX backup and import",
+        "JEX backup excludes note revision history"
+      ],
+      "overlap": "Revision-inclusive portable handover remains a possible gap in this specific JEX backup route.",
+      "limitations": "This does not prove that other Joplin plugins or manual workflows cannot export revisions.",
+      "competitive_implication": "A possible gap, not a verified unique feature or willingness-to-pay."
+    },
+    {
+      "name": "Mini Diarium",
+      "url": "https://mini-diarium.com/",
+      "source_type": "official vendor page; not independently installed",
+      "checked": "2026-10-31",
+      "features_claimed": [
+        "Free/open-source offline Windows journal",
+        "Local encryption and automatic backups",
+        "JSON and Markdown export"
+      ],
+      "overlap": "Offline journal, privacy, backup and readable export are already available for free.",
+      "competitive_implication": "Do not claim offline, privacy, or export alone as a paid differentiator."
+    }
+  ],
+  "candidate_distinctions": [
+    {
+      "idea": "Explicit human-entered event/reason per note revision and project timeline",
+      "status": "UNVERIFIED",
+      "required_test": "Compare a complete event-log task against Obsidian Project Versioning, templates and Joplin plugins; measure steps and time with five target users.",
+      "claim_allowed": false
+    },
+    {
+      "idea": "Revision-inclusive handover containing selected historical versions, reason trail and a readable summary in one offline package",
+      "status": "POSSIBLE_NARROW_GAP_NOT_PROVEN",
+      "required_test": "Export the same example project with Obsidian Export Studio plus Project Versioning and Joplin history/backup, and compare recipient usability and completeness.",
+      "claim_allowed": false
+    }
+  ],
+  "not_paid_differentiators": [
+    "offline operation",
+    "no account",
+    "tags and favorites",
+    "local backup",
+    "note revision history alone",
+    "PDF or HTML export alone",
+    "project snapshots and diff reports alone"
+  ],
+  "buyer_persona_hypothesis": "Windows field auditor or restricted-network project handover operator; no verified interviews",
+  "price_hypothesis": "JPY 500–1200 one-time only if paid willingness-to-pay is directly validated",
+  "willingness_to_pay": "UNVALIDATED",
+  "microsoft_store_review_sample": {
+    "required": 10,
+    "verified_in_this_research": 0,
+    "status": "MISSING"
+  },
+  "buyer_interviews": {
+    "required": 5,
+    "completed_in_this_research": 0,
+    "status": "MISSING"
+  },
+  "validation_protocol": {
+    "stage_1": "Collect 10 dated, direct Microsoft Store review links, recording actual complaints and purchase status when shown; do not fabricate review counts.",
+    "stage_2": "Interview 5 target users, first asking them to perform an evidence handover using their current free workflow and documenting time/errors.",
+    "stage_3": "Create only a noncommercial 1024x768 JA/EN clickable prototype of event reasons plus revision-inclusive export; no Store packaging.",
+    "stage_4": "Blind compare recipient comprehension and task completion against Obsidian/Joplin free workflows; document two demonstrated advantages and a solved complaint.",
+    "stage_5": "Ask users whether they would pay the proposed one-time price, then independently rescore all seven market-fit dimensions; never auto-promote."
+  },
+  "gate": {
+    "market_fit_pass": false,
+    "why_pay_proven": false,
+    "two_verified_free_differences": false,
+    "addresses_verified_review_complaint": false,
+    "commercial_feature_expansion_allowed": false,
+    "commercial_msix_allowed": false,
+    "partner_center_selection": "MSIX or PWA app",
+    "identity_status": "REFERENCE_AVAILABLE; no repeat request; source/request binding remains separately gated",
+    "store_submission": false
+  },
+  "limitations": "Desk review only. No independent competitor installations, plugin combinations, Store review extraction, interviews, usability trials, or real Windows GUI QA. Feature claims from third-party README/listings are not audited."
+}
