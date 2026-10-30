@@ -73,7 +73,10 @@ def assert_market_fit(root: Path, slug: str) -> dict:
         raise MarketFitHold("commercial MSIX is not explicitly allowed")
     if doc.get("feature_expansion_allowed") is not True:
         raise MarketFitHold("product expansion has not been approved")
-    if len(doc.get("direct_competitors", [])) < 3 or len(doc.get("free_alternatives", [])) < 3:
+    competitors = doc.get("direct_competitors")
+    alternatives = doc.get("free_alternatives")
+    if (not isinstance(competitors, list) or len(competitors) < 3
+            or not isinstance(alternatives, list) or len(alternatives) < 3):
         raise MarketFitHold("competitor evidence incomplete")
     for field in ("paid_price_range", "buyer_persona", "why_pay_statement"):
         if not isinstance(doc.get(field), str) or len(doc[field].strip()) < 10:
