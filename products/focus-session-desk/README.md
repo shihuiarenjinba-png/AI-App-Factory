@@ -19,12 +19,13 @@ The GUI uses only Python's standard library. All task data, language preference,
 - Start, pause, resume, and reset a focus countdown; set duration from 1 to 180 minutes. The timer uses a monotonic clock while running.
 - Changes are saved locally and atomically with a last-known-good `.bak` copy. Malformed or oversized state is rejected; a valid backup can be restored.
 - Exiting an active/paused session asks for confirmation. After restarting, the app shows an interrupted-session notice and starts from an idle timer. It does **not** pretend time continued while closed.
-- Switch Japanese/English at any time. Basic controls remain visible at 1024×768; no claim of actual Windows GUI QA is made.
+- View the complete saved focus-session history (up to 500 entries) in a scrollable, bilingual table, with today's session count and minutes shown in the main window.
+- Switch Japanese/English at any time. Basic controls remain visible at 1024×768; actual Windows GUI QA remains a separate gate.
 - Press Enter in the task entry to add; task selection enables editing, toggling, deletion and reordering.
 
 ## Honest limitations
 
-No OS notifications, tray background timer, calendar sync, statistics, accounts, or network features. The focus countdown only runs while the application is open. The executable, MSIX signing, Store certification, accessibility audit and real Windows install/GUI QA are separate downstream gates. This directory is a **candidate**, not a promoted Factory product until the standard lifecycle validates and promotes it.
+No OS notifications, tray background timer, calendar sync, accounts, or network features. The focus countdown only runs while the application is open. The executable, MSIX signing, Store certification, accessibility audit and real Windows install/GUI QA are separate downstream gates. This directory contains committed product source. Each changed source SHA still requires its own exact-source EXE and downstream readiness checks.
 
 ## Quality checks
 

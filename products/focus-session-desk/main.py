@@ -103,6 +103,11 @@ def today_totals(document, day=None):
     return len(sessions), sum(entry["minutes"] for entry in sessions)
 
 
+def history_rows(document):
+    """Return every saved session, newest first, without a hidden 30-row cap."""
+    return [(item["day"], item["minutes"]) for item in reversed(document.get("history", []))]
+
+
 def persist_completed_session(document, path, minutes, day=None):
     """Persist one finished session before exposing it in the live UI.
 
@@ -298,6 +303,7 @@ WORDS = {
         "history": "履歴", "today_summary": "今日: {count}回 / {minutes}分",
         "history_empty": "完了したセッションはまだありません。",
         "history_line": "{day} · {minutes}分",
+        "history_date": "日付", "history_minutes": "集中時間（分）", "close": "閉じる",
         "completion_unsaved": "完了履歴を保存できません。自動再試行中"
     },
     "en": {
@@ -316,6 +322,7 @@ WORDS = {
         "history": "History", "today_summary": "Today: {count} sessions / {minutes} min",
         "history_empty": "No completed sessions yet.",
         "history_line": "{day} · {minutes} min",
+        "history_date": "Date", "history_minutes": "Minutes", "close": "Close",
         "completion_unsaved": "Session history not saved. Retrying"
     }
 }
@@ -583,12 +590,36 @@ class Desk:
             self.relabel()
 
     def show_history(self):
-        records = list(reversed(self.data.get("history", [])))
+        records = history_rows(self.data)
         if not records:
             messagebox.showinfo(self.words("history"), self.words("history_empty"))
             return
-        lines = [self.words("history_line").format(**entry) for entry in records[:30]]
-        messagebox.showinfo(self.words("history"), "\n".join(lines))
+        # A message box silently hid sessions 31-500. Keep the full local
+        # history visible in a scrollable, bilingual, read-only table.
+        dialog = tk.Toplevel(self.root)
+        dialog.title(self.words("history"))
+        dialog.geometry("480x420")
+        dialog.minsize(360, 260)
+        dialog.transient(self.root)
+        frame = ttk.Frame(dialog, padding=12)
+        frame.pack(fill="both", expand=True)
+        table_frame = ttk.Frame(frame)
+        table_frame.pack(fill="both", expand=True)
+        table = ttk.Treeview(table_frame, columns=("day", "minutes"),
+                             show="headings", selectmode="browse")
+        table.heading("day", text=self.words("history_date"))
+        table.heading("minutes", text=self.words("history_minutes"))
+        table.column("day", width=220, anchor="w")
+        table.column("minutes", width=130, anchor="e")
+        scrollbar = ttk.Scrollbar(table_frame, orient="vertical", command=table.yview)
+        table.configure(yscrollcommand=scrollbar.set)
+        scrollbar.pack(side="right", fill="y")
+        table.pack(side="left", fill="both", expand=True)
+        for day, minutes in records:
+            table.insert("", "end", values=(day, minutes))
+        ttk.Button(frame, text=self.words("close"),
+                   command=dialog.destroy).pack(anchor="e", pady=(10, 0))
+        dialog.focus_set()
 
     def tick(self):
         was = self.timer.state
