@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from tools.build_windows_exe import build_exe, verify_source
+from tools.build_windows_exe import build_exe, verify_source, strict_provisioner_job
 
 
 class PreIdentityWindowsBuildTests(unittest.TestCase):
@@ -66,6 +66,56 @@ class PreIdentityWindowsBuildTests(unittest.TestCase):
         with patch("tools.build_windows_exe.sys.platform", "win32"):
             with self.assertRaisesRegex(ValueError, "overwrite"):
                 build_exe(self.root, "example-tool", self.sha, self.output)
+
+    def test_exact_request_emits_strict_provisioner_job_without_identity(self):
+        request_id = "app-example-tool-" + self.sha[:12]
+        with patch("tools.build_windows_exe.sys.platform", "win32"), patch(
+            "tools.build_windows_exe._run_pyinstaller", side_effect=self.fake_builder
+        ):
+            receipt = build_exe(self.root, "example-tool", self.sha, self.output,
+                                request_id=request_id)
+        job = json.loads(self.output.with_name("preidentity-provisioner-job.json").read_text(encoding="utf-8"))
+        self.assertEqual(job, strict_provisioner_job(receipt))
+        self.assertEqual({p.name for p in self.output.iterdir()},
+                         {"example-tool.exe", "exe-receipt.json"})
+        self.assertEqual(set(job), {
+            "schema_version", "request_id", "product_type", "source_factory",
+            "source_repository", "source_branch", "source_sha", "slug",
+            "display_name", "target_owner", "dry_run", "requested_actions",
+        })
+        self.assertEqual(job["schema_version"], "1.0")
+        self.assertEqual(job["request_id"], request_id)
+        self.assertEqual(job["source_sha"], self.sha)
+        self.assertEqual(job["source_branch"], "codex/factory-autoloop-20261026")
+        self.assertEqual(job["requested_actions"], ["BUILD_WINDOWS"])
+        self.assertTrue(job["dry_run"])
+        self.assertNotIn("store_id", job)
+        self.assertNotIn("packaging_family", job)
+        self.assertIsNone(receipt["store_id"])
+
+    def test_missing_request_never_creates_unbound_provisioner_job(self):
+        with patch("tools.build_windows_exe.sys.platform", "win32"), patch(
+            "tools.build_windows_exe._run_pyinstaller", side_effect=self.fake_builder
+        ):
+            receipt = build_exe(self.root, "example-tool", self.sha, self.output)
+        self.assertIsNone(receipt["request_id"])
+        self.assertFalse(self.output.with_name("preidentity-provisioner-job.json").exists())
+        with self.assertRaisesRegex(ValueError, "invalid source-bound"):
+            strict_provisioner_job(receipt)
+
+    def test_strict_job_rejects_store_identity_and_tampered_source(self):
+        with patch("tools.build_windows_exe.sys.platform", "win32"), patch(
+            "tools.build_windows_exe._run_pyinstaller", side_effect=self.fake_builder
+        ):
+            receipt = build_exe(self.root, "example-tool", self.sha, self.output,
+                                request_id="app-example-tool-" + self.sha[:12])
+        for bad in (dict(receipt, store_id="9MZ8ZZTRTS17"),
+                    dict(receipt, source_sha="0" * 40),
+                    dict(receipt, request_id=None),
+                    dict(receipt, executable_sha256="0"),
+                    dict(receipt, msix_status="BUILT")):
+            with self.subTest(bad=bad), self.assertRaises(ValueError):
+                strict_provisioner_job(bad)
 
     def test_missing_identity_never_becomes_store_ready(self):
         with patch("tools.build_windows_exe.sys.platform", "win32"), patch(

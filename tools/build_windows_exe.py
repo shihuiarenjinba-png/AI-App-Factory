@@ -23,6 +23,60 @@ SOURCE_BRANCH = re.compile(r"^codex/[A-Za-z0-9._/-]+$")
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]{3,127}$")
 
 
+def strict_provisioner_job(receipt: dict) -> dict:
+    """Create only the Provisioner v1.0 job fields from an exact-source EXE receipt.
+
+    This is a dry-run BUILD_WINDOWS contract, not an Identity attestation,
+    a Store registration, a signed package, or proof of EXE bytes. The
+    receiving Provisioner must independently verify the actual EXE.
+    """
+    if not isinstance(receipt, dict):
+        raise ValueError("EXE receipt must be an object")
+    if (receipt.get("schema_version") != 1
+            or receipt.get("stage") != "PRE_IDENTITY_WINDOWS_EXE"
+            or receipt.get("status") != "EXE_QA_UNSIGNED"
+            or receipt.get("msix_status") != "NOT_BUILT"
+            or receipt.get("official_identity_status") != "NOT_COLLECTED"
+            or receipt.get("store_id") is not None):
+        raise ValueError("EXE receipt is not pre-Identity unsigned QA")
+    slug = receipt.get("slug")
+    branch = receipt.get("source_branch")
+    source_sha = receipt.get("source_sha")
+    request_id = receipt.get("request_id")
+    name = receipt.get("display_name")
+    if (not isinstance(slug, str) or not SLUG.fullmatch(slug)
+            or not isinstance(branch, str) or not SOURCE_BRANCH.fullmatch(branch)
+            or ".." in branch or "//" in branch or branch.endswith(("/", "."))
+            or len(branch) > 240
+            or not isinstance(source_sha, str) or not SHA40.fullmatch(source_sha)
+            or source_sha == "0" * 40
+            or not isinstance(request_id, str) or not REQUEST_ID.fullmatch(request_id)
+            or not isinstance(name, str) or not 1 <= len(name.strip()) <= 100
+            or receipt.get("source_factory") != "AI-App-Factory"
+            or receipt.get("source_repository") != SOURCE_REPOSITORY
+            or receipt.get("product_type") != "APP"
+            or receipt.get("executable") != slug + ".exe"
+            or not isinstance(receipt.get("executable_sha256"), str)
+            or re.fullmatch(r"[0-9a-f]{64}", receipt["executable_sha256"]) is None
+            or type(receipt.get("executable_bytes")) is not int
+            or not 1024 < receipt["executable_bytes"] <= 314572800):
+        raise ValueError("invalid source-bound EXE receipt for Provisioner")
+    return {
+        "schema_version": "1.0",
+        "request_id": request_id,
+        "product_type": "APP",
+        "source_factory": "AI-App-Factory",
+        "source_repository": SOURCE_REPOSITORY,
+        "source_branch": branch,
+        "source_sha": source_sha,
+        "slug": slug,
+        "display_name": name,
+        "target_owner": "shihuiarenjinba-png",
+        "dry_run": True,
+        "requested_actions": ["BUILD_WINDOWS"],
+    }
+
+
 def current_source_branch(root: Path, claimed_branch: str | None = None) -> str:
     """Bind receipt to the actual checked-out codex ref, including detached Actions checkouts."""
     head = _git(root, "rev-parse", "HEAD")
@@ -182,9 +236,27 @@ def build_exe(root: Path, slug: str, expected_sha: str, output: Path,
             raise ValueError("copied Windows EXE hash mismatch")
         (final / "exe-receipt.json").write_text(
             json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        # Keep the EXE evidence directory exactly {EXE, receipt}: the MSIX
+        # consumer rejects extra files by design. The strict job is a sibling,
+        # not a package payload or Store Identity claim.
+        job_path = output.with_name(output.name + "-provisioner-job.json") if request_id else None
+        if job_path is not None and (job_path.exists() or job_path.is_symlink()):
+            raise ValueError("refusing to overwrite existing Provisioner job")
         if output.exists() or output.is_symlink():
             raise ValueError("output appeared during build; refuse overwrite")
-        os.replace(final, output)
+        if job_path is not None:
+            job = strict_provisioner_job(receipt)
+            with job_path.open("x", encoding="utf-8") as stream:
+                json.dump(job, stream, ensure_ascii=False, indent=2)
+                stream.write("\n")
+        try:
+            if output.exists() or output.is_symlink():
+                raise ValueError("output appeared during build; refuse overwrite")
+            os.replace(final, output)
+        except Exception:
+            if job_path is not None:
+                job_path.unlink(missing_ok=True)
+            raise
     return receipt
 
 
