@@ -1,0 +1,273 @@
+{
+  "schema_version": "app5-market-fit-v1",
+  "researched_on": "2026-10-30",
+  "product": "Offline Image Inventory Desk",
+  "slug": "offline-image-inventory-desk",
+  "repo": "shihuiarenjinba-png/AI-App-Factory",
+  "baseline_branch": "codex/app-cohort-image-inventory-20261028",
+  "baseline_sha": "16b6a772952ca0988f2ae2f8b5f4db2e59ec5877",
+  "decision": "MARKET_FIT_HOLD",
+  "commercial_msix_allowed": false,
+  "feature_expansion_allowed": false,
+  "direct_competitors": [
+    {
+      "name": "XnView MP",
+      "price": "Free private/education/public/nonprofit; company license €29 for one",
+      "features": [
+        "image browser",
+        "EXIF/IPTC/XMP",
+        "duplicate search",
+        "batch processing",
+        "many formats"
+      ],
+      "source": "https://www.xnview.com/en/xnview-mp/",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "FastStone Image Viewer",
+      "price": "Free personal/education; lifetime commercial $34.95",
+      "features": [
+        "image browsing",
+        "image inspection",
+        "batch operations"
+      ],
+      "source": "https://www.faststone.org/order.htm",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Krokiet/Czkawka",
+      "price": "Free open source",
+      "features": [
+        "duplicate hashes",
+        "similar images",
+        "large files",
+        "invalid files",
+        "offline"
+      ],
+      "source": "https://github.com/qarmin/czkawka",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Microsoft Store screenshot rules",
+      "price": "Official technical requirements, not a competitor",
+      "features": [
+        "PNG only",
+        "desktop >=1366x768",
+        "<=50MB per screenshot",
+        "up to 10 screenshots"
+      ],
+      "source": "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/screenshots-and-images",
+      "checked": "2026-10-30"
+    }
+  ],
+  "free_alternatives": [
+    "XnView MP for private use",
+    "Krokiet/Czkawka",
+    "Windows File Explorer properties",
+    "digiKam (open-source image manager; feature details need verification)"
+  ],
+  "paid_price_range": "XnView MP commercial €29 per seat; FastStone Image Viewer $34.95 one-time commercial. Neither price validates demand for header-only inventory.",
+  "common_review_complaints": [
+    {
+      "complaint": "Large photo collections with duplicates are hard to organize",
+      "source": "https://www.reddit.com/r/DataHoarder/comments/1rl8dy8/how_to_best_organise_photosvideos_of_15_years/",
+      "post_date": "2026-03-05",
+      "caveat": "Anecdotal; this product intentionally does not organize/move images"
+    },
+    {
+      "complaint": "Similarity grouping may change between scans, confusing cleanup",
+      "source": "https://github.com/qarmin/czkawka/issues/1652",
+      "post_date": "2025-10-15",
+      "caveat": "A bug report about perceptual duplicates; exact-hash duplicates are different"
+    },
+    {
+      "complaint": "Windows Explorer is cumbersome for casual image categorization",
+      "source": "https://www.reddit.com/r/DataHoarder/comments/1hwb6va",
+      "post_date": "2025-01-08",
+      "caveat": "Anecdotal and broader than this app's inventory scope"
+    }
+  ],
+  "unmet_need_hypothesis": "Windows Store developers and small sellers may need a local preflight of image dimensions, orientation, format, file size and listing compliance with actionable fix explanations, without uploading assets. This is narrower than generic photo management, but existing free image tools can inspect dimensions.",
+  "offline_local_only_advantage": "Preflight unpublished promotional images without cloud upload, no edits/deletes, CSV for collaborators; this alone is not unique because XnView and Czkawka work locally.",
+  "buyer_persona": "Solo Microsoft Store app developer preparing bilingual product listings or small business content operator; unvalidated.",
+  "store_search_keywords": [
+    "Microsoft Store screenshot checker",
+    "offline image dimensions",
+    "image inventory Windows",
+    "store asset validation",
+    "画像サイズ チェック",
+    "ストア画像 検査"
+  ],
+  "why_pay_statement": "NOT YET PROVEN: a dedicated Microsoft Store listing-image preflight report might save submission rework, but current header-only inventory does not provide it.",
+  "price_hypothesis": {
+    "current_product": "JPY 0 / no paid release",
+    "redesigned_candidate": "JPY 500–1000 one-time after validated Store-asset preflight workflow",
+    "validated": false
+  },
+  "proposed_redefinition": {
+    "name": "Local Store Image Preflight Desk",
+    "differentiators": [
+      "Explicit current Microsoft Store MSIX desktop screenshot profile: PNG, >=1366x768, <=50MB, orientation and actionable per-file PASS/FAIL",
+      "Batch report for multiple listing languages, missing/wrong-size assets and safe no-edit review; future profiles versioned with citation and date"
+    ],
+    "constraints": [
+      "No claim that dimensions alone guarantee Store approval",
+      "No image editing or EXIF/full-pixel validation without separate dependencies/tests",
+      "Do not duplicate Windows-checker's package certification; image-only consumer workflow",
+      "Official profile must be maintained and tested against changing Microsoft documentation",
+      "Protect against decompression bombs and malformed headers"
+    ],
+    "needs_validation": [
+      "5 target Store developer interviews",
+      "10 dated Store image utility reviews",
+      "Verify current screenshot and logo requirements by package family",
+      "Windows 1024x768 UI and large-image failure QA"
+    ]
+  },
+  "scoring": {
+    "problem_severity": {
+      "score": 13,
+      "max": 20
+    },
+    "differentiation": {
+      "score": 12,
+      "max": 20
+    },
+    "willingness_to_pay": {
+      "score": 7,
+      "max": 20
+    },
+    "usability": {
+      "score": 12,
+      "max": 15
+    },
+    "trust_privacy": {
+      "score": 9,
+      "max": 10
+    },
+    "discoverability": {
+      "score": 7,
+      "max": 10
+    },
+    "implementation_risk": {
+      "score": 4,
+      "max": 5
+    },
+    "total": 64,
+    "max": 100
+  },
+  "go_criteria": {
+    "one_sentence_why_pay": false,
+    "two_distinctions_from_free_alternatives": false,
+    "addresses_review_complaint": false,
+    "feasible_windows_local": true,
+    "no_saas_dependency": true,
+    "minimum_score_70": false
+  },
+  "gate_policy": "<70: Store work forbidden; 70-79 redesign; >=80 candidate only if all GO conditions met",
+  "current_feature_evidence": "README: PNG/JPEG/GIF/BMP header inventory, 200-file cap, dimensions/byte count, CSV, no thumbnails/EXIF/resizing. Does not currently implement official Store listing compliance.",
+  "evidence_repo_path": "products/offline-image-inventory-desk/README.md",
+  "remaining_market_research": [
+    "Windows Store asset-checker direct listing and user review samples",
+    "Verify Microsoft Store image rules for actual intended MSIX route",
+    "Buyer interviews with indie Store developers",
+    "Compare XnView batch metadata and potential free workflows"
+  ],
+  "provenance_note": "2026-10-30 market desk research. Official Microsoft screenshot specification is a verified niche workflow requirement, not proof of purchase intent. No code/GUI/EXE work performed.",
+  "workflow_guard": {
+    "market_fit_pass": false,
+    "do_not_dispatch_to_msix": true,
+    "do_not_claim_store_ready": true,
+    "partner_center_selection": "MSIX or PWA app",
+    "identity_status": "NOT_VERIFIED_THIS_RUN"
+  },
+  "competitive_gap_followup_20261031": {
+    "researched_on": "2026-10-31",
+    "scope": "Microsoft Store MSIX screenshot-preflight niche; vendor claims only unless noted",
+    "new_competitive_evidence": [
+      {
+        "name": "StoreFast",
+        "category": "Paid cloud Microsoft Store publishing/listing service",
+        "source": "https://storefast.app/",
+        "checked": "2026-10-31",
+        "price": "Solo USD 12/month; Indie USD 24/month; Studio USD 59/month, vendor monthly display",
+        "feature_claims": [
+          "Microsoft Store listing screenshots across languages",
+          "Checks listings against Store rules before sending",
+          "MSIX package identity/version checks and certification submission"
+        ],
+        "overlap": "A dedicated Microsoft Store listing compliance check already exists as a feature of a broader paid tool.",
+        "distinction": "StoreFast is a cloud-connected publishing service; not an offline-only preflight desktop app. Price reflects full publishing/analytics, NOT willingness to pay for image-only validation.",
+        "evidence_quality": "Vendor marketing and pricing, not independently installed or verified"
+      },
+      {
+        "name": "ImageSizePass",
+        "category": "Free browser-local multi-platform image requirements checker",
+        "source": "https://imagesizepass.com/ja/",
+        "checked": "2026-10-31",
+        "price": "Free according to vendor",
+        "feature_claims": [
+          "Batch image dimension/format requirements check for Amazon/Instagram/YouTube/Etsy",
+          "Up to 50 files at once and downloadable ZIP",
+          "Claims all processing stays in browser without server upload"
+        ],
+        "overlap": "Local/no-upload batch dimension preflight is already offered for free in adjacent categories.",
+        "distinction": "Microsoft Store preset not confirmed on inspected vendor page; do not claim it is absent without full product test.",
+        "evidence_quality": "Vendor claims, not independently installed or security-audited"
+      },
+      {
+        "name": "Microsoft Store Asset Guidance Kit for Figma",
+        "category": "Official Microsoft design resource",
+        "source": "https://learn.microsoft.com/en-us/windows/apps/design/downloads/",
+        "checked": "2026-10-31",
+        "price": "No separate price asserted",
+        "feature_claims": [
+          "Templates for screenshots, icons and other Store assets",
+          "Previews and sizing guidance"
+        ],
+        "overlap": "Store asset preparation guidance/templates are already provided by Microsoft.",
+        "distinction": "Does not itself establish automatic offline batch validation; verify hands-on before claiming a gap.",
+        "evidence_quality": "Microsoft documentation"
+      }
+    ],
+    "official_msix_profile": {
+      "source": "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images",
+      "checked": "2026-10-31",
+      "screenshot_png_required": true,
+      "desktop_min_width_px": 1366,
+      "desktop_min_height_px": 768,
+      "screenshot_max_bytes": 50000000,
+      "max_desktop_screenshots": 10,
+      "minimum_screenshots": 1,
+      "recommended_screenshots_at_least": 4,
+      "app_tile_icon_recommended_px": [
+        300,
+        300
+      ],
+      "localized_listing_images_per_language": true,
+      "notes": [
+        "Official wording is max 50 MB; byte threshold 50,000,000 is a conservative decimal interpretation for prospective test fixtures, not proof of Partner Center's exact backend boundary.",
+        "1024x768 GUI usability evidence does NOT satisfy Store desktop screenshot minimum width 1366.",
+        "A PNG dimension/size check cannot certify listing quality, image content or Partner Center acceptance.",
+        "Do not import EXE/MSI image rules into the MSIX profile; keep package-family specific."
+      ]
+    },
+    "commercial_implications": [
+      "Existing paid StoreFast and free ImageSizePass weaken a generic preflight-only paid claim.",
+      "Potential narrower value: completely offline, no-account MSIX-specific multilingual batch checklist with actionable fixes and reproducible profile versions; not yet demonstrated unique or monetizable.",
+      "Do not expand product features, promote market gate, bind new Identity, build commercial MSIX, or submit while MARKET_FIT_HOLD."
+    ],
+    "validation_needed": [
+      "Compare StoreFast screenshot rule checks and ImageSizePass local batch UX in a reproducible task matrix.",
+      "Collect at least 10 dated direct Microsoft Store customer reviews for comparable image utilities; verified count remains zero.",
+      "Interview five actual independent Store developers and record task time/error rate against existing free workflow.",
+      "Verify Microsoft rule changes and edge cases (portrait PNG, 50 MB boundary, language-specific screenshot sets) on actual Partner Center only when authorized.",
+      "Re-score product only after evidence supports two demonstrated advantages, a verified complaint solved, and willingness to pay."
+    ],
+    "market_fit_score_unchanged": 64,
+    "decision_unchanged": "MARKET_FIT_HOLD",
+    "review_sample_verified": 0,
+    "buyer_interviews_completed": 0,
+    "no_store_action": true
+  }
+}

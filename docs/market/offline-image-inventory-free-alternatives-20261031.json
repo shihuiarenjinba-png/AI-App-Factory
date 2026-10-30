@@ -1,0 +1,121 @@
+{
+  "schema_version": "app5-market-free-alternative-audit-v1",
+  "researched_on": "2026-10-31",
+  "product": "Offline Image Inventory Desk",
+  "slug": "offline-image-inventory-desk",
+  "parent_market_fit": "docs/market/offline-image-inventory-desk.market-fit.json",
+  "decision": "MARKET_FIT_HOLD",
+  "score_unchanged": 64,
+  "score_max": 100,
+  "purpose": "Check whether a paid MSIX screenshot/image preflight desktop utility is differentiated from newly identified free local-first alternatives; source claims are not installation or buyer evidence.",
+  "new_competitors": [
+    {
+      "name": "Systron App Store Asset Generator",
+      "url": "https://systron.net/tools/app-store-asset-generator/",
+      "checked": "2026-10-31",
+      "type": "Free browser-local multi-store asset generator",
+      "price": "Free according to vendor",
+      "claims": [
+        "Microsoft Store asset preset",
+        "pixel size and format preparation",
+        "batch ZIP download",
+        "vendor says images are not uploaded to server"
+      ],
+      "overlap": "A free tool already claims Microsoft Store-specific local image preparation and batch output, overlapping a paid preflight desk.",
+      "critical_discrepancy": "Vendor reference states Microsoft Store desktop screenshots can be PNG or JPEG, while Microsoft Learn MSIX documentation explicitly requires .png. Do not rely on the vendor reference as compliance authority.",
+      "evidence_quality": "Vendor claims; not independently executed or audited"
+    },
+    {
+      "name": "WinStorePackager",
+      "url": "https://github.com/file-bricks/WinStorePackager",
+      "checked": "2026-10-31",
+      "type": "Open-source local-first Windows MSIX packaging GUI",
+      "price": "MIT licensed public repository; no paid price claimed",
+      "claims": [
+        "Store icon generator",
+        "screenshot capture assistant",
+        "SDK-free manifest/profile/listing preflight",
+        "Windows MSIX packaging and signing workflow",
+        "Japanese and English among supported GUI languages"
+      ],
+      "overlap": "Local Store asset preparation and preflight are available within a broader open-source workflow.",
+      "limitation": "Feature descriptions are README claims; no install, security review or current release verification. It is not proven to offer identical per-image rejection diagnostics.",
+      "evidence_quality": "Public GitHub repository README and MIT license metadata"
+    },
+    {
+      "name": "Microsoft Store Asset Guidance Kit for Figma",
+      "url": "https://learn.microsoft.com/en-us/windows/apps/design/downloads/",
+      "checked": "2026-10-31",
+      "type": "Official Microsoft design kit",
+      "price": "No separate product price asserted",
+      "claims": [
+        "Store screenshot/icon templates",
+        "sizing guidance",
+        "Store preview guidance"
+      ],
+      "overlap": "Official asset design templates already exist; any paid checker needs more than static sizing help.",
+      "evidence_quality": "Microsoft Learn documentation"
+    }
+  ],
+  "official_rule_check": {
+    "source": "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images",
+    "checked": "2026-10-31",
+    "desktop_minimum": "1366x768",
+    "screenshot_format": "PNG only",
+    "screenshot_max_size": "50 MB",
+    "desktop_screenshot_limit": 10,
+    "per_language_listing_images": true,
+    "important": "1024x768 is GUI usability test size, not valid desktop screenshot size; official documentation takes precedence over conflicting vendor tables.",
+    "scope": "MSIX app listing; does not imply all PWA/EXE routes have identical rules"
+  },
+  "candidate_advantages_still_unproven": [
+    "A deterministic, Microsoft-documented, versioned MSIX profile that rejects JPEG even when third-party templates mistakenly accept it",
+    "One offline JA/EN batch checklist with exact file-level errors and no file modification",
+    "Per-language missing/invalid asset detection plus a human-readable export that nontechnical developers can act on"
+  ],
+  "missing_validation": {
+    "verified_direct_microsoft_store_review_samples": 0,
+    "required_review_samples": 10,
+    "verified_buyer_interviews": 0,
+    "required_buyer_interviews": 5,
+    "tested_competitor_installs": 0,
+    "actual_partner_center_acceptance_tests": 0,
+    "purchase_willingness": "UNVALIDATED"
+  },
+  "test_matrix": [
+    {
+      "case": "JPEG screenshot 1920x1080",
+      "official_expected": "REJECT as MSIX screenshot; PNG required",
+      "competitor_comparison": "Systron spec reference vs actual output"
+    },
+    {
+      "case": "PNG screenshot 1024x768",
+      "official_expected": "REJECT desktop dimensions",
+      "competitor_comparison": "Systron and WinStorePackager output"
+    },
+    {
+      "case": "PNG screenshot 1366x768",
+      "official_expected": "Format and minimum dimensions pass only; not full submission approval",
+      "competitor_comparison": "Both alternatives"
+    },
+    {
+      "case": "11 valid PNG desktop screenshots",
+      "official_expected": "REJECT or flag excess relative to documented maximum 10",
+      "competitor_comparison": "Batch validator behavior"
+    },
+    {
+      "case": "JA and EN listing sets with missing JA image",
+      "official_expected": "Flag missing localized image in proposed workflow; Microsoft says upload images for each language",
+      "competitor_comparison": "Batch language handling"
+    },
+    {
+      "case": "Malformed/truncated PNG header",
+      "official_expected": "Safe reject without overwrite or crash",
+      "competitor_comparison": "Security/robustness; no competitor result asserted"
+    }
+  ],
+  "commercial_decision": "HOLD: official MSIX preset and no-upload batch asset handling are already available in free or open-source alternatives; no validated why-pay, buyer willingness, or 2 proven advantages. Do not expand product, commercial-build MSIX, bind new Identity, submit, or upgrade the score without primary evidence.",
+  "followup": "Recruit 5 target independent Store developers; record task completion, errors and willingness to pay against free tools. Collect 10 direct dated Store reviews. If distinct value is not demonstrated, retain free utility or stop paid launch.",
+  "no_store_action": true,
+  "source_provenance": "Desk review of linked public pages on 2026-10-31. No app installs, Windows GUI tests, buyer interviews or Store uploads were performed."
+}
