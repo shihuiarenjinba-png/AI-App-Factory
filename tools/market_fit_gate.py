@@ -13,8 +13,8 @@ import re
 import subprocess
 import sys
 
-SLUG = re.compile(r"[a-z][a-z0-9-]{3,39}\\Z")
-SHA40 = re.compile(r"[0-9a-f]{40}\\Z")
+SLUG = re.compile(r"[a-z][a-z0-9-]{3,39}\Z")
+SHA40 = re.compile(r"[0-9a-f]{40}\Z")
 WEIGHTS = {
     "problem_severity": 20,
     "differentiation": 20,
