@@ -57,7 +57,8 @@ jobs:
           folder = Path("dist/preidentity")
           exe = folder / "focus-session-desk.exe"
           receipt = json.loads((folder / "exe-receipt.json").read_text(encoding="utf-8"))
-          job = json.loads((folder / "provisioner-job.json").read_text(encoding="utf-8"))
+          job = json.loads(Path("dist/preidentity-provisioner-job.json").read_text(encoding="utf-8"))
+          assert {p.name for p in folder.iterdir()} == {"focus-session-desk.exe", "exe-receipt.json"}
           assert exe.read_bytes()[:2] == b"MZ"
           assert hashlib.sha256(exe.read_bytes()).hexdigest() == receipt["executable_sha256"]
           assert exe.stat().st_size == receipt["executable_bytes"]
@@ -72,6 +73,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: app-strict-job-${{ github.event.pull_request.head.sha }}
-          path: dist/preidentity/
+          path: |
+            dist/preidentity/
+            dist/preidentity-provisioner-job.json
           if-no-files-found: error
           retention-days: 5
