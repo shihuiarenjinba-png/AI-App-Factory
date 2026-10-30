@@ -1,0 +1,82 @@
+name: Focus pending-completion exact-source Windows EXE
+
+on:
+  push:
+    branches:
+      - codex/app-focus-pending-guard-20261030
+    paths:
+      - products/focus-session-desk/main.py
+      - tests/test_focus_pending_completion_guard.py
+      - .github/workflows/focus-pending-guard-exe.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: focus-pending-guard-exe-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  source-bound-exe:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+          persist-credentials: true
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Verify immutable source, product tests, and Factory contracts
+        shell: pwsh
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          if ($sha -ne "${{ github.sha }}") { throw "Checkout differs from push source" }
+          $remote = git ls-remote origin "refs/heads/${{ github.ref_name }}"
+          if ($LASTEXITCODE -ne 0 -or -not $remote) { throw "Remote source missing" }
+          if (($remote | Select-Object -First 1).Split("`t")[0] -ne $sha) { throw "Remote HEAD moved" }
+          python -m unittest discover -s tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          python -m unittest discover -s products/focus-session-desk/tests -v
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Install pinned unsigned Windows EXE builder
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - name: Build exact-source EXE and dry-run Provisioner job
+        shell: pwsh
+        run: |
+          $sha = (git rev-parse HEAD).Trim()
+          $request = "app-focus-pending-" + $sha.Substring(0, 12)
+          python tools/build_windows_exe.py --slug focus-session-desk --expected-sha "$sha" --request-id "$request" --output dist/preidentity
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate EXE bytes and source/request binding
+        shell: pwsh
+        run: |
+          @'
+          import hashlib, json, os
+          from pathlib import Path
+          from tools.build_windows_exe import strict_provisioner_job
+          output = Path("dist/preidentity")
+          exe = output / "focus-session-desk.exe"
+          receipt = json.loads((output / "exe-receipt.json").read_text(encoding="utf-8"))
+          job = json.loads(Path("dist/preidentity-provisioner-job.json").read_text(encoding="utf-8"))
+          assert exe.read_bytes()[:2] == b"MZ"
+          assert exe.stat().st_size == receipt["executable_bytes"]
+          assert hashlib.sha256(exe.read_bytes()).hexdigest() == receipt["executable_sha256"]
+          assert receipt["source_sha"] == os.environ["GITHUB_SHA"]
+          assert receipt["request_id"] == "app-focus-pending-" + os.environ["GITHUB_SHA"][:12]
+          assert job == strict_provisioner_job(receipt)
+          assert receipt["store_id"] is None and receipt["msix_status"] == "NOT_BUILT"
+          assert {p.name for p in output.iterdir()} == {"focus-session-desk.exe", "exe-receipt.json"}
+          '@ | python -
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Preserve EXE, receipt, and separate dry-run job
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-pending-preidentity-${{ github.sha }}
+          path: |
+            dist/preidentity/
+            dist/preidentity-provisioner-job.json
+          if-no-files-found: error
+          retention-days: 7
