@@ -236,15 +236,27 @@ def build_exe(root: Path, slug: str, expected_sha: str, output: Path,
             raise ValueError("copied Windows EXE hash mismatch")
         (final / "exe-receipt.json").write_text(
             json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-        # The strict job is a separate machine-readable contract. Never
-        # contaminate it with Store routing or guessed Identity fields.
-        if request_id is not None:
-            job = strict_provisioner_job(receipt)
-            (final / "provisioner-job.json").write_text(
-                json.dumps(job, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        # Keep the EXE evidence directory exactly {EXE, receipt}: the MSIX
+        # consumer rejects extra files by design. The strict job is a sibling,
+        # not a package payload or Store Identity claim.
+        job_path = output.with_name(output.name + "-provisioner-job.json") if request_id else None
+        if job_path is not None and (job_path.exists() or job_path.is_symlink()):
+            raise ValueError("refusing to overwrite existing Provisioner job")
         if output.exists() or output.is_symlink():
             raise ValueError("output appeared during build; refuse overwrite")
-        os.replace(final, output)
+        if job_path is not None:
+            job = strict_provisioner_job(receipt)
+            with job_path.open("x", encoding="utf-8") as stream:
+                json.dump(job, stream, ensure_ascii=False, indent=2)
+                stream.write("\n")
+        try:
+            if output.exists() or output.is_symlink():
+                raise ValueError("output appeared during build; refuse overwrite")
+            os.replace(final, output)
+        except Exception:
+            if job_path is not None:
+                job_path.unlink(missing_ok=True)
+            raise
     return receipt
 
 
