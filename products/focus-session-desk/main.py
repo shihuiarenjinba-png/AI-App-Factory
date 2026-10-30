@@ -492,6 +492,12 @@ class Desk:
             button.state(["disabled"] if self.timer.state != "idle" else ["!disabled"])
 
     def action(self, fn):
+        # Do not let a later reset, preset, edit, or language switch overwrite
+        # an unsaved finished session or claim that its history was saved.
+        # The retry loop or close() must persist that completion first.
+        if getattr(self, "_completion_pending", False):
+            self.status.configure(text=self.words("completion_unsaved"))
+            return False
         # Failed disk writes must not leave unsaved changes in the live model.
         import copy
         previous_data = copy.deepcopy(self.data)
