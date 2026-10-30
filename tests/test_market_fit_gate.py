@@ -79,6 +79,26 @@ class MarketFitGateTests(unittest.TestCase):
     def test_valid_pass_with_unchanged_source(self):
         self.assertEqual(assert_market_fit(self.root, self.slug)["scoring"]["total"], 80)
 
+    def test_uncommitted_market_pass_edit_holds(self):
+        # A local PASS claim must not be accepted before the reviewed JSON
+        # is committed; otherwise a direct builder could bypass review.
+        self.document["why_pay_statement"] = "Unreviewed new commercial claim"
+        self.write_doc()
+        with self.assertRaisesRegex(MarketFitHold, "uncommitted or staged"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_staged_market_pass_edit_holds(self):
+        self.document["why_pay_statement"] = "Staged unreviewed claim"
+        self.write_doc()
+        self.git("add", "docs/market")
+        with self.assertRaisesRegex(MarketFitHold, "uncommitted or staged"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_untracked_market_pass_doc_holds(self):
+        self.git("rm", "--cached", "docs/market/" + self.slug + ".market-fit.json")
+        with self.assertRaisesRegex(MarketFitHold, "not tracked"):
+            assert_market_fit(self.root, self.slug)
+
     def test_missing_market_doc_holds(self):
         self.path.unlink()
         with self.assertRaisesRegex(MarketFitHold, "missing"):
