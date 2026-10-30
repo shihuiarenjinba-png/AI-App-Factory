@@ -1,0 +1,149 @@
+{
+  "schema_version": "app5-niche-validation-v1",
+  "researched_on": "2026-10-30",
+  "product": "Offline Notes Canary",
+  "slug": "offline-notes-canary",
+  "parent_market_fit": "docs/market/offline-notes-canary.market-fit.json",
+  "decision": "MARKET_FIT_HOLD",
+  "score_unchanged": 45,
+  "commercial_msix_allowed": false,
+  "feature_expansion_allowed": false,
+  "research_question": "Does a local-only project evidence journal provide two defensible paid advantages over free Windows note apps?",
+  "sources": [
+    {
+      "name": "Obsidian File Recovery",
+      "url": "https://obsidian.md/help/plugins/file-recovery",
+      "source_type": "official documentation",
+      "checked": "2026-10-30",
+      "verified_claims": [
+        "Built-in local snapshots and restore",
+        "Show changes between snapshots",
+        "Default snapshot retention 7 days; configurable"
+      ],
+      "implication": "Snapshot history, before/after comparison, and local restore alone are not unique paid advantages."
+    },
+    {
+      "name": "Joplin Note History",
+      "url": "https://joplinapp.org/help/apps/note_history/",
+      "source_type": "official documentation",
+      "checked": "2026-10-30",
+      "verified_claims": [
+        "Free desktop note revisions saved at intervals",
+        "Desktop view and restore of older versions",
+        "Default history retention 90 days"
+      ],
+      "implication": "Note revisions and restore are already covered by a strong free alternative."
+    },
+    {
+      "name": "Joplin Backup plugin FAQ",
+      "url": "https://joplin.github.io/website-plugin-discovery/plugin/io.github.jackgruber.backup/",
+      "source_type": "official plugin documentation",
+      "checked": "2026-10-30",
+      "verified_claims": [
+        "JEX backup does not include note revision history"
+      ],
+      "implication": "A human-readable project export containing selected note revisions could address a documented portability gap, but does not establish paid demand."
+    },
+    {
+      "name": "Myelin Notes",
+      "url": "https://trymyelin.app/",
+      "source_type": "vendor marketing page",
+      "checked": "2026-10-30",
+      "verified_claims": [
+        "Windows support and free personal use",
+        "Offline and no account",
+        "Per-file version history and PDF export"
+      ],
+      "implication": "Offline, no account, note history, and PDF export also overlap with free products.",
+      "caveat": "Vendor feature claims only; not independently installed."
+    },
+    {
+      "name": "Ariv",
+      "url": "https://ariv.one/",
+      "source_type": "vendor marketing page",
+      "checked": "2026-10-30",
+      "verified_claims": [
+        "Free local-first Markdown notes on Windows",
+        "No account and user-controlled files",
+        "Built-in tasks, calendar, Kanban and search"
+      ],
+      "implication": "A broad productivity/notes bundle cannot justify a price on feature count alone.",
+      "caveat": "Vendor feature claims only; not independently installed."
+    },
+    {
+      "name": "TSNotes",
+      "url": "https://tsnotes.app/",
+      "source_type": "vendor marketing page",
+      "checked": "2026-10-30",
+      "verified_claims": [
+        "Windows supported",
+        "Advertised USD 10 lifetime one-time purchase",
+        "Local JSON notes, version history, restore, and offline operation"
+      ],
+      "implication": "One-time payment is plausible in adjacent notes software, but existing paid product has more general-purpose features.",
+      "caveat": "Price is vendor list price, not Store transaction or verified sales volume."
+    }
+  ],
+  "comparison": {
+    "free_alternatives_with_major_overlap": [
+      "Obsidian",
+      "Joplin",
+      "Myelin Notes",
+      "Ariv"
+    ],
+    "paid_reference": "TSNotes USD 10 one-time (vendor advertised; not comparable verified Store sale)",
+    "generic_notes_willingness_to_pay": "UNPROVEN",
+    "candidate_distinctions": [
+      {
+        "hypothesis": "Project-scoped narrative event timeline linking each note change to explicit user-entered event/reason and selected source references",
+        "competitive_status": "UNVERIFIED: compare against Obsidian templates/plugins and Joplin plugins",
+        "implementation_constraint": "Never claim immutable, tamper-proof, or compliance-certified logs"
+      },
+      {
+        "hypothesis": "Single human-readable offline project handover bundle containing selected revisions, timeline, and restore preview without cloud/account",
+        "competitive_status": "POSSIBLE GAP: Joplin JEX does not include revisions, but alternatives/plugins must be checked",
+        "implementation_constraint": "No arbitrary file hashing/snapshot duplication of File Integrity Ledger"
+      }
+    ],
+    "not_differentiators": [
+      "local-only storage",
+      "no login",
+      "tags",
+      "favorites",
+      "search",
+      "basic backup",
+      "basic revision history",
+      "basic PDF export"
+    ]
+  },
+  "buyer_persona_hypothesis": "Independent Windows field auditor or restricted-network operations worker handing a human-readable project chronology to a colleague",
+  "why_pay_statement": "NOT PROVEN: no verified buyer demand for revision-aware project handover compared with free note tools and plugins.",
+  "price_hypothesis": {
+    "value": "JPY 500–1200 one-time",
+    "status": "UNVALIDATED; do not launch or represent as a validated willingness-to-pay"
+  },
+  "risk": "A general notes app cannot compete on feature breadth; project evidence handover must be tested as a separate workflow, not merely renamed.",
+  "go_criteria": {
+    "clear_paid_reason": false,
+    "two_verified_free_alternative_differences": false,
+    "addresses_documented_portability_gap": "HYPOTHESIS_ONLY",
+    "local_feasible": true,
+    "no_saas": true,
+    "market_fit_pass": false
+  },
+  "required_next_evidence": [
+    "Capture 10 dated and directly linked Microsoft Store competitor reviews, separating verified purchaser complaints from developer claims",
+    "Interview at least 5 target buyers and ask them to compare a manual Obsidian/Joplin workflow against an evidence-bundle prototype",
+    "Build a noncommercial paper/clickable prototype for project timeline and revision-inclusive export, then test task completion at 1024x768 in JA and EN",
+    "Audit free Obsidian/Joplin plugins and template workflows for the same evidence export before claiming differentiation",
+    "Only after independent evidence re-score all seven rubric categories; do not auto-upgrade to MARKET_FIT_PASS"
+  ],
+  "safety": {
+    "partner_center_selection": "MSIX or PWA app",
+    "existing_identity": "REFERENCE_AVAILABLE; do not request again",
+    "partner_center_mutation": false,
+    "store_submission": false,
+    "msix_dispatch": false
+  },
+  "provenance": "Official documentation and vendor pages inspected 2026-10-30; no buyer interviews, Store reviews, or Windows installs were performed in this research run."
+}
