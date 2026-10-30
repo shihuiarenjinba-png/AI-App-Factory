@@ -1,0 +1,126 @@
+{
+  "schema_version": "app5-competitive-parity-v1",
+  "researched_on": "2026-10-31",
+  "product": "Focus Session Desk",
+  "slug": "focus-session-desk",
+  "parent_market_fit": "docs/market/focus-session-desk.market-fit.json",
+  "source_branch": "codex/app5-market-fit-focus-20261030",
+  "source_head_at_review": "336095f7d585d1d5d69d809c94ac990b5801252b",
+  "decision": "MARKET_FIT_HOLD",
+  "score_unchanged": 47,
+  "commercial_msix_allowed": false,
+  "feature_expansion_allowed": false,
+  "finding": "The proposed paid differentiation of interruption-aware project worklogs and local CSV/Markdown export is substantially covered by Tempo Task Tracker. Existing generic timer/history value is also covered by free Pomro. Do not advance Focus Session Desk to paid Store packaging on the current thesis.",
+  "sources": [
+    {
+      "name": "Tempo official product and pricing",
+      "url": "https://tempofocus.de/en.html",
+      "checked": "2026-10-31",
+      "type": "vendor-published feature and price claims",
+      "observations": [
+        "Vendor advertises Windows availability and a Microsoft Store link",
+        "Vendor lists EUR 4.99 one-time purchase, without subscription",
+        "Local offline project session logs and notes; no account or cloud",
+        "Project-level day/week/month/year history; CSV, JSON and Markdown exports",
+        "Interruption starts another project and preserves paused original session for resume",
+        "Local database backup/restore and selected-note work update export",
+        "Vendor explicitly says it is not a Pomodoro countdown"
+      ],
+      "limitations": "Vendor claims only; no independent install, user review or purchase verification."
+    },
+    {
+      "name": "Tempo Microsoft Store listing",
+      "url": "https://apps.microsoft.com/detail/9nbjdhnkgf02?gl=DE&hl=en-US",
+      "checked": "2026-10-31",
+      "type": "official Store listing landing page",
+      "observations": [
+        "A concrete Store listing is linked by the vendor",
+        "Search/landing preview displays Free download and install"
+      ],
+      "limitations": "Listing requires JavaScript to inspect actual pricing, reviews and regional purchase flow; vendor EUR 4.99 versus Store landing Free download is unresolved. Do not treat either as verified checkout price."
+    },
+    {
+      "name": "Pomro official Windows timer",
+      "url": "https://pomro.app/",
+      "checked": "2026-10-31",
+      "type": "vendor-published feature claims",
+      "observations": [
+        "Free and ad-free Windows Store timer according to vendor",
+        "25/50 minute presets, local activity/session history and today statistics",
+        "Offline, no account or cloud, restart recovery and compact always-on-top mode"
+      ],
+      "limitations": "Vendor claims not independently installed or reviewed."
+    },
+    {
+      "name": "PomoCare official Japanese-language timer",
+      "url": "https://pomocare.com/",
+      "checked": "2026-10-31",
+      "type": "vendor-published feature claims",
+      "observations": [
+        "Free no-registration timer advertised for Windows and web",
+        "Labels, per-task statistics and configurable timer",
+        "Local browser storage without login may be cleared; optional free account sync"
+      ],
+      "limitations": "Vendor claims only; Windows native/offline packaging and independent reliability unverified."
+    }
+  ],
+  "feature_parity": [
+    {
+      "candidate": "25/50-minute timer, tasks and daily statistics",
+      "covered_by": "Pomro",
+      "status": "VENDOR_CLAIM_OVERLAP",
+      "unique_paid_advantage": false
+    },
+    {
+      "candidate": "No account, offline local history",
+      "covered_by": "Pomro and Tempo",
+      "status": "VENDOR_CLAIM_OVERLAP",
+      "unique_paid_advantage": false
+    },
+    {
+      "candidate": "Interrupt and resume work while preserving context",
+      "covered_by": "Tempo",
+      "status": "VENDOR_CLAIM_OVERLAP",
+      "unique_paid_advantage": false
+    },
+    {
+      "candidate": "Project/session report export CSV/Markdown",
+      "covered_by": "Tempo",
+      "status": "VENDOR_CLAIM_OVERLAP",
+      "unique_paid_advantage": false
+    },
+    {
+      "candidate": "One-screen Japanese interrupted-session reason and printable task worklog",
+      "covered_by": "NOT_YET_TESTED",
+      "status": "POTENTIAL_WORKFLOW_VARIATION_NOT_PROVEN",
+      "unique_paid_advantage": false
+    }
+  ],
+  "paid_price_reference": {
+    "vendor_claim": "EUR 4.99 one-time for Tempo",
+    "store_landing": "Free download and install",
+    "verified_store_checkout": false,
+    "pricing_discrepancy": "UNRESOLVED",
+    "focus_price_hypothesis": "JPY 300–800 one-time; UNVALIDATED"
+  },
+  "remaining_validation": [
+    "Verify actual Tempo Microsoft Store checkout price and dated reviews in Japan and Germany without guessing from JavaScript-only page.",
+    "Independently install and task-test Tempo, Pomro and Focus Session Desk on Windows at 1024x768, in EN/JA.",
+    "Collect at least 10 directly linked and dated Microsoft Store review complaints across relevant competitors.",
+    "Interview at least five prospective buyers; blind-compare full interrupted-worklog tasks, completion time, export usability and error rates.",
+    "Require two demonstrated advantages over free alternatives, a review complaint solved, a credible one-sentence why-pay, and >=80/100 before any MARKET_FIT_PASS."
+  ],
+  "go_criteria": {
+    "one_sentence_why_pay": false,
+    "two_verified_differences_from_free": false,
+    "addresses_verified_review_complaint": false,
+    "local_feasible": true,
+    "no_saas_dependency": true,
+    "score_at_least_80": false
+  },
+  "partner_center_registration_type": "MSIX_OR_PWA_APP",
+  "partner_center_selection": "MSIX or PWA app",
+  "identity_status": "NOT_CONFIRMED_IN_THIS_RESEARCH; no Partner Center mutation",
+  "store_submission": false,
+  "scope_note": "Supplemental research only; does not alter the canonical market-fit score or authorize source changes, Identity binding, MSIX or submission."
+}
