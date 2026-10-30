@@ -1,0 +1,246 @@
+{
+  "schema_version": "app5-market-fit-v1",
+  "researched_on": "2026-10-30",
+  "product": "Focus Session Desk",
+  "slug": "focus-session-desk",
+  "repo": "shihuiarenjinba-png/AI-App-Factory",
+  "baseline_branch": "codex/app-focus-history-scroll-20261030",
+  "baseline_sha": "3209bf391ddcbd2b59c981b35ef71ca3e3790f41",
+  "decision": "MARKET_FIT_HOLD",
+  "commercial_msix_allowed": false,
+  "feature_expansion_allowed": false,
+  "direct_competitors": [
+    {
+      "name": "FocusCommit",
+      "price": "Free tier; $14.99/year, $29.99 lifetime, or $1.99/month in app",
+      "features": [
+        "Pomodoro",
+        "task lists",
+        "Kanban",
+        "statistics",
+        "Microsoft To Do integration"
+      ],
+      "source": "https://focuscommit.com/pricing/",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Focus To-Do",
+      "price": "Free tier; US app-store IAP price reported $1.99 and lifetime $11.99, confirm current billing term",
+      "features": [
+        "Pomodoro",
+        "task management",
+        "reports",
+        "Windows app",
+        "local mode"
+      ],
+      "source": "https://toolgpa.com/tools/focus-to-do",
+      "checked": "2026-10-30",
+      "price_source_quality": "secondary"
+    },
+    {
+      "name": "Windows Clock Focus",
+      "price": "Included Windows focus feature / free Clock app",
+      "features": [
+        "timer",
+        "do not disturb",
+        "Microsoft To Do integration",
+        "focus completion notification"
+      ],
+      "source": "https://support.microsoft.com/ja-jp/windows/experience/focus-stay-on-task-without-distractions-in-windows",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Sessions PWA",
+      "price": "Free includes timer, tasks and unlimited local history; Premium R$79.90/year",
+      "features": [
+        "offline",
+        "history",
+        "task list",
+        "streak",
+        "paid cloud sync and export"
+      ],
+      "source": "https://sessions-timer.com/",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Freedom",
+      "price": "Free tier; Premium $3.33/month annual, $8.99 monthly, lifetime promotion $99.50",
+      "features": [
+        "cross-device website/app blocking",
+        "scheduled sessions"
+      ],
+      "source": "https://freedom.to/premium",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Pomro",
+      "price": "Free Windows 10/11 Microsoft Store app; vendor states no ads",
+      "features": [
+        "25/50-minute and custom focus/break presets",
+        "activities and completion history",
+        "today statistics, streak, total time and monthly heatmap",
+        "compact always-on-top mode",
+        "offline without account or cloud; local history",
+        "session recovery after app restart"
+      ],
+      "source": "https://pomro.app/",
+      "store_link": "https://apps.microsoft.com/",
+      "checked": "2026-10-30",
+      "evidence_type": "Vendor's official published feature claims; no independent Windows QA or Store-review verification"
+    },
+    {
+      "name": "Tempo (asyncat)",
+      "price": "Free, open-source MIT license; vendor says no account/cloud",
+      "features": [
+        "Windows/macOS/Linux local-first Pomodoro",
+        "task-linked sessions and checklist",
+        "daily/weekly/monthly focus analytics",
+        "streak tracking",
+        "configurable intervals and sounds"
+      ],
+      "source": "https://tempo.asyncat.com/",
+      "checked": "2026-10-30",
+      "evidence_type": "Official vendor feature claims; no independent install, user reviews or Microsoft Store listing verified"
+    }
+  ],
+  "free_alternatives": [
+    "Windows Clock Focus + Microsoft To Do",
+    "FocusCommit free",
+    "Sessions PWA free",
+    "Focus To-Do free",
+    "Pomro (free, no ads; local history, offline, no account)",
+    "Tempo (free MIT-licensed local-first timer, tasks and analytics)"
+  ],
+  "paid_price_range": "FocusCommit $14.99/year or $29.99 lifetime; Freedom $3.33/month annual or $8.99 monthly; additional in-app prices vary by country.",
+  "common_review_complaints": [
+    {
+      "complaint": "Too many controls, ads, logins, or features behind paywalls make timers feel overwhelming",
+      "source": "https://www.reddit.com/r/productivity/comments/1kg2hr6",
+      "post_date": "2025-05-06",
+      "caveat": "Anecdotal forum comments"
+    },
+    {
+      "complaint": "Timer drift when backgrounded and reliability concerns",
+      "source": "https://www.reddit.com/r/pomodoro/comments/1sxs8ff/free_pomodoro_i_built_because_nothing_free_was/",
+      "post_date": "2026-04-28",
+      "caveat": "Developer self-report; not independent prevalence data"
+    },
+    {
+      "complaint": "Interrupted focus sessions lose useful history",
+      "source": "https://www.reddit.com/r/pomodoro/comments/1xc74ke/i_wanted_interrupted_pomodoros_to_count_for/",
+      "post_date": "2026-10-22",
+      "caveat": "Feature request framed by developer, not verified demand"
+    },
+    {
+      "complaint": "Focus tools can be bulky on Windows and occupy too much screen space",
+      "source": "https://www.reddit.com/r/software/comments/1udq1xv/free_lightweight_stopwatch_for_macos_windows_to/",
+      "post_date": "2026-06-23",
+      "caveat": "Creator anecdote"
+    }
+  ],
+  "unmet_need_hypothesis": "Existing free Pomro already offers offline no-account operation, local activity history, 25/50 presets, restart recovery and daily statistics. A paid focus timer must therefore solve a substantially narrower verified need, such as auditable interruption reasons and per-task worklog export; buyer willingness remains unvalidated.",
+  "offline_local_only_advantage": "No account, telemetry, or cloud can be useful but is not unique: free Pomro explicitly provides offline no-account local history. Any proposed advantage must be tested feature-by-feature.",
+  "buyer_persona": "Windows-only independent knowledge worker or exam student in a restricted-network setting; unvalidated.",
+  "store_search_keywords": [
+    "offline pomodoro",
+    "focus timer Windows",
+    "task checklist timer",
+    "local focus log",
+    "集中タイマー",
+    "作業時間 記録"
+  ],
+  "why_pay_statement": "NOT PROVEN: Pomro provides the free, offline, no-account presets, local history, daily statistics and restart recovery that overlap heavily with Focus Session Desk; an interrupted-session evidence worklog remains hypothetical.",
+  "price_hypothesis": {
+    "current_product": "JPY 0 / no paid release",
+    "redesigned_candidate": "JPY 300–800 one-time only if a distinct interrupted-worklog workflow is user validated",
+    "validated": false
+  },
+  "proposed_redefinition": {
+    "name": "Offline Focus Worklog (working concept)",
+    "differentiators": [
+      "First-class interrupted-session ledger with reason, resumed time and per-task worklog export",
+      "One-screen low-distraction daily work report and explicit data recovery, no sign-in"
+    ],
+    "constraints": [
+      "Never claim background countdown while app closed",
+      "Do not claim blocking, OS notifications or telemetry unless implemented and tested",
+      "Do not duplicate existing general task managers"
+    ],
+    "needs_validation": [
+      "At least five buyer interviews",
+      "10 direct Microsoft Store review links with dates",
+      "Windows 1024x768 prototype test and EN/JA usability",
+      "Compare Windows Clock and free FocusCommit on full daily worklog",
+      "Directly compare against free Pomro: interruption reasons, per-task export, restart recovery, always-on-top, accessibility and JA/EN experience"
+    ]
+  },
+  "scoring": {
+    "problem_severity": {
+      "score": 10,
+      "max": 20
+    },
+    "differentiation": {
+      "score": 5,
+      "max": 20
+    },
+    "willingness_to_pay": {
+      "score": 4,
+      "max": 20
+    },
+    "usability": {
+      "score": 11,
+      "max": 15
+    },
+    "trust_privacy": {
+      "score": 8,
+      "max": 10
+    },
+    "discoverability": {
+      "score": 5,
+      "max": 10
+    },
+    "implementation_risk": {
+      "score": 4,
+      "max": 5
+    },
+    "total": 47,
+    "max": 100
+  },
+  "go_criteria": {
+    "one_sentence_why_pay": false,
+    "two_distinctions_from_free_alternatives": false,
+    "addresses_review_complaint": true,
+    "feasible_windows_local": true,
+    "no_saas_dependency": true,
+    "minimum_score_70": false
+  },
+  "gate_policy": "<70: Store work forbidden; 70-79 redesign; >=80 candidate only if all GO criteria met",
+  "current_feature_evidence": "README documents task CRUD, focus timer, interruption notice, session history and local backup. Exact-source Windows GUI/EXE QA remains unverified.",
+  "evidence_repo_path": "products/focus-session-desk/README.md",
+  "remaining_market_research": [
+    "Current Microsoft Store direct-listing prices and reviews",
+    "Paid willingness-to-pay interviews",
+    "Assess free Windows Clock+To Do parity",
+    "Prototype taskbar visibility and interruption tracking",
+    "Capture actual Pomro Microsoft Store listing and dated customer reviews; vendor website is feature evidence, not demand evidence",
+    "Test proposed interrupted-session export against Tempo task-linked session history and reports; official claims not independently QA-tested"
+  ],
+  "provenance_note": "2026-10-30 desk research; regional prices vary; forum posts are anecdotal. No code/Windows UI/EXE QA performed. Added 2026-10-30 direct free competitor Pomro from official vendor site; feature claims not independently QA-tested. Recalibrated score 50->47; gate remains HOLD. Additional free Tempo competitor verified on its official website 2026-10-30; score unchanged at 47 because market-fit already HOLD and no buyer evidence.",
+  "workflow_guard": {
+    "market_fit_pass": false,
+    "do_not_dispatch_to_msix": true,
+    "do_not_claim_store_ready": true,
+    "partner_center_selection": "MSIX or PWA app",
+    "identity_status": "NOT_CONFIRMED_IN_THIS_RUN; do not create Partner Center product before PRE_IDENTITY_READY"
+  },
+  "new_competitor_risk": {
+    "name": "Pomro",
+    "impact": "Material direct overlap in core free features; reinforces MARKET_FIT_HOLD",
+    "evidence_url": "https://pomro.app/",
+    "checked": "2026-10-30",
+    "feature_parity_claims_not_independently_tested": true,
+    "additional_competitor": "Tempo",
+    "additional_evidence_url": "https://tempo.asyncat.com/",
+    "additional_impact": "Free local-first task-linked timer with analytics further weakens generic paid timer positioning; does not prove its Windows quality."
+  }
+}
