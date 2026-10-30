@@ -25,16 +25,25 @@ class MarketFitGateTests(unittest.TestCase):
         baseline = self.git("rev-parse", "HEAD")
         self.document = {
             "schema_version": "app5-market-fit-v1",
+            "researched_on": "2026-10-30",
             "slug": self.slug,
             "decision": "MARKET_FIT_PASS",
             "commercial_msix_allowed": True,
             "feature_expansion_allowed": True,
-            "direct_competitors": ["competitor A", "competitor B", "competitor C"],
+            "direct_competitors": [
+                {"name": "competitor A", "source": "https://vendor-a.test/pricing", "checked": "2026-10-30"},
+                {"name": "competitor B", "source": "https://vendor-b.test/pricing", "checked": "2026-10-30"},
+                {"name": "competitor C", "source": "https://vendor-c.test/pricing", "checked": "2026-10-30"},
+            ],
             "free_alternatives": ["free A", "free B", "free C"],
             "paid_price_range": "USD 10-50 one time",
             "buyer_persona": "Windows local-only professional operator",
             "why_pay_statement": "A complete local handoff report avoids manual reconciliation.",
-            "common_review_complaints": [{"complaint": "Difficult export workflow"}],
+            "common_review_complaints": [{
+                "complaint": "Difficult export workflow",
+                "source": "https://forum.test/review/123",
+                "post_date": "2026-10-25",
+            }],
             "store_search_keywords": ["offline report", "Windows local"],
             "price_hypothesis": {"one_time_jpy": 900},
             "go_criteria": {
@@ -204,6 +213,63 @@ class MarketFitGateTests(unittest.TestCase):
         except (OSError, NotImplementedError):
             self.skipTest("symlink creation restricted")
         with self.assertRaisesRegex(MarketFitHold, "linked"):
+            assert_market_fit(self.root, self.slug)
+
+
+    def test_competitor_names_without_sources_hold(self):
+        self.document["direct_competitors"] = ["A", "B", "C"]
+        self.write_doc()
+        self.commit("invalid string-only competitor claims")
+        with self.assertRaisesRegex(MarketFitHold, "competitor source"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_competitor_missing_url_holds(self):
+        self.document["direct_competitors"][0].pop("source")
+        self.write_doc()
+        self.commit("competitor without source")
+        with self.assertRaisesRegex(MarketFitHold, "competitor source"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_competitor_invalid_date_holds(self):
+        self.document["direct_competitors"][0]["checked"] = "2026-02-31"
+        self.write_doc()
+        self.commit("invalid competitor date")
+        with self.assertRaisesRegex(MarketFitHold, "competitor source"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_duplicate_competitor_names_hold(self):
+        self.document["direct_competitors"][1]["name"] = "competitor A"
+        self.write_doc()
+        self.commit("duplicate competitor")
+        with self.assertRaisesRegex(MarketFitHold, "distinct competitors"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_duplicate_free_alternatives_hold(self):
+        self.document["free_alternatives"] = ["free A", "free A", "free B"]
+        self.write_doc()
+        self.commit("duplicate free alternatives")
+        with self.assertRaisesRegex(MarketFitHold, "distinct free alternatives"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_review_complaint_without_date_holds(self):
+        self.document["common_review_complaints"][0].pop("post_date")
+        self.write_doc()
+        self.commit("undated complaint")
+        with self.assertRaisesRegex(MarketFitHold, "dated, source-linked"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_review_complaint_without_source_holds(self):
+        self.document["common_review_complaints"][0]["source"] = "not-a-url"
+        self.write_doc()
+        self.commit("unsourced complaint")
+        with self.assertRaisesRegex(MarketFitHold, "dated, source-linked"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_missing_research_date_holds(self):
+        self.document.pop("researched_on")
+        self.write_doc()
+        self.commit("missing research date")
+        with self.assertRaisesRegex(MarketFitHold, "research date"):
             assert_market_fit(self.root, self.slug)
 
     def test_workflow_and_direct_builder_both_call_gate(self):

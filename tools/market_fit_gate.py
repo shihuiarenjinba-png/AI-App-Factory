@@ -7,11 +7,13 @@ This gate never promotes a candidate, binds Identity or submits to the Store.
 from __future__ import annotations
 
 import argparse
+from datetime import date
 import json
 from pathlib import Path
 import re
 import subprocess
 import sys
+from urllib.parse import urlsplit
 
 SLUG = re.compile(r"[a-z][a-z0-9-]{3,39}\Z")
 SHA40 = re.compile(r"[0-9a-f]{40}\Z")
@@ -32,6 +34,27 @@ GO_FLAGS = (
     "no_saas_dependency",
     "minimum_score_70",
 )
+
+
+def _valid_date(value: object) -> bool:
+    if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+        return False
+    try:
+        return date.fromisoformat(value).isoformat() == value
+    except ValueError:
+        return False
+
+
+def _valid_evidence_url(value: object) -> bool:
+    if not isinstance(value, str) or not 12 <= len(value) <= 2048:
+        return False
+    try:
+        parsed = urlsplit(value)
+    except ValueError:
+        return False
+    return (parsed.scheme == "https" and bool(parsed.hostname)
+            and parsed.username is None and parsed.password is None
+            and parsed.hostname not in {"localhost", "example.com", "example.invalid"})
 
 
 class MarketFitHold(ValueError):
@@ -81,18 +104,40 @@ def assert_market_fit(root: Path, slug: str) -> dict:
         raise MarketFitHold("commercial MSIX is not explicitly allowed")
     if doc.get("feature_expansion_allowed") is not True:
         raise MarketFitHold("product expansion has not been approved")
+    if not _valid_date(doc.get("researched_on")):
+        raise MarketFitHold("research date missing or invalid")
     competitors = doc.get("direct_competitors")
     alternatives = doc.get("free_alternatives")
     if (not isinstance(competitors, list) or len(competitors) < 3
             or not isinstance(alternatives, list) or len(alternatives) < 3):
         raise MarketFitHold("competitor evidence incomplete")
+    # Strings such as 'competitor A' are not independently checkable evidence.
+    # A PASS needs three distinct named competitors with dated HTTPS sources.
+    if any(not isinstance(item, dict)
+           or not isinstance(item.get("name"), str)
+           or not item["name"].strip()
+           or not _valid_evidence_url(item.get("source"))
+           or not _valid_date(item.get("checked")) for item in competitors):
+        raise MarketFitHold("competitor source URL/date missing or invalid")
+    if len({item["name"].strip().casefold() for item in competitors}) < 3:
+        raise MarketFitHold("fewer than three distinct competitors")
+    if (any(not isinstance(item, str) or not item.strip() for item in alternatives)
+            or len({item.strip().casefold() for item in alternatives}) < 3):
+        raise MarketFitHold("fewer than three distinct free alternatives")
     for field in ("paid_price_range", "buyer_persona", "why_pay_statement"):
         if not isinstance(doc.get(field), str) or len(doc[field].strip()) < 10:
             raise MarketFitHold("missing market rationale: " + field)
     if "NOT PROVEN" in doc["why_pay_statement"].upper():
         raise MarketFitHold("unproven willingness to pay")
-    if not isinstance(doc.get("common_review_complaints"), list) or not doc["common_review_complaints"]:
+    complaints = doc.get("common_review_complaints")
+    if not isinstance(complaints, list) or not complaints:
         raise MarketFitHold("review complaints not documented")
+    if not any(isinstance(item, dict)
+               and isinstance(item.get("complaint"), str)
+               and len(item["complaint"].strip()) >= 10
+               and _valid_evidence_url(item.get("source"))
+               and _valid_date(item.get("post_date")) for item in complaints):
+        raise MarketFitHold("no dated, source-linked review complaint")
     if not isinstance(doc.get("store_search_keywords"), list) or not doc["store_search_keywords"]:
         raise MarketFitHold("Store discoverability not documented")
     if not isinstance(doc.get("price_hypothesis"), dict):
