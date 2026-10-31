@@ -6,9 +6,29 @@ from pathlib import Path
 TYPES=("asset","liability","equity","revenue","expense")
 METHODS=("cash","accrual")
 DEFAULT=[
-("1000","Cash","asset"),("1100","Bank","asset"),("1200","Accounts Receivable","asset"),("1300","Inventory","asset"),("1500","Fixed Assets","asset"),
-("2000","Accounts Payable","liability"),("2100","Accrued Liabilities","liability"),("3000","Owner Equity","equity"),("4000","Sales / Service Revenue","revenue"),("4100","Other Income","revenue"),
-("5000","Cost of Goods Sold - review","expense"),("5100","Contract Labor","expense"),("5200","Rent Expense","expense"),("5300","Utilities","expense"),("5350","Vehicle Expense - review","expense"),("5400","Travel Expense - review","expense"),("5450","Meals Expense - review","expense"),("5500","Supplies Expense","expense"),("5600","Depreciation Expense - review","expense"),("5700","Taxes and Licenses - review","expense"),("5750","Business Use of Home - review","expense"),("5900","Other Expense","expense")]
+("1000","Cash","asset"),("1010","Petty Cash","asset"),("1100","Bank","asset"),("1110","Savings","asset"),("1120","Undeposited Funds","asset"),
+("1200","Accounts Receivable","asset"),("1210","Other Receivables","asset"),("1220","Employee / Owner Advances","asset"),("1230","Prepaid Expenses","asset"),
+("1300","Inventory","asset"),("1310","Raw Materials","asset"),("1320","Work in Process","asset"),("1330","Finished Goods","asset"),
+("1400","Short-Term Investments","asset"),("1500","Fixed Assets","asset"),("1510","Equipment","asset"),("1520","Vehicles","asset"),
+("1530","Furniture and Fixtures","asset"),("1540","Computer Equipment","asset"),("1550","Software","asset"),("1590","Accumulated Depreciation","asset"),
+("1600","Security Deposits","asset"),("1610","Long-Term Prepaids","asset"),
+("2000","Accounts Payable","liability"),("2010","Credit Cards Payable","liability"),("2020","Accrued Expenses","liability"),("2030","Payroll Liabilities","liability"),
+("2040","Sales Tax Payable","liability"),("2050","Customer Deposits / Unearned Revenue","liability"),("2060","Short-Term Notes Payable","liability"),
+("2100","Accrued Liabilities","liability"),("2110","Long-Term Debt","liability"),
+("3000","Owner Equity","equity"),("3010","Owner Contributions","equity"),("3020","Owner Draws","equity"),("3030","Retained Earnings / Prior Equity","equity"),
+("4000","Sales / Service Revenue","revenue"),("4010","Consulting Revenue","revenue"),("4020","Product Revenue","revenue"),("4030","Interest Income","revenue"),
+("4040","Other Operating Income","revenue"),("4100","Other Income","revenue"),
+("5000","Cost of Goods Sold - review","expense"),("5010","Purchases","expense"),("5020","Freight In","expense"),
+("5100","Contract Labor","expense"),("5110","Wages Expense","expense"),("5120","Payroll Tax Expense","expense"),("5130","Employee Benefits","expense"),
+("5200","Rent Expense","expense"),("5210","Lease Expense","expense"),("5220","Advertising and Marketing","expense"),("5230","Insurance Expense","expense"),
+("5240","Legal and Professional Fees","expense"),("5250","Office Expense","expense"),("5260","Repairs and Maintenance","expense"),("5270","Bank and Merchant Fees","expense"),
+("5280","Software and Subscriptions","expense"),("5290","Education and Training","expense"),
+("5300","Utilities","expense"),("5310","Telephone and Internet","expense"),("5320","Shipping and Postage","expense"),("5330","Dues and Subscriptions","expense"),
+("5340","Interest Expense","expense"),("5350","Vehicle Expense - review","expense"),("5400","Travel Expense - review","expense"),("5450","Meals Expense - review","expense"),
+("5500","Supplies Expense","expense"),("5510","Small Tools and Equipment","expense"),("5600","Depreciation Expense - review","expense"),
+("5700","Taxes and Licenses - review","expense"),("5750","Business Use of Home - review","expense"),("5800","Bad Debt Expense","expense"),
+("5810","Charitable / Nonbusiness Review","expense"),("5900","Other Expense","expense")
+]
 SUGGEST_ENTRY_RULES=[
  (["rent","lease","office space"],"5200","1100","Rent Expense"),
  (["utility","utilities","internet","phone","electric","water","gas"],"5300","1100","Utilities"),
