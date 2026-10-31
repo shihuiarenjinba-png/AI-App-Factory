@@ -18,4 +18,17 @@ class T(unittest.TestCase):
   self.assertTrue(m.review_requirements("Business use of home - review"))
   x=m.suggest_category("business vehicle mileage log","expense")
   self.assertTrue(x);self.assertTrue(x[0]["requires_review"])
+ def test_ambiguous_or_substring_suggestions_fail_closed(self):
+  self.assertEqual(m.suggest_category("carpet repair", "expense")[0]["category"], "Repairs and maintenance")
+  self.assertEqual(m.suggest_category("gas bill", "expense"), [])
+  self.assertEqual(m.suggest_category("car mileage", "expense")[0]["category"], "Car and truck expenses - review")
+  self.assertEqual(m.suggest_category("hotel meal", "expense"), [])
+  self.assertEqual(m.suggest_category("unknown memo", "expense"), [])
+ def test_inventory_review_and_amount_boundaries(self):
+  x=m.suggest_category("inventory goods for resale", "expense")
+  self.assertEqual(x[0]["category"], "Inventory / COGS - review")
+  self.assertTrue(x[0]["requires_review"])
+  for amount in ["0.001", "0.004", "999999999999999999999.00", "NaN", "Infinity"]:
+   with self.subTest(amount=amount),self.assertRaises(m.LedgerError):m.usd_to_cents(amount)
+  self.assertEqual(m.usd_to_cents("0.005"), 1)
 if __name__=="__main__":unittest.main()
