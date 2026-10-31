@@ -24,3 +24,26 @@ Federal bookkeeping references checked:
 - State/local sales tax, licensing, franchise tax and other requirements are outside automated scope.
 - No current-year tax rate, mileage rate, deduction percentage, threshold or dollar limitation is hard-coded without an official tax-year-specific source.
 - Do not market the product as IRS compliant or tax compliant.
+
+## 2026-10-31 federal 12-point review (IRS primary sources)
+
+This is a federal-scope risk register, not an IRS approval. Tax-year-specific figures must not be hardcoded, and the linked pages' Future Developments require review before release.
+
+| Check | IRS source | Decision / gap |
+| --- | --- | --- |
+| 1. Sole proprietor and Schedule C | [Schedule C instructions](https://www.irs.gov/instructions/i1040sc) | Generic double-entry books, not an eligibility or filing decision |
+| 2. Cash versus accrual | [Pub. 538](https://www.irs.gov/publications/p538) | **HOLD:** selection is saved and locked but journal/P&L recognition timing is not calculated differently |
+| 3. Method changes, consent, Form 3115 | [Form 3115 instructions](https://www.irs.gov/instructions/i3115) | No automated method migration or legal-eligibility decision |
+| 4. Income with or without 1099 | [Schedule C instructions](https://www.irs.gov/instructions/i1040sc) | Never omit recorded business income solely because no 1099 exists |
+| 5. Vehicle/mileage substantiation | [Pub. 463](https://www.irs.gov/publications/p463) | REVIEW REQUIRED; evidence and business purpose must be reviewed |
+| 6. Travel/meals | [Pub. 463](https://www.irs.gov/publications/p463) | REVIEW REQUIRED; no automatic deductible amount |
+| 7. Home office | [Pub. 587](https://www.irs.gov/publications/p587) | REVIEW REQUIRED; no automatic qualification |
+| 8. Capitalization, depreciation, Section 179 | [Pub. 334](https://www.irs.gov/publications/p334), [Schedule C](https://www.irs.gov/instructions/i1040sc) | REVIEW REQUIRED; tax-year-specific treatment excluded |
+| 9. Inventory / COGS | [Pub. 334](https://www.irs.gov/publications/p334) | REVIEW REQUIRED; general journal is not a tax inventory engine |
+| 10. Record retention | [Pub. 583](https://www.irs.gov/publications/p583) | No blanket three-year deletion assumption |
+| 11. Computerized records and traceability | [Pub. 583](https://www.irs.gov/publications/p583) | **HOLD:** source-document references, backup/restore, audit controls require additional QA |
+| 12. State/local sales tax and licensing | [Schedule C](https://www.irs.gov/instructions/i1040sc) | Outside scope, distinct from federal records |
+
+**Change watch:** 2025 Schedule C instructions identify revised depreciation and Section 179 rules. [Form 3115 page](https://www.irs.gov/forms-pubs/about-form-3115) points to newer procedures. Do not apply historical values to another tax year without rechecking official guidance.
+
+**Current gate:** `COMPLIANCE_HOLD` / `MARKET_FIT_HOLD`. Journal balance, trial balance and accounting P&L do not establish taxable income. Cash/accrual recognition, Windows GUI/EXE, backup/restore and document traceability must be validated before promotion/package.
