@@ -13,4 +13,7 @@ class T(unittest.TestCase):
   x=m.retrospective_adjustment(rows,{2026:"0"},tax_mode=True);self.assertTrue(x["review_required"]);self.assertIn("Form 3115",x["message"])
  def test_tax_profile_requires_irs(self):
   with self.assertRaises(ValueError):m.require_tax_profile("https://example.com",2026,"MACRS")
+ def test_main_syntax(self):
+  p=Path(__file__).resolve().parents[1]/"products/us-bookkeeping-desk/main.py"
+  compile(p.read_text(encoding="utf-8"),str(p),"exec")
 if __name__=="__main__":unittest.main()
