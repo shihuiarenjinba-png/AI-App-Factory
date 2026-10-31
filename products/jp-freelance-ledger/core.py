@@ -3,6 +3,7 @@ import csv, os, sqlite3
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
+from account_catalog import ACCOUNT_CATALOG,BOOK_GUIDE
 
 CATEGORIES = ["売上高","受取手数料","雑収入","仕入高","外注工賃","給料賃金","専従者給与","法定福利費","福利厚生費","地代家賃","水道光熱費","旅費交通費","通信費","広告宣伝費","接待交際費","損害保険料","修繕費","消耗品費","租税公課","荷造運賃","支払手数料","新聞図書費","会議費","車両費","研修費","ソフトウェア利用料","リース料","減価償却費","貸倒金","利子割引料","雑費","その他"]
 DOCUMENT_TYPES = ["領収書","請求書","レシート","契約書","振込記録","通帳・明細","その他"]
@@ -58,7 +59,7 @@ def yen_to_int(v):
 class Store:
     def __init__(self,path=None):
         self.path=Path(path) if path else default_db_path(); self.path.parent.mkdir(parents=True,exist_ok=True)
-        self.conn=sqlite3.connect(self.path); self.conn.row_factory=sqlite3.Row; self._schema()
+        self.conn=sqlite3.connect(self.path); self.conn.row_factory=sqlite3.Row; self._schema(); self._seed_help()
     def _schema(self):
         self.conn.executescript("""
         PRAGMA foreign_keys=ON;
@@ -70,7 +71,63 @@ class Store:
         CREATE TABLE IF NOT EXISTS audit_log(
           id INTEGER PRIMARY KEY AUTOINCREMENT, action TEXT NOT NULL, entity_id INTEGER,
           detail TEXT NOT NULL, created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+        CREATE TABLE IF NOT EXISTS account_help(
+          code TEXT PRIMARY KEY, name TEXT NOT NULL, type TEXT NOT NULL, audience TEXT NOT NULL,
+          use_text TEXT NOT NULL, books TEXT NOT NULL, keywords TEXT NOT NULL, example TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS book_help(
+          book TEXT PRIMARY KEY, purpose TEXT NOT NULL, keywords TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS receipt_queue(
+          id INTEGER PRIMARY KEY AUTOINCREMENT, file_path TEXT NOT NULL UNIQUE,
+          status TEXT NOT NULL DEFAULT 'PENDING', suggested_category TEXT NOT NULL DEFAULT '',
+          note TEXT NOT NULL DEFAULT '', created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
         """); self.conn.commit()
+    def _seed_help(self):
+        with self.conn:
+            for a in ACCOUNT_CATALOG:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO account_help(code,name,type,audience,use_text,books,keywords,example) VALUES(?,?,?,?,?,?,?,?)",
+                    (a["code"],a["name"],a["type"],a["audience"],a["use"]," / ".join(a["books"])," / ".join(a["keywords"]),a["example"])
+                )
+            for b in BOOK_GUIDE:
+                self.conn.execute(
+                    "INSERT OR REPLACE INTO book_help(book,purpose,keywords) VALUES(?,?,?)",
+                    (b["book"],b["purpose"]," / ".join(b["keywords"]))
+                )
+    def search_help(self,query,limit=8,include_advanced=False):
+        q=(query or "").strip()
+        if not q:return []
+        like=f"%{q}%"
+        sql="""SELECT code,name,type,audience,use_text,books,keywords,example
+               FROM account_help
+               WHERE (name LIKE ? OR use_text LIKE ? OR keywords LIKE ? OR example LIKE ? OR books LIKE ?)"""
+        args=[like]*5
+        if not include_advanced:
+            sql+=" AND audience NOT IN ('advanced')"
+        sql+=" ORDER BY CASE WHEN name=? THEN 0 WHEN name LIKE ? THEN 1 ELSE 2 END, code LIMIT ?"
+        args.extend([q,like,max(1,min(int(limit),30))])
+        return [dict(r) for r in self.conn.execute(sql,args).fetchall()]
+    def search_book_help(self,query,limit=5):
+        q=(query or "").strip()
+        if not q:return []
+        like=f"%{q}%"
+        return [dict(r) for r in self.conn.execute(
+            "SELECT book,purpose,keywords FROM book_help WHERE book LIKE ? OR purpose LIKE ? OR keywords LIKE ? ORDER BY book LIMIT ?",
+            (like,like,like,max(1,min(int(limit),20)))
+        ).fetchall()]
+    def enqueue_receipts(self,paths):
+        added=0
+        with self.conn:
+            for path in paths:
+                p=str(path).strip()
+                if not p:continue
+                cur=self.conn.execute("INSERT OR IGNORE INTO receipt_queue(file_path) VALUES(?)",(p,))
+                added+=cur.rowcount
+        return added
+    def pending_receipts(self,limit=100):
+        return [dict(r) for r in self.conn.execute(
+            "SELECT id,file_path,status,suggested_category,note,created_at FROM receipt_queue WHERE status='PENDING' ORDER BY id LIMIT ?",
+            (max(1,min(int(limit),1000)),)
+        ).fetchall()]
     def add(self,txn_date,kind,amount,category,counterparty="",document_type="",document_path="",memo=""):
         txn_date=validate_date(txn_date)
         if kind not in {"収入","経費"}: raise LedgerError("種別が不正です")
