@@ -537,6 +537,62 @@ class Tests(unittest.TestCase):
         self.assertEqual(backup.read_text(encoding="utf-8"),"prior report")
         self.assertIn("path,format,width,height,bytes",output.read_text(encoding="utf-8"))
 
+    def test_folder_import_nonrecursive_preserves_existing_and_ignores_other_files(self):
+        folder=self.d/"batch";folder.mkdir()
+        first=folder/"a.png";first.write_bytes(self.png.read_bytes())
+        nested=folder/"nested";nested.mkdir()
+        (nested/"b.png").write_bytes(self.png.read_bytes())
+        (folder/"notes.txt").write_text("not an image")
+        original=app.inspect_image(self.png)
+        self.png.unlink()
+        rows,errors=app.append_folder_images([original],folder)
+        self.assertEqual(errors,[])
+        self.assertEqual(rows[0],original)
+        self.assertEqual([Path(row["path"]).name for row in rows[1:]],["a.png"])
+
+    def test_folder_import_recursive_and_repeat_does_not_duplicate(self):
+        folder=self.d/"batch";folder.mkdir()
+        nested=folder/"nested";nested.mkdir()
+        (nested/"b.PNG").write_bytes(self.png.read_bytes())
+        (folder/"a.png").write_bytes(self.png.read_bytes())
+        rows,errors=app.append_folder_images([],folder,recursive=True)
+        self.assertEqual(errors,[])
+        self.assertEqual({Path(row["path"]).name for row in rows},{"a.png","b.PNG"})
+        again,errors=app.append_folder_images(rows,folder,recursive=True)
+        self.assertEqual(again,rows)
+        self.assertEqual(errors,[])
+
+    def test_folder_import_rejects_over_capacity_without_partial_rows(self):
+        folder=self.d/"batch";folder.mkdir()
+        for index in range(app.MAX_ITEMS+1):
+            (folder/f"{index:03}.png").write_bytes(self.png.read_bytes())
+        original=[app.inspect_image(self.png)]
+        with self.assertRaisesRegex(ValueError,"capacity"):
+            app.append_folder_images(original,folder)
+        self.assertEqual(len(original),1)
+        self.assertEqual(original[0]["path"],str(self.png))
+
+    def test_folder_import_skips_symlink_and_never_traverses_linked_directory(self):
+        folder=self.d/"batch";folder.mkdir()
+        outside=self.d/"outside";outside.mkdir()
+        (outside/"secret.png").write_bytes(self.png.read_bytes())
+        link=folder/"linked"
+        try:link.symlink_to(outside,target_is_directory=True)
+        except (OSError,NotImplementedError):self.skipTest("symlinks unavailable")
+        rows,errors=app.append_folder_images([],folder,recursive=True)
+        self.assertEqual(rows,[])
+        self.assertEqual(len(errors),1)
+        self.assertIn("Symlink",errors[0][1])
+        with self.assertRaises(ValueError):
+            app.append_folder_images([],link,recursive=True)
+
+    def test_folder_import_rejects_invalid_options_and_nonfolder(self):
+        for folder,recursive in ((self.png,False),(self.d/"missing",False),(self.d,1)):
+            with self.subTest(folder=folder,recursive=recursive):
+                with self.assertRaises(ValueError):
+                    app.append_folder_images([],folder,recursive=recursive)
+        self.assertEqual(set(app.LABELS["en"]),set(app.LABELS["ja"]))
+
     def test_bilingual(self):
         self.assertEqual(set(app.LABELS["ja"]),set(app.LABELS["en"]))
         self.assertTrue(callable(app.main))
