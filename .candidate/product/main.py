@@ -90,7 +90,15 @@ def inspect_image(path):
     st=p.stat()
     if not stat.S_ISREG(st.st_mode) or not 0<st.st_size<=MAX_BYTES:
         raise ValueError("Not a regular image within 64 MiB")
-    with p.open("rb") as f:data=f.read(min(st.st_size,1048576))
+    with p.open("rb") as f:
+        before=os.fstat(f.fileno())
+        if (before.st_size,before.st_mtime_ns,before.st_ino)!=(st.st_size,st.st_mtime_ns,st.st_ino):
+            raise ValueError("Image changed before inspection")
+        data=f.read(min(st.st_size,1048576))
+        after=os.fstat(f.fileno())
+        if ((before.st_size,before.st_mtime_ns,before.st_ino)!=
+                (after.st_size,after.st_mtime_ns,after.st_ino) or p.is_symlink()):
+            raise ValueError("Image changed during inspection")
     if data.startswith(b"\x89PNG\r\n\x1a\n"):
         if len(data)<24 or data[12:16]!=b"IHDR" or int.from_bytes(data[8:12],"big")!=13:
             raise ValueError("Invalid PNG")
@@ -105,7 +113,7 @@ def inspect_image(path):
         w,h=jpeg_dimensions(data);fmt="JPEG"
     else:raise ValueError("Unsupported image")
     if not 1<=w<=100000 or not 1<=h<=100000:raise ValueError("Invalid dimensions")
-    return {"path":str(p),"format":fmt,"width":w,"height":h,"bytes":st.st_size}
+    return {"path":str(p),"format":fmt,"width":w,"height":h,"bytes":st.st_size,"modified_ns":after.st_mtime_ns}
 
 def scan(paths):
     if not isinstance(paths,(tuple,list)) or len(paths)>MAX_ITEMS:raise ValueError("Too many images")
@@ -250,6 +258,9 @@ def source_snapshot_status(row):
         return "SOURCE_UNAVAILABLE", "Rescan source before review: " + str(exc)
     if any(current[key] != row[key] for key in ("format", "width", "height", "bytes")):
         return "SOURCE_CHANGED", "Source header or size changed; rescan before review."
+    # Optional for older snapshots/tests; never mistake a same-size rewrite for a clean source.
+    if "modified_ns" in row and current["modified_ns"] != row["modified_ns"]:
+        return "SOURCE_CHANGED", "Source modification time changed; rescan before review."
     return "SOURCE_MATCH", ""
 
 
