@@ -473,6 +473,70 @@ class Tests(unittest.TestCase):
         self.assertEqual(summary["attention"],11)
         self.assertEqual({r["batch_check"] for r in report},{"REVIEW_BATCH_LIMIT"})
 
+    def test_issues_only_csv_exports_only_attention_rows(self):
+        good=self.d/"store-good.png"
+        good.write_bytes(b"\x89PNG\r\n\x1a\n"+struct.pack(">I",13)+
+                         b"IHDR"+struct.pack(">II",1366,768)+b"\x08\x02\x00\x00\x00")
+        rows=[app.inspect_image(good),app.inspect_image(self.png)]
+        before=[p.read_bytes() for p in (good,self.png)]
+        out=self.d/"issues.csv"
+        summary=app.export_review_csv(out,rows,issues_only=True)
+        with out.open(encoding="utf-8",newline="") as f:
+            exported=list(csv.DictReader(f))
+        self.assertEqual(summary["images"],2)
+        self.assertEqual(summary["attention"],1)
+        self.assertEqual(summary["exported_rows"],1)
+        self.assertEqual([r["original_index"] for r in exported],["2"])
+        self.assertEqual([r["needs_review"] for r in exported],["YES"])
+        self.assertEqual(before,[p.read_bytes() for p in (good,self.png)])
+        with self.assertRaises(ValueError):
+            app.export_review_csv(self.d/"invalid.csv",rows,issues_only="yes")
+
+    def test_issues_only_csv_with_no_issues_keeps_header(self):
+        good=self.d/"store-good.png"
+        good.write_bytes(b"\x89PNG\r\n\x1a\n"+struct.pack(">I",13)+
+                         b"IHDR"+struct.pack(">II",1366,768)+b"\x08\x02\x00\x00\x00")
+        out=self.d/"no-issues.csv"
+        summary=app.export_review_csv(out,[app.inspect_image(good)],issues_only=True)
+        with out.open(encoding="utf-8",newline="") as f:
+            reader=csv.DictReader(f)
+            self.assertIn("needs_review",reader.fieldnames)
+            self.assertEqual(list(reader),[])
+        self.assertEqual(summary["exported_rows"],0)
+        self.assertEqual(summary["attention"],0)
+
+    def test_export_rejects_hardlinked_source_and_backup(self):
+        rows=[app.inspect_image(self.png)]
+        original=self.png.read_bytes()
+        aliased=self.d/"aliased.csv"
+        try:os.link(self.png,aliased)
+        except (OSError,NotImplementedError):self.skipTest("hard links unavailable")
+        with self.assertRaises(ValueError):
+            app.export_csv(aliased,rows)
+        self.assertEqual(self.png.read_bytes(),original)
+        output=self.d/"report.csv"
+        output.write_text("previous report",encoding="utf-8")
+        backup=output.with_name(output.name+".bak")
+        os.link(self.png,backup)
+        with self.assertRaises(ValueError):
+            app.export_review_csv(output,rows)
+        self.assertEqual(output.read_text(encoding="utf-8"),"previous report")
+        self.assertEqual(self.png.read_bytes(),original)
+
+    def test_export_replaces_backup_without_mutating_previous_hardlink(self):
+        rows=[app.inspect_image(self.png)]
+        output=self.d/"report.csv"
+        output.write_text("prior report",encoding="utf-8")
+        outside=self.d/"other.txt"
+        outside.write_text("unrelated content",encoding="utf-8")
+        backup=output.with_name(output.name+".bak")
+        try:os.link(outside,backup)
+        except (OSError,NotImplementedError):self.skipTest("hard links unavailable")
+        app.export_csv(output,rows)
+        self.assertEqual(outside.read_text(encoding="utf-8"),"unrelated content")
+        self.assertEqual(backup.read_text(encoding="utf-8"),"prior report")
+        self.assertIn("path,format,width,height,bytes",output.read_text(encoding="utf-8"))
+
     def test_bilingual(self):
         self.assertEqual(set(app.LABELS["ja"]),set(app.LABELS["en"]))
         self.assertTrue(callable(app.main))
