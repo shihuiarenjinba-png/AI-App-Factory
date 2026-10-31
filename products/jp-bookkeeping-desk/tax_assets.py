@@ -28,6 +28,18 @@ def consumption_tax_from_gross(gross_yen, rate="0.10", rounding="切捨て"):
     net=(gross/(Decimal("1")+r)).quantize(Decimal("1"), rounding=ROUNDING.get(rounding, ROUND_DOWN))
     return {"net":int(net),"tax":int(gross-net),"gross":int(gross),"rate":str(r)}
 
+def validate_jp_depreciation_method(asset_class: str, first_use_date: str, method: str):
+    d=date.fromisoformat(first_use_date)
+    if d < date(2007,4,1):
+        raise ValueError("平成19年3月31日以前取得は旧定額法・旧定率法の別制度です。現行計算に混ぜず旧制度レビューへ送ってください。")
+    key=(asset_class or "").strip().lower()
+    if method=="定率法":
+        if key in {"建物","building"} and d >= date(1998,4,1):
+            raise ValueError("平成10年4月1日以後取得の建物は定額法のみの扱いです。")
+        if key in {"建物附属設備","構築物","building equipment","structure"} and d >= date(2016,4,1):
+            raise ValueError("平成28年4月1日以後取得の建物附属設備・構築物は定額法のみの扱いです。")
+    return True
+
 def months_in_service(first_use_date: str, year: int) -> int:
     d=date.fromisoformat(first_use_date)
     if year < d.year: return 0
@@ -39,6 +51,7 @@ def jp_depreciation_schedule(
     first_use_date: str,
     useful_life_years: int,
     method: str="定額法",
+    asset_class: str="その他",
     straight_line_rate=None,
     declining_rate=None,
     revised_rate=None,
@@ -49,10 +62,13 @@ def jp_depreciation_schedule(
     cost=int(cost_yen); life=int(useful_life_years)
     if cost <= 1 or life <= 0: raise ValueError("取得価額・耐用年数を確認してください")
     first=date.fromisoformat(first_use_date)
+    validate_jp_depreciation_method(asset_class,first_use_date,method)
     through_year=int(through_year or (first.year+life+5))
     use=Decimal(str(business_use_percent))/Decimal("100")
     if use < 0 or use > 1: raise ValueError("事業使用割合は0〜100%")
-    sl=Decimal(str(straight_line_rate)) if straight_line_rate is not None else (Decimal("1")/Decimal(life)).quantize(Decimal("0.001"),rounding=ROUND_HALF_UP)
+    if method=="定額法" and straight_line_rate is None:
+        raise ValueError("定額法の償却率を設定してください。国税庁の耐用年数別表の正式率を使用します。")
+    sl=Decimal(str(straight_line_rate)) if straight_line_rate is not None else None
     dr=Decimal(str(declining_rate)) if declining_rate is not None else None
     rr=Decimal(str(revised_rate)) if revised_rate is not None else None
     gr=Decimal(str(guarantee_rate)) if guarantee_rate is not None else None
