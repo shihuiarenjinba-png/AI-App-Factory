@@ -62,8 +62,8 @@ def select_inventory(rows, orientation="all", min_width=0, min_height=0,
     return result
 
 LABELS={
-"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","store_review":"Review Store issues","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10.","filter":"Apply filters","reset_filter":"Reset","all":"All","landscape":"Wide","portrait":"Tall","square":"Square","min_w":"Min width","min_h":"Min height","max_mib":"Max MiB","shown":"Showing {shown}/{n}.","batch_over":"Batch exceeds 10 screenshots; remove extras before upload.","invalid_filter":"Enter whole-number minimum dimensions (0-100000) and max MiB (1-64).","duplicates":"Find duplicates","duplicate_col":"Duplicate group","duplicate_summary":"Duplicate candidates: {files} files in {groups} groups; unreadable: {errors}. Reset shows all.","selection_detail":"{name}: {issue} — {action}{duplicate}","duplicate_note":" Exact-byte duplicate candidate {group}; review before deleting files.","action_format":"Use a PNG screenshot.","action_size":"Reduce file size below the Store limit.","action_size_review":"Confirm the 50 MB boundary in Partner Center.","action_dimensions":"Use a desktop screenshot at least 1366 × 768.","action_portrait":"Confirm portrait requirements in Partner Center.","action_basic":"Header checks only; inspect the actual image before uploading.","action_not_checked":"Use Review Store issues to check screenshot headers."},
-"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","store_review":"Store要確認だけ表示","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。","filter":"絞り込み","reset_filter":"解除","all":"全て","landscape":"横長","portrait":"縦長","square":"正方形","min_w":"幅以上","min_h":"高さ以上","max_mib":"容量上限MiB","shown":"表示 {shown}/{n}件。","batch_over":"10枚を超えています。提出前に枚数を減らしてください。","invalid_filter":"最小幅・高さは0〜100000の整数、容量上限は1〜64 MiBの整数で入力してください。","duplicates":"重複候補を探す","duplicate_col":"重複グループ","duplicate_summary":"重複候補：{files}件・{groups}グループ、読取不可：{errors}件。解除で全件表示。","selection_detail":"{name}：{issue} — {action}{duplicate}","duplicate_note":" 完全一致の重複候補 {group}。削除前に確認してください。","action_format":"PNG形式のスクリーンショットを使用してください。","action_size":"Storeの容量制限未満に縮小してください。","action_size_review":"Partner Centerで50 MB境界を確認してください。","action_dimensions":"1366 × 768以上のデスクトップ画像を使用してください。","action_portrait":"縦長画像の条件をPartner Centerで確認してください。","action_basic":"ヘッダー検査のみ通過。アップロード前に画像内容を確認してください。","action_not_checked":"「Store要確認だけ表示」で画像ヘッダーを検査してください。"}}
+"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","review_export":"Export review report","review_summary":"Review CSV saved: {attention}/{images} need attention; {duplicate_files} duplicates in {duplicate_groups} groups; {hash_errors} hash errors.","store_review":"Review Store issues","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10.","filter":"Apply filters","reset_filter":"Reset","all":"All","landscape":"Wide","portrait":"Tall","square":"Square","min_w":"Min width","min_h":"Min height","max_mib":"Max MiB","shown":"Showing {shown}/{n}.","batch_over":"Batch exceeds 10 screenshots; remove extras before upload.","invalid_filter":"Enter whole-number minimum dimensions (0-100000) and max MiB (1-64).","duplicates":"Find duplicates","duplicate_col":"Duplicate group","duplicate_summary":"Duplicate candidates: {files} files in {groups} groups; unreadable: {errors}. Reset shows all.","selection_detail":"{name}: {issue} — {action}{duplicate}","duplicate_note":" Exact-byte duplicate candidate {group}; review before deleting files.","action_format":"Use a PNG screenshot.","action_size":"Reduce file size below the Store limit.","action_size_review":"Confirm the 50 MB boundary in Partner Center.","action_dimensions":"Use a desktop screenshot at least 1366 × 768.","action_portrait":"Confirm portrait requirements in Partner Center.","action_basic":"Header checks only; inspect the actual image before uploading.","action_not_checked":"Use Review Store issues to check screenshot headers."},
+"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","review_export":"要確認レポートCSV","review_summary":"要確認CSV保存：{images}件中{attention}件が要確認、重複候補{duplicate_files}件・{duplicate_groups}組、ハッシュエラー{hash_errors}件。","store_review":"Store要確認だけ表示","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。","filter":"絞り込み","reset_filter":"解除","all":"全て","landscape":"横長","portrait":"縦長","square":"正方形","min_w":"幅以上","min_h":"高さ以上","max_mib":"容量上限MiB","shown":"表示 {shown}/{n}件。","batch_over":"10枚を超えています。提出前に枚数を減らしてください。","invalid_filter":"最小幅・高さは0〜100000の整数、容量上限は1〜64 MiBの整数で入力してください。","duplicates":"重複候補を探す","duplicate_col":"重複グループ","duplicate_summary":"重複候補：{files}件・{groups}グループ、読取不可：{errors}件。解除で全件表示。","selection_detail":"{name}：{issue} — {action}{duplicate}","duplicate_note":" 完全一致の重複候補 {group}。削除前に確認してください。","action_format":"PNG形式のスクリーンショットを使用してください。","action_size":"Storeの容量制限未満に縮小してください。","action_size_review":"Partner Centerで50 MB境界を確認してください。","action_dimensions":"1366 × 768以上のデスクトップ画像を使用してください。","action_portrait":"縦長画像の条件をPartner Centerで確認してください。","action_basic":"ヘッダー検査のみ通過。アップロード前に画像内容を確認してください。","action_not_checked":"「Store要確認だけ表示」で画像ヘッダーを検査してください。"}}
 
 def jpeg_dimensions(data):
     if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
@@ -238,6 +238,54 @@ def export_msix_csv(path,rows):
                          "REVIEW_BATCH_LIMIT" if len(rows)>MSIX_DESKTOP_MAX_SCREENSHOTS else ""])
     atomic_write(path,output.getvalue(),[r["path"] for r in rows])
 
+
+def build_review_report(rows):
+    """One-click, read-only triage: Store header issues + exact-byte duplicate candidates.
+
+    A source inventory is a snapshot, not a pixel decode or Store certification.
+    """
+    if not rows:
+        raise ValueError("No images")
+    groups, errors = find_duplicate_groups(rows)
+    errors_by_path = {path: reason for path, reason in errors}
+    over_limit = len(rows) > MSIX_DESKTOP_MAX_SCREENSHOTS
+    report = []
+    for index, row in enumerate(rows):
+        code, reason = check_msix_screenshot(row)
+        group = groups.get(index, "")
+        hash_error = errors_by_path.get(row["path"], "")
+        attention = code != "BASIC_CANDIDATE" or bool(group or hash_error) or over_limit
+        orientation = ("square" if row["width"] == row["height"] else
+                       "landscape" if row["width"] > row["height"] else "portrait")
+        report.append({
+            "original_index": index + 1, "path": row["path"], "format": row["format"],
+            "width": row["width"], "height": row["height"], "bytes": row["bytes"],
+            "orientation": orientation, "needs_review": "YES" if attention else "NO",
+            "msix_check": code, "action": reason, "duplicate_group": group,
+            "duplicate_scan_error": hash_error,
+            "batch_check": "REVIEW_BATCH_LIMIT" if over_limit else "",
+            "profile_checked": MSIX_PROFILE_CHECKED, "profile_source": MSIX_PROFILE_URL,
+        })
+    # Actionable items first; original_index preserves the exact inventory order.
+    report.sort(key=lambda item: (item["needs_review"] != "YES", item["original_index"]))
+    return report, {
+        "images": len(rows),
+        "attention": sum(item["needs_review"] == "YES" for item in report),
+        "duplicate_files": len(groups), "duplicate_groups": len(set(groups.values())),
+        "hash_errors": len(errors), "over_limit": over_limit,
+    }
+
+
+def export_review_csv(path, rows):
+    """Export a human-reviewable report without changing images or inventory."""
+    report, summary = build_review_report(rows)
+    output = io.StringIO(newline="")
+    writer = csv.DictWriter(output, fieldnames=list(report[0]), lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(report)
+    atomic_write(path, output.getvalue(), [row["path"] for row in rows])
+    return summary
+
 class Desk:
     def __init__(self,root):
         self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False)
@@ -259,10 +307,13 @@ class Desk:
         self.preflight_box.pack(side="left",padx=(0,12))
         self.issues_box=ttk.Checkbutton(checkbar,variable=self.issues,command=self.refresh)
         self.issues_box.pack(side="left",padx=(0,12))
-        self.check_export_button=ttk.Button(checkbar,command=self.export_check)
+        reviewbar=ttk.Frame(body);reviewbar.pack(fill="x",pady=(0,4))
+        self.check_export_button=ttk.Button(reviewbar,command=self.export_check)
         self.check_export_button.pack(side="left")
-        self.store_review_button=ttk.Button(checkbar,command=self.store_review_preset)
+        self.store_review_button=ttk.Button(reviewbar,command=self.store_review_preset)
         self.store_review_button.pack(side="left",padx=(8,0))
+        self.review_export_button=ttk.Button(reviewbar,command=self.export_review)
+        self.review_export_button.pack(side="left",padx=(8,0))
         filters=ttk.Frame(body);filters.pack(fill="x",pady=(2,4))
         self.orientation_buttons={}
         for key in ("all","landscape","portrait","square"):
@@ -298,6 +349,7 @@ class Desk:
         self.issues_box.configure(text=self.t("issues"))
         self.check_export_button.configure(text=self.t("check_export"))
         self.store_review_button.configure(text=self.t("store_review"))
+        self.review_export_button.configure(text=self.t("review_export"))
         self.notice.configure(text=self.t("notice") if self.preflight.get() else "")
         for key,widget in self.orientation_buttons.items():widget.configure(text=self.t(key))
         for key,widget in self.filter_labels.items():widget.configure(text=self.t(key))
@@ -428,6 +480,15 @@ class Desk:
             self.status.set(self.t("loaded")+" "+self.t("result").format(n=len(self.rows),bad=len(errors)))
             if errors:self.error("\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
         except (OSError,ValueError,UnicodeError,RecursionError) as exc:self.error(exc)
+    def export_review(self):
+        if not self.rows:self.status.set(self.t("empty"));return
+        path=self.output(".csv")
+        if not path or not self.confirm(path):return
+        try:
+            summary=export_review_csv(path,self.rows)
+            self.status.set(self.t("review_summary").format(**summary))
+        except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
+
     def export_check(self):
         if not self.rows:self.status.set(self.t("empty"));return
         path=self.output(".csv")
