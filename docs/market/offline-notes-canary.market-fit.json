@@ -50,15 +50,21 @@
     },
     {
       "name": "Microsoft OneNote",
-      "price": "Standalone Windows app free",
+      "price": "Free standalone Windows desktop app; Microsoft support FAQ describes local notebook storage as a premium feature unlocked by a qualifying Microsoft 365 or Office license. Current 2026 entitlement needs live Windows verification.",
       "features": [
         "notebooks",
         "search",
         "Windows integration",
-        "local notebook option"
+        "desktop app supports local notebooks, but local-notebook entitlement is license-dependent according to Microsoft support FAQ"
       ],
       "source": "https://support.microsoft.com/en-us/onenote/what-s-the-difference-between-the-onenote-versions",
-      "checked": "2026-10-30"
+      "checked": "2026-10-30",
+      "license_caveat": {
+        "checked": "2026-10-31",
+        "source": "https://support.microsoft.com/en-au/onenote/frequently-asked-questions-about-onenote-in-office-2019-and-microsoft-365",
+        "claim": "Microsoft FAQ explicitly lists local notebook support under Microsoft 365/Office 2019 premium benefits; it does not establish local notebook storage is included in free standalone OneNote.",
+        "limitation": "FAQ contains legacy Office 2019-era wording; verify current installed free desktop build before asserting 2026 license behavior."
+      }
     },
     {
       "name": "UpNote",
@@ -181,7 +187,8 @@
   "remaining_market_research": [
     "Microsoft Store direct competitor listing prices/reviews not yet independently captured",
     "Additional review sample and buyer interviews",
-    "Validate proposed workflow versus Obsidian plugins and OneNote local notebooks"
+    "Validate proposed workflow versus Obsidian plugins and OneNote local notebooks",
+    "Verify OneNote free standalone local-notebook entitlement on current Windows build; official version comparison confirms desktop capability but licensing FAQ describes it as premium."
   ],
   "provenance_note": "Source URLs were accessed 2026-10-30. Prices may vary by region. Review complaints are qualitative, not prevalence estimates. This is market desk research, not product QA.",
   "workflow_guard": {
@@ -190,5 +197,19 @@
     "do_not_claim_store_ready": true,
     "partner_center_selection": "MSIX or PWA app",
     "identity_status": "REFERENCE_AVAILABLE / source-bound revalidation required; do not request duplicate identity"
-  }
+  },
+  "research_corrections": [
+    {
+      "checked": "2026-10-31",
+      "field": "direct_competitors/Microsoft OneNote",
+      "correction": "Distinguish desktop capability from free-license entitlement for local notebook storage.",
+      "sources": [
+        "https://support.microsoft.com/en-us/onenote/what-s-the-difference-between-the-onenote-versions",
+        "https://support.microsoft.com/en-au/onenote/frequently-asked-questions-about-onenote-in-office-2019-and-microsoft-365",
+        "https://support.microsoft.com/en-gb/onenote/moving-to-onenote-on-windows"
+      ],
+      "score_change": 0,
+      "decision": "MARKET_FIT_HOLD"
+    }
+  ]
 }
