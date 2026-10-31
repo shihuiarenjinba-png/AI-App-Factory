@@ -362,6 +362,45 @@ class Tests(unittest.TestCase):
         self.assertTrue(any(r["duplicate_scan_error"] for r in report))
         self.assertEqual({r["needs_review"] for r in report},{"YES"})
 
+    def test_review_report_flags_stale_single_source_and_recovers_after_rescan(self):
+        good=self.d/"single-store.png"
+        good.write_bytes(b"\x89PNG\r\n\x1a\n"+struct.pack(">I",13)+
+                         b"IHDR"+struct.pack(">II",1366,768)+b"\x08\x02\x00\x00\x00")
+        snapshot=app.inspect_image(good)
+        initial,initial_summary=app.build_review_report([snapshot])
+        self.assertEqual(initial[0]["source_check"],"SOURCE_MATCH")
+        self.assertEqual(initial[0]["needs_review"],"NO")
+        good.write_bytes(good.read_bytes()+b"x")
+        stale,summary=app.build_review_report([snapshot])
+        self.assertEqual(stale[0]["msix_check"],"BASIC_CANDIDATE")
+        self.assertEqual(stale[0]["source_check"],"SOURCE_CHANGED")
+        self.assertEqual(stale[0]["needs_review"],"YES")
+        self.assertEqual(summary["stale_sources"],1)
+        self.assertIn("rescan",stale[0]["source_action"].lower())
+        refreshed,summary=app.build_review_report([app.inspect_image(good)])
+        self.assertEqual(refreshed[0]["source_check"],"SOURCE_MATCH")
+        self.assertEqual(summary["stale_sources"],0)
+
+    def test_review_report_flags_missing_source_even_without_duplicates(self):
+        row=app.inspect_image(self.png)
+        self.png.unlink()
+        report,summary=app.build_review_report([row])
+        self.assertEqual(report[0]["source_check"],"SOURCE_UNAVAILABLE")
+        self.assertEqual(report[0]["needs_review"],"YES")
+        self.assertEqual(summary["stale_sources"],1)
+
+    def test_review_csv_exposes_stale_source_without_touching_images(self):
+        row=app.inspect_image(self.png)
+        self.png.write_bytes(self.png.read_bytes()+b"extra")
+        before=self.png.read_bytes()
+        summary=app.export_review_csv(self.d/"stale.csv",[row])
+        with (self.d/"stale.csv").open(encoding="utf-8",newline="") as f:
+            csv_rows=list(csv.DictReader(f))
+        self.assertEqual(csv_rows[0]["source_check"],"SOURCE_CHANGED")
+        self.assertEqual(csv_rows[0]["needs_review"],"YES")
+        self.assertEqual(summary["stale_sources"],1)
+        self.assertEqual(self.png.read_bytes(),before)
+
     def test_review_report_overlimit_and_empty(self):
         with self.assertRaises(ValueError):app.build_review_report([])
         with self.assertRaises(ValueError):app.export_review_csv(self.d/"empty.csv",[])
