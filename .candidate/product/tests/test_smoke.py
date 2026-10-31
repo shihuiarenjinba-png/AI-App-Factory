@@ -281,6 +281,40 @@ class Tests(unittest.TestCase):
         self.assertEqual(desk.active_filter,{"orientation":"all","min_width":0,
                                             "min_height":0,"max_bytes":None})
 
+    def test_selected_issue_action_is_bilingual_and_duplicate_safe(self):
+        class Var:
+            def __init__(self,value):self.value=value
+            def get(self):return self.value
+        class Tree:
+            def selection(self):return ("0",)
+        class Status:
+            def set(self,value):self.value=value
+        desk=app.Desk.__new__(app.Desk)
+        desk.rows=[self.msix_row(fmt="JPEG")]
+        desk.tree=Tree();desk.status=Status()
+        desk.preflight=Var(True);desk.duplicate_groups={0:"D1"}
+        desk.t=lambda key:app.LABELS[desk.language][key]
+        desk.language="en"
+        desk.show_selection_details()
+        self.assertIn("Use a PNG screenshot",desk.status.value)
+        self.assertIn("D1",desk.status.value)
+        self.assertIn("review before deleting",desk.status.value)
+        desk.language="ja"
+        desk.show_selection_details()
+        self.assertIn("PNG形式",desk.status.value)
+        self.assertIn("D1",desk.status.value)
+        self.assertIn("削除前に確認",desk.status.value)
+        desk.preflight=Var(False)
+        desk.show_selection_details()
+        self.assertIn("Store要確認",desk.status.value)
+
+    def test_selected_issue_empty_selection_is_noop(self):
+        class EmptyTree:
+            def selection(self):return ()
+        desk=app.Desk.__new__(app.Desk)
+        desk.tree=EmptyTree()
+        desk.show_selection_details()
+
     def test_bilingual(self):
         self.assertEqual(set(app.LABELS["ja"]),set(app.LABELS["en"]))
         self.assertTrue(callable(app.main))
