@@ -1,0 +1,121 @@
+{
+  "schema_version": "app5-competitive-parity-v1",
+  "researched_on": "2026-10-31",
+  "product": "File Integrity Ledger",
+  "slug": "file-integrity-ledger",
+  "parent_market_fit": "docs/market/file-integrity-ledger.market-fit.json",
+  "baseline_market_score": 61,
+  "decision": "MARKET_FIT_HOLD",
+  "commercial_msix_allowed": false,
+  "feature_expansion_allowed": false,
+  "research_question": "Can a paid local deliverable verification ledger provide two real advantages over free Windows hash and audit tools?",
+  "sources": [
+    {
+      "name": "hashdeep official manual",
+      "url": "https://github.com/jessek/hashdeep/blob/master/man/hashdeep.1",
+      "checked": "2026-10-31",
+      "type": "open-source primary documentation",
+      "observations": [
+        "Recursive hashing and comparison against saved known hashes are supported",
+        "Audit mode reports pass/fail and identifies new or missing files and collisions with verbosity",
+        "Manual documents a Unicode filename limitation in audit mode"
+      ],
+      "limitations": "Documentation only; no independent Windows install, benchmark, or current Unicode regression test"
+    },
+    {
+      "name": "QuickHash GUI official feature page",
+      "url": "https://www.quickhash-gui.org/about-quickhash-gui/",
+      "checked": "2026-10-31",
+      "type": "vendor/open-source documentation",
+      "observations": [
+        "Free portable Windows GUI hashes files and folders",
+        "Compares two files or folders",
+        "CSV, HTML and clipboard output are available",
+        "Recursive hashing and post-copy verification workflows are advertised"
+      ],
+      "limitations": "Vendor claims; actual Windows 11 workflow not independently exercised"
+    },
+    {
+      "name": "RapidCRC Unicode official repository",
+      "url": "https://github.com/OV2/RapidCRC-Unicode",
+      "checked": "2026-10-31",
+      "type": "open-source repository README",
+      "observations": [
+        "Windows GUI for creating and verifying checksums",
+        "Unicode .sha256 and other checksum files with selectable UTF-8/UTF-16 encodings",
+        "Shell extension, multithreaded hashing and portable releases advertised"
+      ],
+      "limitations": "Repository README only; does not establish snapshot history or human-readable client reports"
+    },
+    {
+      "name": "OpenHashTab Japanese software review",
+      "url": "https://forest.watch.impress.co.jp/docs/review/1434488.html",
+      "checked": "2026-10-31",
+      "published": "2022-08-25",
+      "type": "independent editorial review (older)",
+      "observations": [
+        "Free Windows Explorer hash and comparison integration",
+        "Reviewer tested Windows 11",
+        "Japanese localization and multiple-file hash operations described"
+      ],
+      "limitations": "Historical editorial review, not dated Microsoft Store purchaser review or 2026 release QA"
+    }
+  ],
+  "competitive_parity": [
+    {
+      "candidate": "Hash baseline then re-audit missing/added/changed files",
+      "existing": "hashdeep -a with saved known hashes",
+      "assessment": "SUBSTANTIAL_FREE_PARITY",
+      "paid_advantage_proven": false
+    },
+    {
+      "candidate": "Local Windows GUI with folder/file comparison and report export",
+      "existing": "QuickHash GUI",
+      "assessment": "SUBSTANTIAL_FREE_PARITY",
+      "paid_advantage_proven": false
+    },
+    {
+      "candidate": "Unicode filenames and portable checksum interchange",
+      "existing": "RapidCRC Unicode",
+      "assessment": "FREE_ALTERNATIVE_EXISTS",
+      "paid_advantage_proven": false
+    },
+    {
+      "candidate": "Nontechnical, dated multi-snapshot narrative with explainable change-only client report",
+      "existing": "Not established by cited sources",
+      "assessment": "UNVERIFIED_POTENTIAL_WORKFLOW_GAP",
+      "paid_advantage_proven": false
+    }
+  ],
+  "critical_findings": [
+    "Basic hash auditing, change detection, offline operation and CSV/HTML output are not sufficient to charge for File Integrity Ledger.",
+    "hashdeep manual's Unicode limitation may motivate testing Japanese paths, but it does not prove that all modern free tools share the defect; RapidCRC Unicode specifically addresses Unicode checksum handling.",
+    "Do not equate a saved hash list with a legally certified audit trail, cryptographic signing, repair, tamper resistance, or provenance.",
+    "Existing 100-file and 256 MiB limits could undermine the proposed client-deliverable workflow; any change requires a fresh market-fit decision before commercial feature expansion."
+  ],
+  "proposed_noncommercial_validation": [
+    "Recruit five actual Windows users who verify handoff deliverables and record their current free-tool workflow, tasks, completion times and willingness to pay.",
+    "Compare the same three named snapshots and change-only reports against hashdeep, QuickHash GUI and RapidCRC on Windows 11 using Japanese Unicode filenames, unreadable files, missing files, symlinks and changed-during-hash files.",
+    "Collect ten dated direct Microsoft Store customer review URLs for comparable tools; do not substitute old editorial reviews for Store purchaser feedback.",
+    "Test 1024x768 EN/JA UI comprehension and recipient ability to understand a client handoff report without needing hashes.",
+    "Require two measured advantages, a directly evidenced competitor complaint solved, a clear one-sentence why-pay, and score >=80 before commercial authorization."
+  ],
+  "verification_status": {
+    "independent_competitor_installs": 0,
+    "store_review_samples": 0,
+    "target_buyer_interviews": 0,
+    "paid_willingness_to_pay": "UNVALIDATED",
+    "market_fit_pass": false,
+    "score_changed": false
+  },
+  "safety": {
+    "no_partner_center_action": true,
+    "no_identity_mutation": true,
+    "no_msix_build": true,
+    "no_store_submission": true,
+    "partner_center_registration_type": "MSIX_OR_PWA_APP",
+    "partner_center_selection": "MSIX or PWA app",
+    "identity_status": "NOT_VERIFIED_IN_THIS_RESEARCH"
+  },
+  "provenance": "Public-source desk research performed 2026-10-31; source feature claims are not direct user complaints, purchases, installation tests or commercial proof."
+}

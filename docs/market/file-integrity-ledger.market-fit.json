@@ -1,0 +1,180 @@
+{
+  "schema_version": "app5-market-fit-v1",
+  "researched_on": "2026-10-30",
+  "product": "File Integrity Ledger",
+  "slug": "file-integrity-ledger",
+  "repo": "shihuiarenjinba-png/AI-App-Factory",
+  "baseline_branch": "codex/app-cohort-integrity-ledger-20261028",
+  "baseline_sha": "deaa9f324326a1ee276596c325f7a360adf27877",
+  "decision": "MARKET_FIT_HOLD",
+  "commercial_msix_allowed": false,
+  "feature_expansion_allowed": false,
+  "direct_competitors": [
+    {
+      "name": "QuickHash GUI",
+      "price": "Free/open-source",
+      "features": [
+        "SHA hashes",
+        "compare files and folders",
+        "CSV/HTML/clipboard output",
+        "portable Windows app"
+      ],
+      "source": "https://www.quickhash-gui.org/about-quickhash-gui/",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "HashMyFiles",
+      "price": "Freeware",
+      "features": [
+        "multi-file hashes",
+        "Explorer integration",
+        "TXT/HTML/XML export"
+      ],
+      "source": "https://www.nirsoft.net/utils/hash_my_files.html",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "FreeFileSync",
+      "price": "Free for private individuals; business license required",
+      "features": [
+        "folder comparison",
+        "content/time comparison",
+        "sync and backup"
+      ],
+      "source": "https://freefilesync.org/faq.php",
+      "checked": "2026-10-30"
+    },
+    {
+      "name": "Directory Monitor PRO",
+      "price": "$159 USD lifetime for 1 machine on vendor pricing page; Japanese distributor ¥38,500 incl tax",
+      "features": [
+        "real-time folder monitoring",
+        "snapshots",
+        "alerts",
+        "user/process tracking"
+      ],
+      "source": "https://download.directorymonitor.com/pricing",
+      "checked": "2026-10-30"
+    }
+  ],
+  "free_alternatives": [
+    "QuickHash GUI",
+    "HashMyFiles",
+    "FreeFileSync for private use",
+    "Windows PowerShell Get-FileHash"
+  ],
+  "paid_price_range": "Directory Monitor PRO $159 lifetime / Japan ¥38,500 (separate storefront); commercial FreeFileSync Business license priced separately. These are broader products and not direct willingness-to-pay evidence.",
+  "common_review_complaints": [
+    {
+      "complaint": "Folder comparison may miss changes under misconfigured comparison filters, generating distrust",
+      "source": "https://www.reddit.com/r/DataHoarder/comments/119xe0a",
+      "post_date": "2023-02-23",
+      "caveat": "Old isolated report; not evidence of a current general bug"
+    },
+    {
+      "complaint": "Commercial licensing distinction for FreeFileSync surprises some users",
+      "source": "https://www.reddit.com/r/Backup/comments/1j23n2b",
+      "post_date": "2025-03-02",
+      "caveat": "Pricing/license discussion, not functional defect"
+    },
+    {
+      "complaint": "Users want a simpler integrity record than raw hash lists",
+      "source": "https://www.quickhash-gui.org/about-quickhash-gui/",
+      "post_date": null,
+      "caveat": "Hypothesis inferred from competitor capabilities, not a verified user complaint"
+    }
+  ],
+  "unmet_need_hypothesis": "Non-technical creators handling local deliverables may need human-readable dated verification history and safe change-only reports rather than a hash console. Need proof via interviews; free QuickHash already offers comparisons and export.",
+  "offline_local_only_advantage": "Read-only hashing, no network, no elevated privileges, CSV report; free competitors already work offline.",
+  "buyer_persona": "Freelance creator or small office clerk verifying a limited set of local deliverables before handoff; unvalidated.",
+  "store_search_keywords": [
+    "file integrity checker",
+    "SHA256 file compare",
+    "offline file verification",
+    "change report",
+    "ファイル改ざん検知",
+    "ファイル整合性"
+  ],
+  "why_pay_statement": "NOT PROVEN: current single-snapshot and CSV export are available in free tools; a repeatable visual change ledger and client-facing reports may be differentiated but are not yet shipped or buyer-validated.",
+  "price_hypothesis": {
+    "current_product": "JPY 0 / do not launch paid",
+    "redesigned_candidate": "JPY 700–1500 one-time if nontechnical report workflow is validated",
+    "validated": false
+  },
+  "proposed_redefinition": {
+    "name": "Local Deliverable Verification Log",
+    "differentiators": [
+      "Multiple named dated snapshots with visual change-only timeline and non-destructive re-verification",
+      "One-click printable human-readable client handoff report explaining modified/missing/unreadable states"
+    ],
+    "constraints": [
+      "No repair, signing, provenance or tamper-proof claims",
+      "Never delete/modify original files",
+      "Keep symlink, file-change-during-hash, large-file and CSV formula injection protections",
+      "Do not duplicate Windows-checker Store package validation"
+    ],
+    "needs_validation": [
+      "5 target user interviews",
+      "10 dated Windows Store competitor reviews",
+      "1024x768 bilingual GUI test",
+      "Performance and partial-failure tests on real Windows files"
+    ]
+  },
+  "scoring": {
+    "problem_severity": {
+      "score": 14,
+      "max": 20
+    },
+    "differentiation": {
+      "score": 10,
+      "max": 20
+    },
+    "willingness_to_pay": {
+      "score": 7,
+      "max": 20
+    },
+    "usability": {
+      "score": 11,
+      "max": 15
+    },
+    "trust_privacy": {
+      "score": 9,
+      "max": 10
+    },
+    "discoverability": {
+      "score": 6,
+      "max": 10
+    },
+    "implementation_risk": {
+      "score": 4,
+      "max": 5
+    },
+    "total": 61,
+    "max": 100
+  },
+  "go_criteria": {
+    "one_sentence_why_pay": false,
+    "two_distinctions_from_free_alternatives": false,
+    "addresses_review_complaint": false,
+    "feasible_windows_local": true,
+    "no_saas_dependency": true,
+    "minimum_score_70": false
+  },
+  "gate_policy": "<70: Store work forbidden; 70-79 redesign; >=80 candidate only if all GO criteria met",
+  "current_feature_evidence": "Current README: up to 100 selected files, 256 MiB each, SHA-256 baseline and verification, CSV export, no repair, headless tests. Multiple snapshot history not documented as shipped.",
+  "evidence_repo_path": "products/file-integrity-ledger/README.md",
+  "remaining_market_research": [
+    "Actual Microsoft Store listing/review samples",
+    "Verify Directory Monitor US/Japan regional prices",
+    "Demand interviews for handoff report",
+    "Compare QuickHash report workflows"
+  ],
+  "provenance_note": "Desk research 2026-10-30; price and feature claims cited by source URLs. Reviews are sparse and anecdotal, so MARKET_FIT_HOLD.",
+  "workflow_guard": {
+    "market_fit_pass": false,
+    "do_not_dispatch_to_msix": true,
+    "do_not_claim_store_ready": true,
+    "partner_center_selection": "MSIX or PWA app",
+    "identity_status": "NOT_VERIFIED_THIS_RUN"
+  }
+}
