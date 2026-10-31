@@ -84,12 +84,15 @@ class BankReconciler:
                 if int(existing[0])==int(sid):return False
                 raise ReconciliationError("明細は別の照合で使用済みです")
             self.db.execute("INSERT INTO bank_statement_lines(line_id,statement_id) VALUES(?,?)",(line_id,sid))
+            self.db.execute("INSERT INTO audit_log(action,detail) VALUES('RECON_MARK',?)",(f"{sid}|{line_id}",))
         return True
 
     def unmark(self,sid,line_id):
         if self._statement(sid)["status"]!="OPEN":raise ReconciliationError("確定済み照合は変更できません")
         with self.db:
             cur=self.db.execute("DELETE FROM bank_statement_lines WHERE statement_id=? AND line_id=?",(sid,line_id))
+            if cur.rowcount==1:
+                self.db.execute("INSERT INTO audit_log(action,detail) VALUES('RECON_UNMARK',?)",(f"{sid}|{line_id}",))
         return cur.rowcount==1
 
     def report(self,sid):
