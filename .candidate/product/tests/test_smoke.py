@@ -217,6 +217,70 @@ class Tests(unittest.TestCase):
                           desk.min_height.get(),desk.max_mib.get()],["all","","",""])
         self.assertEqual(calls,["localize","refresh"])
 
+    def test_duplicate_groups_hash_equal_bytes_without_mutation(self):
+        second=self.d/"second.png"
+        third=self.d/"third.png"
+        second.write_bytes(self.png.read_bytes())
+        changed=bytearray(self.png.read_bytes());changed[-1]^=1
+        third.write_bytes(changed)
+        original=[self.png.read_bytes(),second.read_bytes(),third.read_bytes()]
+        rows=[app.inspect_image(p) for p in (self.png,second,third)]
+        groups,errors=app.find_duplicate_groups(rows)
+        self.assertEqual(errors,[])
+        self.assertEqual(groups,{0:"D1",1:"D1"})
+        self.assertEqual(original,[self.png.read_bytes(),second.read_bytes(),third.read_bytes()])
+
+    def test_duplicate_groups_skip_changed_or_missing_files(self):
+        second=self.d/"second.png"
+        second.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,second)]
+        second.write_bytes(second.read_bytes()+b"x")
+        groups,errors=app.find_duplicate_groups(rows)
+        self.assertEqual(groups,{})
+        self.assertEqual(len(errors),1)
+        self.assertIn("size",errors[0][1].lower())
+        second.unlink()
+        groups,errors=app.find_duplicate_groups(rows)
+        self.assertEqual(groups,{})
+        self.assertEqual(len(errors),1)
+
+    def test_duplicate_groups_reject_symlinks_and_invalid_inventory(self):
+        link=self.d/"linked.png"
+        try:link.symlink_to(self.png)
+        except (OSError,NotImplementedError):return
+        rows=[app.inspect_image(self.png),dict(app.inspect_image(self.png),path=str(link))]
+        groups,errors=app.find_duplicate_groups(rows)
+        self.assertEqual(groups,{})
+        self.assertEqual(len(errors),1)
+        self.assertIn("Symlink",errors[0][1])
+        for bad in (None,{},[{}]*201):
+            with self.assertRaises(ValueError):app.find_duplicate_groups(bad)
+
+    def test_find_duplicates_resets_stale_filters_and_issues_only(self):
+        class Var:
+            def __init__(self,value):self.value=value
+            def set(self,value):self.value=value
+            def get(self):return self.value
+        desk=app.Desk.__new__(app.Desk)
+        desk.rows=[app.inspect_image(self.png)]
+        desk.orientation=Var("portrait");desk.min_width=Var("2000")
+        desk.min_height=Var("1000");desk.max_mib=Var("1")
+        desk.issues=Var(True)
+        desk.active_filter={"orientation":"portrait","min_width":2000,
+                            "min_height":1000,"max_bytes":1048576}
+        desk.duplicate_groups={};desk.duplicates_only=False
+        class Status:
+            def set(self,value):self.value=value
+        desk.status=Status()
+        desk.t=lambda key:app.LABELS["en"][key]
+        desk.refresh=lambda:None
+        desk.error=lambda exc:self.fail(str(exc))
+        desk.find_duplicates()
+        self.assertTrue(desk.duplicates_only)
+        self.assertFalse(desk.issues.get())
+        self.assertEqual(desk.active_filter,{"orientation":"all","min_width":0,
+                                            "min_height":0,"max_bytes":None})
+
     def test_bilingual(self):
         self.assertEqual(set(app.LABELS["ja"]),set(app.LABELS["en"]))
         self.assertTrue(callable(app.main))
