@@ -38,9 +38,32 @@ def msix_summary(rows):
     return {"images":len(rows),"issues":len(rows)-counts.get("BASIC_CANDIDATE",0),
             "over_limit":len(rows)>MSIX_DESKTOP_MAX_SCREENSHOTS,"counts":counts}
 
+def select_inventory(rows, orientation="all", min_width=0, min_height=0,
+                     max_bytes=None, issues_only=False):
+    """Return (original index, row) pairs; filtering never mutates a snapshot."""
+    if orientation not in ("all", "landscape", "portrait", "square"):
+        raise ValueError("Invalid orientation filter")
+    for value in (min_width, min_height):
+        if type(value) is not int or not 0 <= value <= 100000:
+            raise ValueError("Invalid minimum dimension")
+    if max_bytes is not None and (type(max_bytes) is not int or not 0 < max_bytes <= MAX_BYTES):
+        raise ValueError("Invalid maximum size")
+    if type(issues_only) is not bool:
+        raise ValueError("Invalid issues-only filter")
+    result=[]
+    for index,row in enumerate(rows):
+        width,height=row["width"],row["height"]
+        shape="square" if width==height else "landscape" if width>height else "portrait"
+        if orientation!="all" and orientation!=shape:continue
+        if width<min_width or height<min_height:continue
+        if max_bytes is not None and row["bytes"]>max_bytes:continue
+        if issues_only and check_msix_screenshot(row)[0]=="BASIC_CANDIDATE":continue
+        result.append((index,row))
+    return result
+
 LABELS={
-"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10."},
-"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。"}}
+"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10.","filter":"Apply filters","reset_filter":"Reset","all":"All","landscape":"Wide","portrait":"Tall","square":"Square","min_w":"Min width","min_h":"Min height","max_mib":"Max MiB","shown":"Showing {shown}/{n}.","batch_over":"Batch exceeds 10 screenshots; remove extras before upload."},
+"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。","filter":"絞り込み","reset_filter":"解除","all":"全て","landscape":"横長","portrait":"縦長","square":"正方形","min_w":"幅以上","min_h":"高さ以上","max_mib":"容量上限MiB","shown":"表示 {shown}/{n}件。","batch_over":"10枚を超えています。提出前に枚数を減らしてください。"}}
 
 def jpeg_dimensions(data):
     if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
@@ -168,17 +191,21 @@ def export_msix_csv(path,rows):
     if not rows:raise ValueError("No images")
     output=io.StringIO(newline="");writer=csv.writer(output,lineterminator="\n")
     writer.writerow(["path","format","width","height","bytes","msix_check","action",
-                     "profile_checked","profile_source","batch_count","desktop_limit"])
+                     "profile_checked","profile_source","batch_count","desktop_limit","batch_check"])
     for row in rows:
         code,reason=check_msix_screenshot(row)
         writer.writerow([row[k] for k in ("path","format","width","height","bytes")]+
                         [code,reason,MSIX_PROFILE_CHECKED,MSIX_PROFILE_URL,
-                         len(rows),MSIX_DESKTOP_MAX_SCREENSHOTS])
+                         len(rows),MSIX_DESKTOP_MAX_SCREENSHOTS,
+                         "REVIEW_BATCH_LIMIT" if len(rows)>MSIX_DESKTOP_MAX_SCREENSHOTS else ""])
     atomic_write(path,output.getvalue(),[r["path"] for r in rows])
 
 class Desk:
     def __init__(self,root):
         self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False)
+        self.orientation=tk.StringVar(value="all")
+        self.min_width=tk.StringVar();self.min_height=tk.StringVar();self.max_mib=tk.StringVar()
+        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
         root.geometry("1024x768");root.minsize(850,600)
         body=ttk.Frame(root,padding=12);body.pack(fill="both",expand=True)
         self.heading=ttk.Label(body,font=("Segoe UI",18,"bold"));self.heading.pack(anchor="w")
@@ -195,6 +222,21 @@ class Desk:
         self.issues_box.pack(side="left",padx=(0,12))
         self.check_export_button=ttk.Button(checkbar,command=self.export_check)
         self.check_export_button.pack(side="left")
+        filters=ttk.Frame(body);filters.pack(fill="x",pady=(2,4))
+        self.orientation_buttons={}
+        for key in ("all","landscape","portrait","square"):
+            widget=ttk.Radiobutton(filters,variable=self.orientation,value=key)
+            widget.pack(side="left",padx=(0,5));self.orientation_buttons[key]=widget
+        self.filter_labels={}
+        for key,var,width in (("min_w",self.min_width,6),("min_h",self.min_height,6),
+                              ("max_mib",self.max_mib,5)):
+            label=ttk.Label(filters);label.pack(side="left",padx=(7,2))
+            self.filter_labels[key]=label
+            ttk.Entry(filters,textvariable=var,width=width).pack(side="left")
+        self.apply_button=ttk.Button(filters,command=self.apply_filters)
+        self.apply_button.pack(side="left",padx=(8,2))
+        self.reset_button=ttk.Button(filters,command=self.reset_filters)
+        self.reset_button.pack(side="left",padx=2)
         self.notice=ttk.Label(body,wraplength=950);self.notice.pack(anchor="w")
         frame=ttk.Frame(body);frame.pack(fill="both",expand=True,pady=6)
         self.tree=ttk.Treeview(frame,columns=("path","format","dimensions","bytes","check"),show="headings",selectmode="extended")
@@ -214,24 +256,52 @@ class Desk:
         self.issues_box.configure(text=self.t("issues"))
         self.check_export_button.configure(text=self.t("check_export"))
         self.notice.configure(text=self.t("notice") if self.preflight.get() else "")
+        for key,widget in self.orientation_buttons.items():widget.configure(text=self.t(key))
+        for key,widget in self.filter_labels.items():widget.configure(text=self.t(key))
+        self.apply_button.configure(text=self.t("filter"))
+        self.reset_button.configure(text=self.t("reset_filter"))
         for k in ("path","format","dimensions","bytes","check"):self.tree.heading(k,text=self.t(k))
     def toggle(self):
         self.language="ja" if self.language=="en" else "en";self.localize()
     def toggle_preflight(self):
         if not self.preflight.get():self.issues.set(False)
         self.localize();self.refresh()
+    def apply_filters(self):
+        try:
+            width=int(self.min_width.get().strip() or "0")
+            height=int(self.min_height.get().strip() or "0")
+            text=self.max_mib.get().strip()
+            limit=int(text) if text else None
+            if limit is not None and not 1<=limit<=64:
+                raise ValueError("Maximum MiB must be between 1 and 64")
+            selected={"orientation":self.orientation.get(),"min_width":width,
+                      "min_height":height,"max_bytes":limit*1048576 if limit else None}
+            select_inventory(self.rows,**selected)
+        except ValueError as exc:
+            self.error(exc);return
+        self.active_filter=selected;self.refresh()
+    def reset_filters(self):
+        self.orientation.set("all");self.min_width.set("");self.min_height.set("")
+        self.max_mib.set("")
+        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
+        self.refresh()
     def refresh(self):
         for i in self.tree.get_children():self.tree.delete(i)
-        for i,r in enumerate(self.rows):
+        selected=select_inventory(self.rows,**self.active_filter,
+                                  issues_only=self.preflight.get() and self.issues.get())
+        for i,r in selected:
             code,_=check_msix_screenshot(r) if self.preflight.get() else ("NOT_CHECKED","")
-            if self.preflight.get() and self.issues.get() and code=="BASIC_CANDIDATE":
-                continue
             self.tree.insert("","end",iid=str(i),values=(
                 r["path"],r["format"],str(r["width"])+" × "+str(r["height"]),
                 str(r["bytes"]),code if self.preflight.get() else "—"))
         if self.preflight.get():
             summary=msix_summary(self.rows)
-            self.status.set(self.t("summary").format(n=summary["images"],issues=summary["issues"]))
+            message=self.t("summary").format(n=summary["images"],issues=summary["issues"])
+            message+=" "+self.t("shown").format(shown=len(selected),n=len(self.rows))
+            if summary["over_limit"]:message+=" "+self.t("batch_over")
+            self.status.set(message)
+        else:
+            self.status.set(self.t("shown").format(shown=len(selected),n=len(self.rows)))
     def error(self,exc):messagebox.showerror(self.t("error"),str(exc),parent=self.root)
     def add(self):
         paths=filedialog.askopenfilenames(parent=self.root,title=self.t("add"),filetypes=[("Images","*.png *.jpg *.jpeg *.gif *.bmp"),("All","*.*")])
