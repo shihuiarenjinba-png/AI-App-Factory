@@ -1,7 +1,7 @@
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog,messagebox,ttk
-from core import CATEGORIES,DOCUMENT_TYPES,LedgerError,Store
+from core import CATEGORIES,DOCUMENT_TYPES,LedgerError,Store,suggest_category
 
 class App(tk.Tk):
     def __init__(self):
@@ -22,9 +22,10 @@ class App(tk.Tk):
         for i,(label,key) in enumerate(fields,start=3):
             ttk.Label(f,text=label).grid(row=i,column=0,sticky="w"); ttk.Entry(f,textvariable=self.v[key]).grid(row=i,column=1,sticky="ew",pady=3)
         ttk.Button(f,text="証憑ファイルを参照",command=self.pick).grid(row=8,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="記帳する",command=self.add).grid(row=9,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="CSV出力",command=self.export).grid(row=10,column=0,sticky="ew",pady=4)
-        ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=10,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
+        ttk.Button(f,text="勘定科目を推測",command=self.suggest).grid(row=9,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="記帳する",command=self.add).grid(row=10,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="CSV出力",command=self.export).grid(row=11,column=0,sticky="ew",pady=4)
+        ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=11,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
         r=ttk.Labelframe(p,text="帳簿",padding=10); p.add(r,weight=3); ttk.Label(r,textvariable=self.summary,font=("Yu Gothic UI",11,"bold")).pack(anchor="w")
         cols=("date","kind","amount","category","counterparty","memo"); self.tree=ttk.Treeview(r,columns=cols,show="headings")
         for c,t in zip(cols,["日付","種別","金額","勘定科目","取引先","摘要"]): self.tree.heading(c,text=t); self.tree.column(c,width=120)
@@ -32,6 +33,14 @@ class App(tk.Tk):
     def pick(self):
         x=filedialog.askopenfilename(title="領収書・請求書などを選択"); 
         if x:self.v["docpath"].set(x)
+    def suggest(self):
+        text=" ".join([self.v["counterparty"].get(),self.v["memo"].get(),self.v["doctype"].get()])
+        result=suggest_category(text,self.v["kind"].get())
+        if not result:
+            messagebox.showinfo("勘定科目候補","候補を絞れませんでした。内容を確認して手動で選択してください。")
+            return
+        best=result[0]; self.v["category"].set(best["category"])
+        messagebox.showinfo("勘定科目候補",f'候補: {best["category"]}\n確信度: {best["confidence"]:.0%}\n一致語: {", ".join(best["matched"])}\n\n最終判断は内容を確認してください。')
     def add(self):
         try:self.store.add(self.v["date"].get(),self.v["kind"].get(),self.v["amount"].get(),self.v["category"].get(),self.v["counterparty"].get(),self.v["doctype"].get(),self.v["docpath"].get(),self.v["memo"].get())
         except LedgerError as e: messagebox.showerror("入力エラー",str(e)); return
@@ -40,7 +49,7 @@ class App(tk.Tk):
     def refresh(self):
         for i in self.tree.get_children():self.tree.delete(i)
         for r in self.store.rows(): self.tree.insert("","end",values=(r["txn_date"],r["kind"],f'{r["amount_yen"]:,}',r["category"],r["counterparty"],r["memo"]))
-        d=date.today(); s=self.store.monthly(d.year,d.month); self.summary.set(f"{d.year}年{d.month}月　収入 {s['収入']:,}円　経費 {s['経費']:,}円　差引 {s['差引']:,}円")
+        d=date.today(); s=self.store.monthly(d.year,d.month); y=self.store.annual_summary(d.year); self.summary.set(f"{d.year}年{d.month}月 差引 {s['差引']:,}円　|　{d.year}年累計 収入 {y['収入']:,}円 経費 {y['経費']:,}円 利益 {y['差引']:,}円")
     def export(self):
         x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
         if x:self.store.export_csv(x); messagebox.showinfo("CSV","出力しました")
