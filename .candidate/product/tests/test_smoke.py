@@ -244,6 +244,48 @@ class Tests(unittest.TestCase):
         self.assertEqual(groups,{})
         self.assertEqual(len(errors),1)
 
+    def test_duplicate_groups_reject_stale_same_size_identical_bytes(self):
+        """An identical re-save is still stale and must not receive a D-group."""
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        original=copy.read_bytes()
+        copy.write_bytes(original)
+        changed_ns=rows[1]["modified_ns"]+5_000_000_000
+        os.utime(copy,ns=(changed_ns,changed_ns))
+        groups,errors=app.find_duplicate_groups(rows)
+        self.assertEqual(groups,{})
+        self.assertEqual(len(errors),1)
+        self.assertIn("since inventory scan",errors[0][1])
+        report,summary=app.build_review_report(rows)
+        stale=next(r for r in report if r["path"]==str(copy))
+        self.assertEqual(stale["source_check"],"SOURCE_CHANGED")
+        self.assertTrue(stale["duplicate_scan_error"])
+        self.assertEqual(summary["duplicate_files"],0)
+        self.assertEqual(summary["hash_errors"],1)
+        self.assertEqual(copy.read_bytes(),original)
+
+    def test_duplicate_groups_accept_rescanned_same_size_copy(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        changed_ns=rows[1]["modified_ns"]+5_000_000_000
+        os.utime(copy,ns=(changed_ns,changed_ns))
+        self.assertEqual(app.find_duplicate_groups(rows)[0],{})
+        refreshed=[app.inspect_image(p) for p in (self.png,copy)]
+        groups,errors=app.find_duplicate_groups(refreshed)
+        self.assertEqual(errors,[])
+        self.assertEqual(groups,{0:"D1",1:"D1"})
+
+    def test_duplicate_groups_legacy_rows_without_timestamp(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        for row in rows:row.pop("modified_ns")
+        groups,errors=app.find_duplicate_groups(rows)
+        self.assertEqual(errors,[])
+        self.assertEqual(groups,{0:"D1",1:"D1"})
+
     def test_duplicate_groups_reject_symlinks_and_invalid_inventory(self):
         link=self.d/"linked.png"
         try:link.symlink_to(self.png)
