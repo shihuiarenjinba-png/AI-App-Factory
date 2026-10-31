@@ -315,6 +315,62 @@ class Tests(unittest.TestCase):
         desk.tree=EmptyTree()
         desk.show_selection_details()
 
+
+    def test_review_report_prioritizes_issues_and_exact_duplicates(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        good=self.d/"store.png"
+        good.write_bytes(b"\\x89PNG\\r\\n\\x1a\\n"+struct.pack(">I",13)+
+                         b"IHDR"+struct.pack(">II",1366,768)+b"\\x08\\x02\\x00\\x00\\x00")
+        rows=[app.inspect_image(good),app.inspect_image(self.png),app.inspect_image(copy)]
+        report,summary=app.build_review_report(rows)
+        self.assertEqual(summary["images"],3)
+        self.assertEqual(summary["duplicate_files"],2)
+        self.assertEqual(summary["duplicate_groups"],1)
+        self.assertEqual(summary["attention"],2)
+        self.assertEqual([r["original_index"] for r in report],[2,3,1])
+        self.assertEqual([r["duplicate_group"] for r in report],["D1","D1",""])
+        self.assertEqual(report[-1]["needs_review"],"NO")
+        self.assertEqual(report[-1]["msix_check"],"BASIC_CANDIDATE")
+
+    def test_review_csv_is_read_only_and_reviewable(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        before=[p.read_bytes() for p in (self.png,copy)]
+        output=self.d/"review.csv"
+        summary=app.export_review_csv(output,rows)
+        with output.open(encoding="utf-8",newline="") as stream:
+            report=list(csv.DictReader(stream))
+        self.assertEqual(summary["attention"],2)
+        self.assertEqual([r["duplicate_group"] for r in report],["D1","D1"])
+        self.assertEqual({r["needs_review"] for r in report},{"YES"})
+        self.assertTrue(all(r["profile_source"]==app.MSIX_PROFILE_URL for r in report))
+        self.assertEqual(before,[p.read_bytes() for p in (self.png,copy)])
+        with self.assertRaises(ValueError):
+            app.export_review_csv(self.png,rows)
+        self.assertEqual(before,[p.read_bytes() for p in (self.png,copy)])
+
+    def test_review_report_exposes_stale_duplicate_source(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        copy.write_bytes(copy.read_bytes()+b"x")
+        report,summary=app.build_review_report(rows)
+        self.assertEqual(summary["hash_errors"],1)
+        self.assertEqual(summary["duplicate_files"],0)
+        self.assertTrue(any(r["duplicate_scan_error"] for r in report))
+        self.assertEqual({r["needs_review"] for r in report},{"YES"})
+
+    def test_review_report_overlimit_and_empty(self):
+        with self.assertRaises(ValueError):app.build_review_report([])
+        with self.assertRaises(ValueError):app.export_review_csv(self.d/"empty.csv",[])
+        rows=[dict(self.msix_row(),bytes=1000+i) for i in range(11)]
+        report,summary=app.build_review_report(rows)
+        self.assertTrue(summary["over_limit"])
+        self.assertEqual(summary["attention"],11)
+        self.assertEqual({r["batch_check"] for r in report},{"REVIEW_BATCH_LIMIT"})
+
     def test_bilingual(self):
         self.assertEqual(set(app.LABELS["ja"]),set(app.LABELS["en"]))
         self.assertTrue(callable(app.main))
