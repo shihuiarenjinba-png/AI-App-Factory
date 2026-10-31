@@ -8,4 +8,7 @@ class T(unittest.TestCase):
  def test_midyear_proration(self):
   rows=m.jp_depreciation_schedule(120000,"2026-07-01",4,method="定額法",straight_line_rate="0.250",through_year=2026)
   self.assertEqual(rows[0]["months"],6);self.assertEqual(rows[0]["business_depreciation"],15000)
+ def test_main_syntax(self):
+  p=Path(__file__).resolve().parents[1]/"products/jp-freelance-ledger/main.py"
+  compile(p.read_text(encoding="utf-8"),str(p),"exec")
 if __name__=="__main__":unittest.main()
