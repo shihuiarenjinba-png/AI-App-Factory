@@ -1,425 +1,357 @@
-"""Private offline image-header inventory. No image writes or network."""
-import csv, hashlib, io, json, os, shutil, stat, struct, tempfile
+from __future__ import annotations
+import csv
+import json
+from dataclasses import dataclass, asdict
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog, messagebox, ttk
 
-MAX_BYTES=64*1024*1024
-MAX_ITEMS=200
-# Conservative, non-certifying MSIX desktop screenshot triage.
-# Microsoft: PNG, landscape/portrait, desktop 1366x768+, up to 10, <=50 MB.
-# Portrait dimension interpretation and MB byte boundary require manual review.
-MSIX_PROFILE_URL="https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images"
-MSIX_PROFILE_CHECKED="2026-10-31"
-MSIX_DESKTOP_MAX_SCREENSHOTS=10
+APP_NAME = "Freelance Ledger JP/US"
 
-def check_msix_screenshot(row):
-    """Return a triage code and actionable explanation; NEVER Store approval."""
-    fmt,w,h,n=(row["format"],row["width"],row["height"],row["bytes"])
-    if fmt!="PNG":
-        return "FAIL_FORMAT","MSIX screenshots require PNG; select or export a PNG."
-    if n>50*1024*1024:
-        return "FAIL_SIZE","Larger than 50 MiB; exceeds either common 50 MB interpretation."
-    if n>=50_000_000:
-        return "REVIEW_SIZE_LIMIT","Near the 50 MB boundary; confirm Partner Center byte interpretation."
-    if w<h:
-        if max(w,h)<1366 or min(w,h)<768:
-            return "FAIL_DIMENSIONS","Below the documented 1366 x 768 desktop minimum."
-        return "REVIEW_PORTRAIT","Portrait is permitted; confirm how desktop minima apply to orientation."
-    if w<1366 or h<768:
-        return "FAIL_DIMENSIONS","Desktop screenshot should be at least 1366 x 768."
-    return "BASIC_CANDIDATE","Header-only checks look plausible; visual content and upload still need review."
+REGIONS = {
+    "JP": {
+        "currency": "JPY",
+        "symbol": "¥",
+        "decimals": 0,
+        "income": ["Sales / 売上", "Service income / 業務収入", "Other income / その他収入"],
+        "expense": [
+            "Outsourcing / 外注工賃", "Advertising / 広告宣伝費", "Supplies / 消耗品費",
+            "Travel / 旅費交通費", "Communications / 通信費", "Rent / 地代家賃",
+            "Utilities / 水道光熱費", "Taxes & dues / 租税公課", "Insurance / 損害保険料",
+            "Repairs / 修繕費", "Depreciation / 減価償却費",
+            "Professional fees / 支払手数料", "Other expense / 雑費"
+        ],
+    },
+    "US": {
+        "currency": "USD",
+        "symbol": "$",
+        "decimals": 2,
+        "income": ["Gross receipts / Sales", "Services", "Other business income"],
+        "expense": [
+            "Advertising", "Car & truck", "Commissions & fees", "Contract labor",
+            "Depreciation", "Insurance", "Interest", "Legal & professional services",
+            "Office expense", "Rent or lease", "Repairs & maintenance", "Supplies",
+            "Taxes & licenses", "Travel", "Meals", "Utilities", "Wages", "Other expense"
+        ],
+    },
+}
 
-def msix_summary(rows):
-    counts={}
-    for row in rows:
-        code,_=check_msix_screenshot(row)
-        counts[code]=counts.get(code,0)+1
-    return {"images":len(rows),"issues":len(rows)-counts.get("BASIC_CANDIDATE",0),
-            "over_limit":len(rows)>MSIX_DESKTOP_MAX_SCREENSHOTS,"counts":counts}
+def app_data_dir() -> Path:
+    import os
+    root = os.environ.get("APPDATA")
+    path = Path(root) / "FreelanceLedgerJPUS" if root else Path.home() / ".freelance-ledger-jp-us"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
-def select_inventory(rows, orientation="all", min_width=0, min_height=0,
-                     max_bytes=None, issues_only=False):
-    """Return (original index, row) pairs; filtering never mutates a snapshot."""
-    if orientation not in ("all", "landscape", "portrait", "square"):
-        raise ValueError("Invalid orientation filter")
-    for value in (min_width, min_height):
-        if type(value) is not int or not 0 <= value <= 100000:
-            raise ValueError("Invalid minimum dimension")
-    if max_bytes is not None and (type(max_bytes) is not int or not 0 < max_bytes <= MAX_BYTES):
-        raise ValueError("Invalid maximum size")
-    if type(issues_only) is not bool:
-        raise ValueError("Invalid issues-only filter")
-    result=[]
-    for index,row in enumerate(rows):
-        width,height=row["width"],row["height"]
-        shape="square" if width==height else "landscape" if width>height else "portrait"
-        if orientation!="all" and orientation!=shape:continue
-        if width<min_width or height<min_height:continue
-        if max_bytes is not None and row["bytes"]>max_bytes:continue
-        if issues_only and check_msix_screenshot(row)[0]=="BASIC_CANDIDATE":continue
-        result.append((index,row))
-    return result
-
-LABELS={
-"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","store_review":"Review Store issues","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10.","filter":"Apply filters","reset_filter":"Reset","all":"All","landscape":"Wide","portrait":"Tall","square":"Square","min_w":"Min width","min_h":"Min height","max_mib":"Max MiB","shown":"Showing {shown}/{n}.","batch_over":"Batch exceeds 10 screenshots; remove extras before upload.","invalid_filter":"Enter whole-number minimum dimensions (0-100000) and max MiB (1-64).","duplicates":"Find duplicates","duplicate_col":"Duplicate group","duplicate_summary":"Duplicate candidates: {files} files in {groups} groups; unreadable: {errors}. Reset shows all."},
-"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","store_review":"Store要確認だけ表示","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。","filter":"絞り込み","reset_filter":"解除","all":"全て","landscape":"横長","portrait":"縦長","square":"正方形","min_w":"幅以上","min_h":"高さ以上","max_mib":"容量上限MiB","shown":"表示 {shown}/{n}件。","batch_over":"10枚を超えています。提出前に枚数を減らしてください。","invalid_filter":"最小幅・高さは0〜100000の整数、容量上限は1〜64 MiBの整数で入力してください。","duplicates":"重複候補を探す","duplicate_col":"重複グループ","duplicate_summary":"重複候補：{files}件・{groups}グループ、読取不可：{errors}件。解除で全件表示。"}}
-
-def jpeg_dimensions(data):
-    if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
-    i=2
-    while i<len(data):
-        if data[i]!=255: raise ValueError("Invalid JPEG marker")
-        while i<len(data) and data[i]==255:i+=1
-        if i>=len(data):break
-        marker=data[i];i+=1
-        if marker in (0xd8,0x01) or 0xd0<=marker<=0xd7:continue
-        if marker in (0xd9,0xda):break
-        if i+2>len(data):break
-        length=int.from_bytes(data[i:i+2],"big")
-        if length<2 or i+length>len(data):raise ValueError("Truncated JPEG")
-        if marker in (0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf):
-            if length<7:raise ValueError("Invalid JPEG frame")
-            return int.from_bytes(data[i+5:i+7],"big"),int.from_bytes(data[i+3:i+5],"big")
-        i+=length
-    raise ValueError("JPEG frame not found in first MiB")
-
-def inspect_image(path):
-    p=Path(path).absolute()
-    if p.is_symlink():raise ValueError("Symlink rejected")
-    st=p.stat()
-    if not stat.S_ISREG(st.st_mode) or not 0<st.st_size<=MAX_BYTES:
-        raise ValueError("Not a regular image within 64 MiB")
-    with p.open("rb") as f:data=f.read(min(st.st_size,1048576))
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        if len(data)<24 or data[12:16]!=b"IHDR" or int.from_bytes(data[8:12],"big")!=13:
-            raise ValueError("Invalid PNG")
-        w,h=struct.unpack(">II",data[16:24]);fmt="PNG"
-    elif data[:6] in (b"GIF87a",b"GIF89a"):
-        if len(data)<10:raise ValueError("Invalid GIF")
-        w,h=struct.unpack("<HH",data[6:10]);fmt="GIF"
-    elif data.startswith(b"BM"):
-        if len(data)<26 or int.from_bytes(data[14:18],"little")<40:raise ValueError("Invalid BMP")
-        w,h=struct.unpack("<ii",data[18:26]);h=abs(h);fmt="BMP"
-    elif data.startswith(b"\xff\xd8"):
-        w,h=jpeg_dimensions(data);fmt="JPEG"
-    else:raise ValueError("Unsupported image")
-    if not 1<=w<=100000 or not 1<=h<=100000:raise ValueError("Invalid dimensions")
-    return {"path":str(p),"format":fmt,"width":w,"height":h,"bytes":st.st_size}
-
-def scan(paths):
-    if not isinstance(paths,(tuple,list)) or len(paths)>MAX_ITEMS:raise ValueError("Too many images")
-    rows=[];errors=[];seen=set()
-    for item in paths:
-        try:
-            if not isinstance(item,(str,Path)):raise ValueError("Invalid path")
-            p=Path(item).absolute()
-            if len(str(p))>4096 or str(p) in seen:raise ValueError("Duplicate or oversized path")
-            seen.add(str(p));rows.append(inspect_image(p))
-        except (OSError,ValueError,struct.error) as exc:errors.append((str(item),str(exc)))
-    return rows,errors
-
-def append_images(existing, paths):
-    """Append new files without rescanning or silently dropping saved inventory rows."""
-    if not isinstance(existing, list) or not isinstance(paths, (list, tuple)):
-        raise ValueError("Invalid inventory")
-    if len(existing) + len(paths) > MAX_ITEMS:
-        raise ValueError("Too many images")
-    rows = list(existing)
-    errors = []
-    seen = {row["path"] for row in existing}
-    for item in paths:
-        try:
-            if not isinstance(item, (str, Path)):
-                raise ValueError("Invalid path")
-            path = Path(item).absolute()
-            if len(str(path)) > 4096 or str(path) in seen:
-                raise ValueError("Duplicate or oversized path")
-            seen.add(str(path))
-            rows.append(inspect_image(path))
-        except (OSError, ValueError, struct.error) as exc:
-            errors.append((str(item), str(exc)))
-    return rows, errors
-
-
-def find_duplicate_groups(rows):
-    """Read-only SHA256 groups of same-size files; no image writes or deletion."""
-    if not isinstance(rows,list) or len(rows)>MAX_ITEMS:
-        raise ValueError("Invalid inventory")
-    sizes={}
-    for index,row in enumerate(rows):
-        sizes.setdefault(row["bytes"],[]).append(index)
-    hashed={};errors=[]
-    for size,indexes in sizes.items():
-        if len(indexes)<2:continue
-        for index in indexes:
-            path=Path(rows[index]["path"]).absolute()
-            try:
-                if path.is_symlink():raise ValueError("Symlink rejected")
-                flags=os.O_RDONLY|getattr(os,"O_BINARY",0)|getattr(os,"O_NOFOLLOW",0)
-                fd=os.open(path,flags)
-                with os.fdopen(fd,"rb") as stream:
-                    before=os.fstat(stream.fileno())
-                    if not stat.S_ISREG(before.st_mode) or not 0<before.st_size<=MAX_BYTES or before.st_size!=size:
-                        raise ValueError("File no longer matches inventory size")
-                    digest=hashlib.sha256()
-                    while True:
-                        chunk=stream.read(1048576)
-                        if not chunk:break
-                        digest.update(chunk)
-                    after=os.fstat(stream.fileno())
-                    if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns) or path.is_symlink():
-                        raise ValueError("File changed during hashing")
-                hashed.setdefault((size,digest.hexdigest()),[]).append(index)
-            except (OSError,ValueError) as exc:
-                errors.append((str(path),str(exc)))
-    groups={};number=0
-    for indexes in hashed.values():
-        if len({rows[i]["path"] for i in indexes})<2:continue
-        number+=1
-        for index in indexes:groups[index]="D"+str(number)
-    return groups,errors
-
-def validate_session(value):
-    if not isinstance(value,dict) or set(value)!={"schema","paths"} or type(value["schema"]) is not int or value["schema"]!=1:
-        raise ValueError("Invalid session schema")
-    paths=value["paths"]
-    if not isinstance(paths,list) or len(paths)>MAX_ITEMS or any(not isinstance(p,str) or not p or len(p)>4096 or not Path(p).is_absolute() for p in paths) or len(set(paths))!=len(paths):
-        raise ValueError("Invalid session paths")
+def validate_date(value: str) -> str:
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Date must be YYYY-MM-DD.")
     return value
 
-def atomic_write(path,content,protected=()):
-    p=Path(path).absolute();guard={Path(x).absolute() for x in protected}
-    backup=p.with_name(p.name+".bak")
-    if p in guard or backup in guard or p.is_symlink() or backup.is_symlink() or not p.parent.is_dir() or (p.exists() and not p.is_file()) or (backup.exists() and not backup.is_file()):
-        raise ValueError("Unsafe output path")
-    if p.exists():shutil.copyfile(p,backup)
-    fd,tmp=tempfile.mkstemp(prefix=".image-inventory-",dir=p.parent)
+def parse_amount(text: str, region: str) -> int:
+    cfg = REGIONS[region]
     try:
-        with os.fdopen(fd,"w",encoding="utf-8",newline="") as f:
-            f.write(content);f.flush();os.fsync(f.fileno())
-        os.replace(tmp,p)
-    finally:
-        if os.path.exists(tmp):os.unlink(tmp)
+        value = Decimal(str(text).replace(",", "").strip())
+    except InvalidOperation:
+        raise ValueError("Enter a valid amount.")
+    if value <= 0:
+        raise ValueError("Amount must be greater than zero.")
+    quant = Decimal("1") if cfg["decimals"] == 0 else Decimal("0.01")
+    value = value.quantize(quant, rounding=ROUND_HALF_UP)
+    return int(value * (100 if cfg["decimals"] == 2 else 1))
 
-def save_session(path,rows):
-    value=validate_session({"schema":1,"paths":[r["path"] for r in rows]})
-    content=json.dumps(value,ensure_ascii=False,indent=2)+"\n"
-    if len(content.encode("utf-8"))>1048576:raise ValueError("Session too large")
-    atomic_write(path,content,[r["path"] for r in rows])
+def format_minor(amount: int, region: str) -> str:
+    cfg = REGIONS[region]
+    if cfg["decimals"] == 2:
+        return f'{cfg["symbol"]}{amount / 100:,.2f}'
+    return f'{cfg["symbol"]}{amount:,}'
 
-def load_session(path):
-    p=Path(path).absolute()
-    if p.is_symlink() or p.stat().st_size>1048576:raise ValueError("Unsafe session")
-    return validate_session(json.loads(p.read_text(encoding="utf-8")))
+@dataclass
+class Transaction:
+    id: int
+    date: str
+    region: str
+    kind: str
+    category: str
+    amount_minor: int
+    business_use_pct: int
+    counterparty: str
+    payment_account: str
+    description: str
+    evidence_ref: str
 
-def recover_session(path):
-    p=Path(path).absolute()
-    return load_session(p.with_name(p.name+".bak"))
+    @property
+    def adjusted_minor(self) -> int:
+        if self.kind != "expense":
+            return self.amount_minor
+        return (self.amount_minor * self.business_use_pct + 50) // 100
 
-def export_csv(path,rows):
-    if not rows:raise ValueError("No images")
-    output=io.StringIO(newline="");writer=csv.writer(output,lineterminator="\n")
-    writer.writerow(["path","format","width","height","bytes"])
-    for row in rows:writer.writerow([row[k] for k in ("path","format","width","height","bytes")])
-    atomic_write(path,output.getvalue(),[r["path"] for r in rows])
+class Ledger:
+    def __init__(self, transactions=None):
+        self.transactions = transactions or []
 
-def export_msix_csv(path,rows):
-    """Export reproducible per-file triage without changing source images."""
-    if not rows:raise ValueError("No images")
-    output=io.StringIO(newline="");writer=csv.writer(output,lineterminator="\n")
-    writer.writerow(["path","format","width","height","bytes","msix_check","action",
-                     "profile_checked","profile_source","batch_count","desktop_limit","batch_check"])
-    for row in rows:
-        code,reason=check_msix_screenshot(row)
-        writer.writerow([row[k] for k in ("path","format","width","height","bytes")]+
-                        [code,reason,MSIX_PROFILE_CHECKED,MSIX_PROFILE_URL,
-                         len(rows),MSIX_DESKTOP_MAX_SCREENSHOTS,
-                         "REVIEW_BATCH_LIMIT" if len(rows)>MSIX_DESKTOP_MAX_SCREENSHOTS else ""])
-    atomic_write(path,output.getvalue(),[r["path"] for r in rows])
+    def next_id(self) -> int:
+        return max((t.id for t in self.transactions), default=0) + 1
 
-class Desk:
-    def __init__(self,root):
-        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False)
-        self.orientation=tk.StringVar(value="all")
-        self.min_width=tk.StringVar();self.min_height=tk.StringVar();self.max_mib=tk.StringVar()
-        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
-        self.duplicate_groups={};self.duplicates_only=False
-        root.geometry("1024x768");root.minsize(850,600)
-        body=ttk.Frame(root,padding=12);body.pack(fill="both",expand=True)
-        self.heading=ttk.Label(body,font=("Segoe UI",18,"bold"));self.heading.pack(anchor="w")
-        self.intro=ttk.Label(body,wraplength=950);self.intro.pack(anchor="w",pady=8)
-        bar=ttk.Frame(body);bar.pack(fill="x",pady=6)
-        self.buttons={}
-        for key,fn in (("add",self.add),("remove",self.remove),("clear",self.clear),("save",self.save),("open",self.open),("export",self.export),("duplicates",self.find_duplicates)):
-            b=ttk.Button(bar,command=fn);b.pack(side="left",padx=(0,5));self.buttons[key]=b
-        self.lang=ttk.Button(bar,command=self.toggle);self.lang.pack(side="right")
-        checkbar=ttk.Frame(body);checkbar.pack(fill="x",pady=(2,4))
-        self.preflight_box=ttk.Checkbutton(checkbar,variable=self.preflight,command=self.toggle_preflight)
-        self.preflight_box.pack(side="left",padx=(0,12))
-        self.issues_box=ttk.Checkbutton(checkbar,variable=self.issues,command=self.refresh)
-        self.issues_box.pack(side="left",padx=(0,12))
-        self.check_export_button=ttk.Button(checkbar,command=self.export_check)
-        self.check_export_button.pack(side="left")
-        self.store_review_button=ttk.Button(checkbar,command=self.store_review_preset)
-        self.store_review_button.pack(side="left",padx=(8,0))
-        filters=ttk.Frame(body);filters.pack(fill="x",pady=(2,4))
-        self.orientation_buttons={}
-        for key in ("all","landscape","portrait","square"):
-            widget=ttk.Radiobutton(filters,variable=self.orientation,value=key)
-            widget.pack(side="left",padx=(0,5));self.orientation_buttons[key]=widget
-        self.filter_labels={}
-        for key,var,width in (("min_w",self.min_width,6),("min_h",self.min_height,6),
-                              ("max_mib",self.max_mib,5)):
-            label=ttk.Label(filters);label.pack(side="left",padx=(7,2))
-            self.filter_labels[key]=label
-            ttk.Entry(filters,textvariable=var,width=width).pack(side="left")
-        self.apply_button=ttk.Button(filters,command=self.apply_filters)
-        self.apply_button.pack(side="left",padx=(8,2))
-        self.reset_button=ttk.Button(filters,command=self.reset_filters)
-        self.reset_button.pack(side="left",padx=2)
-        self.notice=ttk.Label(body,wraplength=950);self.notice.pack(anchor="w")
-        frame=ttk.Frame(body);frame.pack(fill="both",expand=True,pady=6)
-        self.tree=ttk.Treeview(frame,columns=("path","format","dimensions","bytes","check","duplicate_col"),show="headings",selectmode="extended")
-        for k,width in (("path",290),("format",65),("dimensions",110),("bytes",85),("check",150),("duplicate_col",115)):
-            self.tree.column(k,width=width,stretch=k=="path")
-        scroll=ttk.Scrollbar(frame,orient="vertical",command=self.tree.yview)
+    def add(self, *, date_text, region, kind, category, amount_text,
+            business_use_pct=100, counterparty="", payment_account="",
+            description="", evidence_ref=""):
+        validate_date(date_text)
+        if region not in REGIONS:
+            raise ValueError("Unknown region.")
+        if kind not in ("income", "expense"):
+            raise ValueError("Type must be income or expense.")
+        if category not in REGIONS[region][kind]:
+            raise ValueError("Choose a category for the selected region and type.")
+        try:
+            pct = int(business_use_pct)
+        except (TypeError, ValueError):
+            raise ValueError("Business-use percentage must be 0-100.")
+        if not 0 <= pct <= 100:
+            raise ValueError("Business-use percentage must be 0-100.")
+        tx = Transaction(
+            self.next_id(), date_text, region, kind, category,
+            parse_amount(amount_text, region), pct,
+            counterparty.strip()[:160], payment_account.strip()[:120],
+            description.strip()[:500], evidence_ref.strip()[:500]
+        )
+        self.transactions.append(tx)
+        return tx
+
+    def delete(self, tx_id: int) -> bool:
+        old = len(self.transactions)
+        self.transactions = [t for t in self.transactions if t.id != tx_id]
+        return len(self.transactions) != old
+
+    def summary(self, region: str):
+        rows = [t for t in self.transactions if t.region == region]
+        income = sum(t.amount_minor for t in rows if t.kind == "income")
+        expenses = sum(t.adjusted_minor for t in rows if t.kind == "expense")
+        by_category = {}
+        for t in rows:
+            key = (t.kind, t.category)
+            value = t.amount_minor if t.kind == "income" else t.adjusted_minor
+            by_category[key] = by_category.get(key, 0) + value
+        return {"income": income, "expenses": expenses, "net": income - expenses, "by_category": by_category}
+
+    def to_dict(self):
+        return {"schema": 1, "transactions": [asdict(t) for t in self.transactions]}
+
+    @classmethod
+    def from_dict(cls, data):
+        if not isinstance(data, dict) or data.get("schema") != 1:
+            raise ValueError("Unsupported or invalid ledger file.")
+        result = []
+        for raw in data.get("transactions", []):
+            tx = Transaction(**raw)
+            validate_date(tx.date)
+            if tx.region not in REGIONS or tx.kind not in ("income", "expense"):
+                raise ValueError("Invalid transaction region/type.")
+            if tx.category not in REGIONS[tx.region][tx.kind]:
+                raise ValueError("Invalid transaction category.")
+            if tx.amount_minor <= 0 or not 0 <= tx.business_use_pct <= 100:
+                raise ValueError("Invalid transaction values.")
+            result.append(tx)
+        return cls(result)
+
+def save_atomic(path: Path, ledger: Ledger):
+    if path.is_symlink():
+        raise ValueError("Refusing to write through a symbolic link.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    bak = path.with_suffix(path.suffix + ".bak")
+    tmp.write_text(json.dumps(ledger.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    Ledger.from_dict(json.loads(tmp.read_text(encoding="utf-8")))
+    if path.exists():
+        bak_tmp = bak.with_suffix(bak.suffix + ".tmp")
+        bak_tmp.write_bytes(path.read_bytes())
+        bak_tmp.replace(bak)
+    tmp.replace(path)
+
+def load_ledger(path: Path) -> Ledger:
+    try:
+        return Ledger.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    except Exception:
+        bak = path.with_suffix(path.suffix + ".bak")
+        if bak.exists():
+            return Ledger.from_dict(json.loads(bak.read_text(encoding="utf-8")))
+        raise
+
+def export_csv(path: Path, ledger: Ledger, region: str):
+    rows = [t for t in ledger.transactions if t.region == region]
+    scale = Decimal(100 if REGIONS[region]["decimals"] == 2 else 1)
+    with path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.writer(handle)
+        writer.writerow([
+            "date", "region", "type", "category", "amount", "business_use_pct",
+            "adjusted_amount", "counterparty", "payment_account", "description", "evidence_ref"
+        ])
+        for t in rows:
+            writer.writerow([
+                t.date, t.region, t.kind, t.category,
+                str(Decimal(t.amount_minor) / scale), t.business_use_pct,
+                str(Decimal(t.adjusted_minor) / scale), t.counterparty,
+                t.payment_account, t.description, t.evidence_ref
+            ])
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title(APP_NAME)
+        self.geometry("1100x760")
+        self.minsize(980, 680)
+        self.path = app_data_dir() / "ledger.json"
+        try:
+            self.ledger = load_ledger(self.path) if self.path.exists() else Ledger()
+        except Exception as exc:
+            messagebox.showwarning(APP_NAME, f"Could not load ledger. Starting empty.\n{exc}")
+            self.ledger = Ledger()
+
+        self.region = tk.StringVar(value="JP")
+        self.kind = tk.StringVar(value="expense")
+        self.date_var = tk.StringVar(value=date.today().isoformat())
+        self.category = tk.StringVar()
+        self.amount = tk.StringVar()
+        self.business_pct = tk.StringVar(value="100")
+        self.counterparty = tk.StringVar()
+        self.account = tk.StringVar(value="Bank / 銀行")
+        self.description = tk.StringVar()
+        self.evidence = tk.StringVar()
+        self.status = tk.StringVar(value="Local only / ローカル保存")
+        self._build()
+        self._sync_categories()
+        self.refresh()
+
+    def _build(self):
+        header = ttk.Frame(self, padding=10)
+        header.pack(fill="x")
+        ttk.Label(header, text=APP_NAME, font=("Segoe UI", 16, "bold")).pack(side="left")
+        ttk.Label(header, text="Region / 地域").pack(side="left", padx=(25, 5))
+        region_box = ttk.Combobox(header, textvariable=self.region, values=["JP", "US"], state="readonly", width=6)
+        region_box.pack(side="left")
+        region_box.bind("<<ComboboxSelected>>", lambda _e: self._sync_categories())
+        ttk.Button(header, text="Export CSV / CSV出力", command=self.export).pack(side="right")
+
+        ttk.Label(
+            self,
+            text="Bookkeeping organizer only. No tax filing or automatic deductibility decisions. / 記帳整理用。税務申告・経費可否を自動確定しません。",
+            foreground="#555", padding=(10, 0, 10, 8)
+        ).pack(fill="x")
+
+        form = ttk.LabelFrame(self, text="Add transaction / 取引入力", padding=10)
+        form.pack(fill="x", padx=10)
+        r1 = ttk.Frame(form); r1.pack(fill="x", pady=3)
+        self._field(r1, "Date / 日付", self.date_var, 12)
+        ttk.Label(r1, text="Type / 種別").pack(side="left", padx=(10, 4))
+        kind_box = ttk.Combobox(r1, textvariable=self.kind, values=["income", "expense"], state="readonly", width=10)
+        kind_box.pack(side="left")
+        kind_box.bind("<<ComboboxSelected>>", lambda _e: self._sync_categories())
+        ttk.Label(r1, text="Category / 科目候補").pack(side="left", padx=(10, 4))
+        self.category_box = ttk.Combobox(r1, textvariable=self.category, state="readonly", width=28)
+        self.category_box.pack(side="left", fill="x", expand=True)
+        self._field(r1, "Amount / 金額", self.amount, 14)
+
+        r2 = ttk.Frame(form); r2.pack(fill="x", pady=3)
+        self._field(r2, "Business % / 事業割合", self.business_pct, 8)
+        self._field(r2, "Client/Vendor / 相手先", self.counterparty, 22)
+        self._field(r2, "Account / 口座", self.account, 18)
+        self._field(r2, "Evidence / 証憑メモ", self.evidence, 24)
+
+        r3 = ttk.Frame(form); r3.pack(fill="x", pady=3)
+        ttk.Label(r3, text="Description / 摘要").pack(side="left", padx=(0, 4))
+        ttk.Entry(r3, textvariable=self.description).pack(side="left", fill="x", expand=True)
+        ttk.Button(r3, text="Add / 追加", command=self.add_transaction).pack(side="left", padx=(8, 0))
+
+        body = ttk.Frame(self, padding=10); body.pack(fill="both", expand=True)
+        columns = ("date", "kind", "category", "amount", "business", "counterparty", "description")
+        self.tree = ttk.Treeview(body, columns=columns, show="headings", selectmode="browse")
+        settings = [
+            ("date", "Date", 90), ("kind", "Type", 70), ("category", "Category", 190),
+            ("amount", "Amount", 110), ("business", "Business %", 80),
+            ("counterparty", "Client/Vendor", 150), ("description", "Description", 260)
+        ]
+        for name, title, width in settings:
+            self.tree.heading(name, text=title)
+            self.tree.column(name, width=width, anchor="w")
+        scroll = ttk.Scrollbar(body, orient="vertical", command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
-        self.tree.pack(side="left",fill="both",expand=True);scroll.pack(side="right",fill="y")
-        ttk.Label(body,textvariable=self.status,wraplength=950).pack(anchor="w",pady=4)
-        self.localize();self.status.set(self.t("ready"))
-    def t(self,key):return LABELS[self.language][key]
-    def localize(self):
-        self.root.title(self.t("title"));self.heading.configure(text=self.t("title"))
-        self.intro.configure(text=self.t("help"));self.lang.configure(text=self.t("lang"))
-        for k,b in self.buttons.items():b.configure(text=self.t(k))
-        self.preflight_box.configure(text=self.t("preflight"))
-        self.issues_box.configure(text=self.t("issues"))
-        self.check_export_button.configure(text=self.t("check_export"))
-        self.store_review_button.configure(text=self.t("store_review"))
-        self.notice.configure(text=self.t("notice") if self.preflight.get() else "")
-        for key,widget in self.orientation_buttons.items():widget.configure(text=self.t(key))
-        for key,widget in self.filter_labels.items():widget.configure(text=self.t(key))
-        self.apply_button.configure(text=self.t("filter"))
-        self.reset_button.configure(text=self.t("reset_filter"))
-        for k in ("path","format","dimensions","bytes","check","duplicate_col"):self.tree.heading(k,text=self.t(k))
-    def toggle(self):
-        self.language="ja" if self.language=="en" else "en";self.localize()
-    def toggle_preflight(self):
-        if not self.preflight.get():self.issues.set(False)
-        self.localize();self.refresh()
-    def store_review_preset(self):
-        """One-click, read-only Store review: reset stale filters, show issues."""
-        self.orientation.set("all")
-        self.min_width.set("");self.min_height.set("");self.max_mib.set("")
-        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
-        self.preflight.set(True);self.issues.set(True)
-        self.duplicates_only=False
-        self.localize();self.refresh()
+        self.tree.pack(side="left", fill="both", expand=True)
+        scroll.pack(side="right", fill="y")
 
-    def find_duplicates(self):
-        groups,errors=find_duplicate_groups(self.rows)
-        self.orientation.set("all")
-        self.min_width.set("");self.min_height.set("");self.max_mib.set("")
-        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
-        self.issues.set(False)
-        self.duplicate_groups=groups;self.duplicates_only=True
+        footer = ttk.Frame(self, padding=(10, 0, 10, 10)); footer.pack(fill="x")
+        self.summary_label = ttk.Label(footer, font=("Segoe UI", 11, "bold"))
+        self.summary_label.pack(side="left")
+        ttk.Button(footer, text="Delete selected / 選択削除", command=self.delete_selected).pack(side="right")
+        ttk.Label(footer, textvariable=self.status).pack(side="right", padx=16)
+
+    def _field(self, parent, label, variable, width):
+        ttk.Label(parent, text=label).pack(side="left", padx=(0, 4))
+        ttk.Entry(parent, textvariable=variable, width=width).pack(side="left")
+
+    def _sync_categories(self):
+        values = REGIONS[self.region.get()][self.kind.get()]
+        self.category_box["values"] = values
+        if self.category.get() not in values:
+            self.category.set(values[0])
         self.refresh()
-        self.status.set(self.t("duplicate_summary").format(
-            files=len(groups),groups=len(set(groups.values())),errors=len(errors)))
-        if errors:self.error("\\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
 
-    def apply_filters(self):
+    def add_transaction(self):
         try:
-            width=int(self.min_width.get().strip() or "0")
-            height=int(self.min_height.get().strip() or "0")
-            text=self.max_mib.get().strip()
-            limit=int(text) if text else None
-            if limit is not None and not 1<=limit<=64:
-                raise ValueError("Maximum MiB must be between 1 and 64")
-            selected={"orientation":self.orientation.get(),"min_width":width,
-                      "min_height":height,"max_bytes":limit*1048576 if limit else None}
-            select_inventory(self.rows,**selected)
-        except ValueError:
-            self.error(self.t("invalid_filter"));return
-        self.active_filter=selected;self.refresh()
-    def reset_filters(self):
-        self.orientation.set("all");self.min_width.set("");self.min_height.set("")
-        self.max_mib.set("")
-        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
-        self.duplicates_only=False
-        self.refresh()
+            self.ledger.add(
+                date_text=self.date_var.get(), region=self.region.get(), kind=self.kind.get(),
+                category=self.category.get(), amount_text=self.amount.get(),
+                business_use_pct=self.business_pct.get(), counterparty=self.counterparty.get(),
+                payment_account=self.account.get(), description=self.description.get(),
+                evidence_ref=self.evidence.get()
+            )
+            save_atomic(self.path, self.ledger)
+            self.amount.set(""); self.description.set(""); self.evidence.set("")
+            self.status.set("Saved locally / 保存済み")
+            self.refresh()
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+
     def refresh(self):
-        for i in self.tree.get_children():self.tree.delete(i)
-        selected=select_inventory(self.rows,**self.active_filter,
-                                  issues_only=self.preflight.get() and self.issues.get())
-        if self.duplicates_only:selected=[(i,r) for i,r in selected if i in self.duplicate_groups]
-        for i,r in selected:
-            code,_=check_msix_screenshot(r) if self.preflight.get() else ("NOT_CHECKED","")
-            self.tree.insert("","end",iid=str(i),values=(
-                r["path"],r["format"],str(r["width"])+" × "+str(r["height"]),
-                str(r["bytes"]),code if self.preflight.get() else "—",self.duplicate_groups.get(i,"")))
-        if self.preflight.get():
-            summary=msix_summary(self.rows)
-            message=self.t("summary").format(n=summary["images"],issues=summary["issues"])
-            message+=" "+self.t("shown").format(shown=len(selected),n=len(self.rows))
-            if summary["over_limit"]:message+=" "+self.t("batch_over")
-            self.status.set(message)
-        else:
-            self.status.set(self.t("shown").format(shown=len(selected),n=len(self.rows)))
-    def error(self,exc):messagebox.showerror(self.t("error"),str(exc),parent=self.root)
-    def add(self):
-        paths=filedialog.askopenfilenames(parent=self.root,title=self.t("add"),filetypes=[("Images","*.png *.jpg *.jpeg *.gif *.bmp"),("All","*.*")])
-        if not paths:return
-        try:rows,errors=append_images(self.rows,list(paths))
-        except ValueError as exc:self.error(exc);return
-        self.rows=rows;self.duplicate_groups={};self.duplicates_only=False
-        self.refresh();self.status.set(self.t("result").format(n=len(rows),bad=len(errors)))
-        if errors:self.error("\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
-    def remove(self):
-        chosen={int(i) for i in self.tree.selection()}
-        self.rows=[r for i,r in enumerate(self.rows) if i not in chosen]
-        self.duplicate_groups={};self.duplicates_only=False;self.refresh()
-        self.status.set(self.t("result").format(n=len(self.rows),bad=0))
-    def clear(self):
-        self.rows=[];self.duplicate_groups={};self.duplicates_only=False
-        self.refresh();self.status.set(self.t("empty"))
-    def output(self,ext):
-        return filedialog.asksaveasfilename(parent=self.root,defaultextension=ext,filetypes=[(ext.upper(),"*"+ext)])
-    def confirm(self,path):
-        return not Path(path).exists() or messagebox.askyesno(self.t("title"),self.t("replace"),parent=self.root)
-    def save(self):
-        if not self.rows:self.status.set(self.t("empty"));return
-        path=self.output(".json")
-        if not path or not self.confirm(path):return
-        try:save_session(path,self.rows);self.status.set(self.t("saved"))
-        except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
-    def open(self):
-        path=filedialog.askopenfilename(parent=self.root,filetypes=[("JSON","*.json")])
-        if not path:return
-        try:
-            try:value=load_session(path)
-            except (OSError,ValueError,UnicodeError,RecursionError):
-                if not messagebox.askyesno(self.t("error"),self.t("recover"),parent=self.root):return
-                value=recover_session(path)
-            self.rows,errors=scan(value["paths"])
-            self.duplicate_groups={};self.duplicates_only=False;self.refresh()
-            self.status.set(self.t("loaded")+" "+self.t("result").format(n=len(self.rows),bad=len(errors)))
-            if errors:self.error("\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
-        except (OSError,ValueError,UnicodeError,RecursionError) as exc:self.error(exc)
-    def export_check(self):
-        if not self.rows:self.status.set(self.t("empty"));return
-        path=self.output(".csv")
-        if not path or not self.confirm(path):return
-        try:export_msix_csv(path,self.rows);self.status.set(self.t("exported"))
-        except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
-    def export(self):
-        if not self.rows:self.status.set(self.t("empty"));return
-        path=self.output(".csv")
-        if not path or not self.confirm(path):return
-        try:export_csv(path,self.rows);self.status.set(self.t("exported"))
-        except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
+        if not hasattr(self, "tree"):
+            return
+        region = self.region.get()
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        rows = [t for t in self.ledger.transactions if t.region == region]
+        for t in sorted(rows, key=lambda x: (x.date, x.id), reverse=True):
+            self.tree.insert("", "end", iid=str(t.id), values=(
+                t.date, t.kind, t.category, format_minor(t.amount_minor, region),
+                t.business_use_pct, t.counterparty, t.description
+            ))
+        s = self.ledger.summary(region)
+        self.summary_label.configure(text=(
+            f'Income / 収入: {format_minor(s["income"], region)}   '
+            f'Expenses / 経費: {format_minor(s["expenses"], region)}   '
+            f'Net / 差引: {format_minor(s["net"], region)}'
+        ))
 
-def main():
-    root=tk.Tk();Desk(root);root.mainloop()
-if __name__=="__main__":main()
+    def delete_selected(self):
+        selected = self.tree.selection()
+        if not selected:
+            return
+        if messagebox.askyesno(APP_NAME, "Delete selected record? / 選択した記録を削除しますか？"):
+            self.ledger.delete(int(selected[0]))
+            save_atomic(self.path, self.ledger)
+            self.refresh()
+
+    def export(self):
+        target = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if not target:
+            return
+        try:
+            export_csv(Path(target), self.ledger, self.region.get())
+            self.status.set("CSV exported / CSV出力済み")
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+
+if __name__ == "__main__":
+    App().mainloop()
