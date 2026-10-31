@@ -4,12 +4,12 @@ from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
-CATEGORIES=["Business income","Advertising","Car and truck expenses","Commissions and fees","Contract labor","Insurance","Interest","Legal and professional services","Office expense","Rent or lease","Repairs and maintenance","Supplies","Taxes and licenses","Travel","Meals - review","Utilities","Other expenses"]
+CATEGORIES=["Business income","Advertising","Car and truck expenses - review","Commissions and fees","Contract labor","Insurance","Interest","Legal and professional services","Office expense","Rent or lease","Repairs and maintenance","Supplies","Taxes and licenses - review","Travel - review","Meals - review","Utilities","Business use of home - review","Depreciation / Section 179 - review","Other expenses"]
 DOCUMENT_TYPES=["Receipt","Invoice","Bank statement","Card statement","1099 form","Contract","Mileage/supporting record","Other"]
 METHODS=("cash","accrual")
 SUGGEST_RULES=[
  ("Advertising",["advertising","ad spend","google ads","meta ads","marketing"]),
- ("Car and truck expenses",["mileage","gas","fuel","parking","toll","vehicle","car"]),
+ ("Car and truck expenses - review",["mileage","gas","fuel","parking","toll","vehicle","car"]),
  ("Commissions and fees",["commission","platform fee","merchant fee","processing fee","stripe","paypal"]),
  ("Contract labor",["contractor","freelancer","subcontractor","1099 contractor"]),
  ("Insurance",["insurance","premium"]),
@@ -18,12 +18,25 @@ SUGGEST_RULES=[
  ("Rent or lease",["rent","lease","coworking","office space"]),
  ("Repairs and maintenance",["repair","maintenance"]),
  ("Supplies",["supplies","materials","ink","toner","cable"]),
- ("Taxes and licenses",["license","permit","business tax","registration fee"]),
- ("Travel",["flight","hotel","travel","airfare","lodging"]),
+ ("Taxes and licenses - review",["license","permit","business tax","registration fee"]),
+ ("Travel - review",["flight","hotel","travel","airfare","lodging"]),
  ("Meals - review",["meal","restaurant","lunch","dinner"]),
  ("Utilities",["electric","utility","internet","phone","water","gas"]),
+ ("Business use of home - review",["home office","business use of home"]),
+ ("Depreciation / Section 179 - review",["depreciation","section 179","capital asset","equipment purchase","fixed asset"]),
  ("Business income",["invoice paid","client payment","service revenue","sales","income"])
 ]
+
+REVIEW_RULES={
+ "Car and truck expenses - review":["Vehicle deductions require separate substantiation and method rules."],
+ "Meals - review":["Business meals have special qualification and percentage rules; do not auto-deduct."],
+ "Travel - review":["Travel requires business-purpose, tax-home and substantiation review."],
+ "Business use of home - review":["Home-office rules have qualification tests and limitations."],
+ "Depreciation / Section 179 - review":["Capitalization, depreciation and Section 179 require separate tax-year/entity review."],
+ "Taxes and licenses - review":["Federal, state and local treatment varies; state/local requirements are outside automated scope."]
+}
+def review_requirements(category):
+    return list(REVIEW_RULES.get(category,[]))
 
 def suggest_category(text,kind="expense",limit=3):
     hay=(text or "").strip().lower()
@@ -34,7 +47,7 @@ def suggest_category(text,kind="expense",limit=3):
         if kind=="expense" and category=="Business income":continue
         hits=[w for w in words if w in hay]
         if hits:
-            out.append({"category":category,"confidence":round(min(0.95,0.55+0.12*len(hits)),2),"matched":hits})
+            out.append({"category":category,"confidence":round(min(0.95,0.55+0.12*len(hits)),2),"matched":hits,"requires_review":bool(review_requirements(category)),"review_reasons":review_requirements(category)})
     out.sort(key=lambda x:(-x["confidence"],x["category"]))
     return out[:max(1,int(limit))]
 class LedgerError(ValueError): pass
