@@ -1,4 +1,4 @@
-import importlib.util,sys,tempfile,unittest
+import importlib.util,json,sys,tempfile,unittest
 from pathlib import Path
 P=Path(__file__).resolve().parents[1]/"products"/"us-bookkeeping-desk"/"core.py";S=importlib.util.spec_from_file_location("usb_factory",P);m=importlib.util.module_from_spec(S);sys.modules[S.name]=m;S.loader.exec_module(m)
 class T(unittest.TestCase):
@@ -17,4 +17,15 @@ class T(unittest.TestCase):
   x=m.suggest_entry("business vehicle mileage")
   self.assertEqual(x["debit_code"],"5350")
   self.assertTrue(x["review_reasons"])
+ def test_us_compliance_evidence_gate(self):
+  p=Path(__file__).resolve().parents[1]/"products"/"us-bookkeeping-desk"
+  scope=json.loads((p/"market-scope.json").read_text(encoding="utf-8"))
+  evidence=(p/"US_COMPLIANCE_SCOPE.md").read_text(encoding="utf-8")
+  self.assertEqual(scope["store_markets"],["US"])
+  self.assertFalse(scope["cross_market_sale"])
+  self.assertFalse(scope["tax_filing"])
+  self.assertFalse(scope["compliance_claim"])
+  self.assertIn("COMPLIANCE_HOLD",evidence)
+  self.assertIn("Form 3115",evidence)
+  self.assertIn("Cash versus accrual",evidence)
 if __name__=="__main__":unittest.main()
