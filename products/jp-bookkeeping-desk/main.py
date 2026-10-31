@@ -76,9 +76,12 @@ class App(tk.Tk):
     cost=simpledialog.askinteger("減価償却","取得価額（円）",minvalue=2)
     first=simpledialog.askstring("減価償却","事業供用開始日 YYYY-MM-DD",initialvalue=date.today().isoformat())
     life=simpledialog.askinteger("減価償却","耐用年数",minvalue=1)
+    asset_class=simpledialog.askstring("減価償却","資産種類（例: 建物 / 建物附属設備 / 構築物 / 器具備品 / 車両運搬具）",initialvalue="器具備品")
     method=simpledialog.askstring("減価償却","定額法 または 定率法",initialvalue="定額法")
     use=simpledialog.askfloat("減価償却","事業使用割合（%）",initialvalue=100,minvalue=0,maxvalue=100)
-    kwargs={}
+    kwargs={"asset_class":asset_class or "その他"}
+    if method=="定額法":
+     kwargs["straight_line_rate"]=simpledialog.askfloat("定額法","国税庁の耐用年数別表の償却率（例 4年なら0.250）",minvalue=0)
     if method=="定率法":
      kwargs["declining_rate"]=simpledialog.askfloat("定率法","償却率（例 0.500）",minvalue=0)
      kwargs["revised_rate"]=simpledialog.askfloat("定率法","改定償却率",minvalue=0)
