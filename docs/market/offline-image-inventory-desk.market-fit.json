@@ -269,5 +269,71 @@
     "review_sample_verified": 0,
     "buyer_interviews_completed": 0,
     "no_store_action": true
+  },
+  "msix_screenshot_profile_risk_20261031": {
+    "researched_on": "2026-10-31",
+    "official_source": "https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images",
+    "official_page_last_updated": "2025-06-06",
+    "confirmed_facts": [
+      "Microsoft permits screenshot PNG files in landscape or portrait orientation.",
+      "Desktop screenshot dimensions are described as 1366 x 768 pixels or larger; exact portrait width/height interpretation is not explicitly specified.",
+      "One screenshot is required; up to 10 desktop screenshots are allowed; four or more are suggested, not mandatory.",
+      "PNG screenshots may not exceed 50 MB.",
+      "Each Store listing language needs separate image uploads, even if identical images are reused.",
+      "Keep important visuals in the upper two-thirds; Microsoft advises against additional marketing text, logos and icons on screenshots."
+    ],
+    "false_positive_and_negative_risks": [
+      "A landscape-only width>=1366 AND height>=768 validator can wrongly reject a portrait screenshot, although portrait is explicitly permitted.",
+      "Blindly swapping portrait dimensions to width>=768 AND height>=1366 would claim acceptance that has not been verified in Partner Center.",
+      "Header-only inspection cannot detect marketing overlays, content placement, localization quality, or actual Store acceptance.",
+      "Official 50 MB wording does not define exact byte boundary; do not assert a precise backend threshold without testing."
+    ],
+    "proposed_non_certifying_triage": [
+      {
+        "case": "1366x768 PNG under 50 MB",
+        "status": "BASIC_DIMENSIONS_CANDIDATE",
+        "reason": "Not a Store approval guarantee"
+      },
+      {
+        "case": "768x1366 portrait PNG under 50 MB",
+        "status": "NEEDS_RULE_CONFIRMATION",
+        "reason": "Portrait is permitted but exact minimum dimension interpretation remains ambiguous"
+      },
+      {
+        "case": "1024x768 landscape PNG",
+        "status": "FAIL_BASIC_DIMENSIONS",
+        "reason": "Below documented desktop minimum"
+      },
+      {
+        "case": "1366x768 JPEG",
+        "status": "FAIL_FORMAT",
+        "reason": "Screenshot requires PNG"
+      },
+      {
+        "case": "1366x768 PNG over 50 MB",
+        "status": "FAIL_SIZE",
+        "reason": "Exceeds documented limit"
+      },
+      {
+        "case": "1366x768 PNG with marketing overlay",
+        "status": "NEEDS_VISUAL_REVIEW",
+        "reason": "Header-only scanner cannot judge screenshot content"
+      },
+      {
+        "case": "JA/EN listing with only one language image set",
+        "status": "NEEDS_LISTING_MANIFEST_REVIEW",
+        "reason": "Separate uploads required for each language listing"
+      }
+    ],
+    "future_validation": [
+      "Confirm portrait size boundary using authorized Partner Center or clarified Microsoft documentation; do not operate Partner Center in this research task.",
+      "Verify localized listing manifest behavior, exact 50 MB byte boundary and human screenshot-content review separately.",
+      "Interview target buyers and compare against free tools before changing MARKET_FIT_HOLD."
+    ],
+    "scope_guard": "No new product implementation, MSIX packaging, Identity binding, Partner Center creation, or Store submission. This audit only prevents overclaiming and false image-profile decisions.",
+    "verified_customer_review_count": 0,
+    "buyer_interview_count": 0,
+    "market_fit_score_unchanged": 64,
+    "decision_unchanged": "MARKET_FIT_HOLD"
   }
 }
