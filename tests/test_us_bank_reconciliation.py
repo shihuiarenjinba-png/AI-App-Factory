@@ -76,6 +76,18 @@ class BankReconciliationTests(unittest.TestCase):
             self.r.finalize("1100","2026-10-01","2026-10-31",0,700,ids,confirmed=True)
         self.assertEqual(len(self.r.history("1100")),1)
 
+    def test_backdated_post_is_blocked_after_reconciliation(self):
+        ids = [self.bank_lines[0]["id"],self.bank_lines[1]["id"]]
+        self.r.finalize("1100","2026-10-01","2026-10-31",0,700,ids,confirmed=True)
+        before = (self.s.journal(),self.s.trial(),self.s.pnl(),self.s.bs())
+        with self.assertRaises(core.BookError):
+            self.s.post("2026-10-15","Late backdated expense",
+                        [("5200","1.00",""),("1100","","1.00")])
+        self.assertEqual(before,(self.s.journal(),self.s.trial(),self.s.pnl(),self.s.bs()))
+        self.s.post("2026-11-02","New month expense",
+                    [("5200","1.00",""),("1100","","1.00")])
+        self.assertTrue(self.s.balance_check()["balanced"])
+
     def test_carry_forward_outstanding_receipt_and_no_tax_inference(self):
         ids = [self.bank_lines[0]["id"],self.bank_lines[1]["id"]]
         self.r.finalize("1100","2026-10-01","2026-10-31",0,700,ids,confirmed=True)
