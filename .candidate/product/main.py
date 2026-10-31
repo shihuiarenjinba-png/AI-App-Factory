@@ -6,9 +6,41 @@ from tkinter import ttk, filedialog, messagebox
 
 MAX_BYTES=64*1024*1024
 MAX_ITEMS=200
+# Conservative, non-certifying MSIX desktop screenshot triage.
+# Microsoft: PNG, landscape/portrait, desktop 1366x768+, up to 10, <=50 MB.
+# Portrait dimension interpretation and MB byte boundary require manual review.
+MSIX_PROFILE_URL="https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images"
+MSIX_PROFILE_CHECKED="2026-10-31"
+MSIX_DESKTOP_MAX_SCREENSHOTS=10
+
+def check_msix_screenshot(row):
+    """Return a triage code and actionable explanation; NEVER Store approval."""
+    fmt,w,h,n=(row["format"],row["width"],row["height"],row["bytes"])
+    if fmt!="PNG":
+        return "FAIL_FORMAT","MSIX screenshots require PNG; select or export a PNG."
+    if n>50*1024*1024:
+        return "FAIL_SIZE","Larger than 50 MiB; exceeds either common 50 MB interpretation."
+    if n>=50_000_000:
+        return "REVIEW_SIZE_LIMIT","Near the 50 MB boundary; confirm Partner Center byte interpretation."
+    if w<h:
+        if max(w,h)<1366 or min(w,h)<768:
+            return "FAIL_DIMENSIONS","Below the documented 1366 x 768 desktop minimum."
+        return "REVIEW_PORTRAIT","Portrait is permitted; confirm how desktop minima apply to orientation."
+    if w<1366 or h<768:
+        return "FAIL_DIMENSIONS","Desktop screenshot should be at least 1366 x 768."
+    return "BASIC_CANDIDATE","Header-only checks look plausible; visual content and upload still need review."
+
+def msix_summary(rows):
+    counts={}
+    for row in rows:
+        code,_=check_msix_screenshot(row)
+        counts[code]=counts.get(code,0)+1
+    return {"images":len(rows),"issues":len(rows)-counts.get("BASIC_CANDIDATE",0),
+            "over_limit":len(rows)>MSIX_DESKTOP_MAX_SCREENSHOTS,"counts":counts}
+
 LABELS={
-"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}"},
-"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件"}}
+"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10."},
+"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。"}}
 
 def jpeg_dimensions(data):
     if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
@@ -131,9 +163,22 @@ def export_csv(path,rows):
     for row in rows:writer.writerow([row[k] for k in ("path","format","width","height","bytes")])
     atomic_write(path,output.getvalue(),[r["path"] for r in rows])
 
+def export_msix_csv(path,rows):
+    """Export reproducible per-file triage without changing source images."""
+    if not rows:raise ValueError("No images")
+    output=io.StringIO(newline="");writer=csv.writer(output,lineterminator="\n")
+    writer.writerow(["path","format","width","height","bytes","msix_check","action",
+                     "profile_checked","profile_source","batch_count","desktop_limit"])
+    for row in rows:
+        code,reason=check_msix_screenshot(row)
+        writer.writerow([row[k] for k in ("path","format","width","height","bytes")]+
+                        [code,reason,MSIX_PROFILE_CHECKED,MSIX_PROFILE_URL,
+                         len(rows),MSIX_DESKTOP_MAX_SCREENSHOTS])
+    atomic_write(path,output.getvalue(),[r["path"] for r in rows])
+
 class Desk:
     def __init__(self,root):
-        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar()
+        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False)
         root.geometry("1024x768");root.minsize(850,600)
         body=ttk.Frame(root,padding=12);body.pack(fill="both",expand=True)
         self.heading=ttk.Label(body,font=("Segoe UI",18,"bold"));self.heading.pack(anchor="w")
@@ -143,9 +188,17 @@ class Desk:
         for key,fn in (("add",self.add),("remove",self.remove),("clear",self.clear),("save",self.save),("open",self.open),("export",self.export)):
             b=ttk.Button(bar,command=fn);b.pack(side="left",padx=(0,5));self.buttons[key]=b
         self.lang=ttk.Button(bar,command=self.toggle);self.lang.pack(side="right")
+        checkbar=ttk.Frame(body);checkbar.pack(fill="x",pady=(2,4))
+        self.preflight_box=ttk.Checkbutton(checkbar,variable=self.preflight,command=self.toggle_preflight)
+        self.preflight_box.pack(side="left",padx=(0,12))
+        self.issues_box=ttk.Checkbutton(checkbar,variable=self.issues,command=self.refresh)
+        self.issues_box.pack(side="left",padx=(0,12))
+        self.check_export_button=ttk.Button(checkbar,command=self.export_check)
+        self.check_export_button.pack(side="left")
+        self.notice=ttk.Label(body,wraplength=950);self.notice.pack(anchor="w")
         frame=ttk.Frame(body);frame.pack(fill="both",expand=True,pady=6)
-        self.tree=ttk.Treeview(frame,columns=("path","format","dimensions","bytes"),show="headings",selectmode="extended")
-        for k,width in (("path",530),("format",100),("dimensions",130),("bytes",110)):
+        self.tree=ttk.Treeview(frame,columns=("path","format","dimensions","bytes","check"),show="headings",selectmode="extended")
+        for k,width in (("path",395),("format",85),("dimensions",125),("bytes",100),("check",210)):
             self.tree.column(k,width=width,stretch=k=="path")
         scroll=ttk.Scrollbar(frame,orient="vertical",command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
@@ -157,13 +210,28 @@ class Desk:
         self.root.title(self.t("title"));self.heading.configure(text=self.t("title"))
         self.intro.configure(text=self.t("help"));self.lang.configure(text=self.t("lang"))
         for k,b in self.buttons.items():b.configure(text=self.t(k))
-        for k in ("path","format","dimensions","bytes"):self.tree.heading(k,text=self.t(k))
+        self.preflight_box.configure(text=self.t("preflight"))
+        self.issues_box.configure(text=self.t("issues"))
+        self.check_export_button.configure(text=self.t("check_export"))
+        self.notice.configure(text=self.t("notice") if self.preflight.get() else "")
+        for k in ("path","format","dimensions","bytes","check"):self.tree.heading(k,text=self.t(k))
     def toggle(self):
         self.language="ja" if self.language=="en" else "en";self.localize()
+    def toggle_preflight(self):
+        if not self.preflight.get():self.issues.set(False)
+        self.localize();self.refresh()
     def refresh(self):
         for i in self.tree.get_children():self.tree.delete(i)
         for i,r in enumerate(self.rows):
-            self.tree.insert("","end",iid=str(i),values=(r["path"],r["format"],str(r["width"])+" × "+str(r["height"]),str(r["bytes"])))
+            code,_=check_msix_screenshot(r) if self.preflight.get() else ("NOT_CHECKED","")
+            if self.preflight.get() and self.issues.get() and code=="BASIC_CANDIDATE":
+                continue
+            self.tree.insert("","end",iid=str(i),values=(
+                r["path"],r["format"],str(r["width"])+" × "+str(r["height"]),
+                str(r["bytes"]),code if self.preflight.get() else "—"))
+        if self.preflight.get():
+            summary=msix_summary(self.rows)
+            self.status.set(self.t("summary").format(n=summary["images"],issues=summary["issues"]))
     def error(self,exc):messagebox.showerror(self.t("error"),str(exc),parent=self.root)
     def add(self):
         paths=filedialog.askopenfilenames(parent=self.root,title=self.t("add"),filetypes=[("Images","*.png *.jpg *.jpeg *.gif *.bmp"),("All","*.*")])
@@ -200,6 +268,12 @@ class Desk:
             self.status.set(self.t("loaded")+" "+self.t("result").format(n=len(self.rows),bad=len(errors)))
             if errors:self.error("\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
         except (OSError,ValueError,UnicodeError,RecursionError) as exc:self.error(exc)
+    def export_check(self):
+        if not self.rows:self.status.set(self.t("empty"));return
+        path=self.output(".csv")
+        if not path or not self.confirm(path):return
+        try:export_msix_csv(path,self.rows);self.status.set(self.t("exported"))
+        except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
     def export(self):
         if not self.rows:self.status.set(self.t("empty"));return
         path=self.output(".csv")
