@@ -1,0 +1,23 @@
+name: Image candidate product tests
+
+on:
+  pull_request:
+    paths:
+      - '.candidate/product/**'
+      - '.github/workflows/image-candidate-product-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  image-candidate:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run candidate-specific headless regression tests
+        shell: pwsh
+        run: python -m unittest discover -s .candidate/product/tests -v
