@@ -1,5 +1,5 @@
 from __future__ import annotations
-from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP, ROUND_UP
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP, ROUND_UP
 from datetime import date
 
 JP_CONSUMPTION_TAX_PRESETS = {
@@ -14,18 +14,47 @@ ROUNDING = {
     "切上げ": ROUND_UP,
 }
 
+def _finite_number(value, label):
+    try:
+        n = Decimal(str(value))
+    except (InvalidOperation, ValueError, TypeError) as exc:
+        raise ValueError(f"{label}は有限の数値で指定してください") from exc
+    if not n.is_finite():
+        raise ValueError(f"{label}は有限の数値で指定してください")
+    return n
+
+
+def _yen_amount(value, label):
+    n = _finite_number(value, label)
+    if n < 0 or n != n.to_integral_value() or n > 2**63 - 1:
+        raise ValueError(f"{label}は0以上の整数円で指定してください")
+    return n
+
+
+def _rate(value, label, allow_zero=False):
+    n = _finite_number(value, label)
+    if n < 0 or n > 1 or (not allow_zero and n == 0):
+        raise ValueError(f"{label}は0から1の範囲で指定してください")
+    return n
+
+
+def _rounding(value):
+    if value not in ROUNDING:
+        raise ValueError("端数処理は切捨て・四捨五入・切上げから選択してください")
+    return ROUNDING[value]
+
+
 def consumption_tax_from_net(net_yen, rate="0.10", rounding="切捨て"):
-    net=Decimal(str(net_yen))
-    r=Decimal(str(rate))
-    if net < 0 or r < 0: raise ValueError("金額・税率は0以上")
-    tax=(net*r).quantize(Decimal("1"), rounding=ROUNDING.get(rounding, ROUND_DOWN))
+    net=_yen_amount(net_yen, "税抜金額")
+    r=_rate(rate, "消費税率", allow_zero=True)
+    tax=(net*r).quantize(Decimal("1"), rounding=_rounding(rounding))
     return {"net":int(net), "tax":int(tax), "gross":int(net+tax), "rate":str(r)}
 
 def consumption_tax_from_gross(gross_yen, rate="0.10", rounding="切捨て"):
-    gross=Decimal(str(gross_yen)); r=Decimal(str(rate))
-    if gross < 0 or r < 0: raise ValueError("金額・税率は0以上")
+    gross=_yen_amount(gross_yen, "税込金額"); r=_rate(rate, "消費税率", allow_zero=True)
+    rounding_mode=_rounding(rounding)
     if r == 0: return {"net":int(gross),"tax":0,"gross":int(gross),"rate":"0"}
-    net=(gross/(Decimal("1")+r)).quantize(Decimal("1"), rounding=ROUNDING.get(rounding, ROUND_DOWN))
+    net=(gross/(Decimal("1")+r)).quantize(Decimal("1"), rounding=rounding_mode)
     return {"net":int(net),"tax":int(gross-net),"gross":int(gross),"rate":str(r)}
 
 def validate_jp_depreciation_method(asset_class: str, first_use_date: str, method: str):
@@ -59,19 +88,28 @@ def jp_depreciation_schedule(
     business_use_percent=100,
     through_year=None,
 ):
-    cost=int(cost_yen); life=int(useful_life_years)
-    if cost <= 1 or life <= 0: raise ValueError("取得価額・耐用年数を確認してください")
+    cost_decimal=_yen_amount(cost_yen, "取得価額")
+    life_decimal=_finite_number(useful_life_years, "耐用年数")
+    if cost_decimal <= 1 or life_decimal <= 0 or life_decimal != life_decimal.to_integral_value():
+        raise ValueError("取得価額・耐用年数を確認してください")
+    cost=int(cost_decimal); life=int(life_decimal)
     first=date.fromisoformat(first_use_date)
     validate_jp_depreciation_method(asset_class,first_use_date,method)
-    through_year=int(through_year or (first.year+life+5))
-    use=Decimal(str(business_use_percent))/Decimal("100")
+    if through_year is None:
+        through_year=first.year+life+5
+    else:
+        year_decimal=_finite_number(through_year, "計算終了年")
+        if year_decimal != year_decimal.to_integral_value() or not first.year <= int(year_decimal) <= 9999:
+            raise ValueError("計算終了年は供用開始年以降の整数年にしてください")
+        through_year=int(year_decimal)
+    use=_finite_number(business_use_percent, "事業使用割合")/Decimal("100")
     if use < 0 or use > 1: raise ValueError("事業使用割合は0〜100%")
     if method=="定額法" and straight_line_rate is None:
         raise ValueError("定額法の償却率を設定してください。国税庁の耐用年数別表の正式率を使用します。")
-    sl=Decimal(str(straight_line_rate)) if straight_line_rate is not None else None
-    dr=Decimal(str(declining_rate)) if declining_rate is not None else None
-    rr=Decimal(str(revised_rate)) if revised_rate is not None else None
-    gr=Decimal(str(guarantee_rate)) if guarantee_rate is not None else None
+    sl=_rate(straight_line_rate, "定額法償却率") if straight_line_rate is not None else None
+    dr=_rate(declining_rate, "定率法償却率") if declining_rate is not None else None
+    rr=_rate(revised_rate, "改定償却率") if revised_rate is not None else None
+    gr=_rate(guarantee_rate, "保証率") if guarantee_rate is not None else None
     if method not in {"定額法","定率法"}: raise ValueError("償却方法は定額法または定率法")
     if method=="定率法" and (dr is None or rr is None or gr is None):
         raise ValueError("定率法は償却率・改定償却率・保証率を設定してください")
