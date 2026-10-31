@@ -23,18 +23,41 @@ class App(tk.Tk):
         for i,(label,key) in enumerate(fields,start=3):
             ttk.Label(f,text=label).grid(row=i,column=0,sticky="w"); ttk.Entry(f,textvariable=self.v[key]).grid(row=i,column=1,sticky="ew",pady=3)
         ttk.Button(f,text="証憑ファイルを参照",command=self.pick).grid(row=8,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="勘定科目を推測",command=self.suggest).grid(row=9,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="記帳する",command=self.add).grid(row=10,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="税率・固定資産",command=self.tax_assets).grid(row=11,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="CSV出力",command=self.export).grid(row=12,column=0,sticky="ew",pady=4)
-        ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=12,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
+        ttk.Button(f,text="科目・帳簿を調べる",command=self.lookup_help).grid(row=9,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="複数レシートを取り込む",command=self.import_receipts).grid(row=10,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="勘定科目を推測",command=self.suggest).grid(row=11,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="記帳する",command=self.add).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="税率・固定資産",command=self.tax_assets).grid(row=13,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="CSV出力",command=self.export).grid(row=14,column=0,sticky="ew",pady=4)
+        ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=14,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
         r=ttk.Labelframe(p,text="帳簿",padding=10); p.add(r,weight=3); ttk.Label(r,textvariable=self.summary,font=("Yu Gothic UI",11,"bold")).pack(anchor="w")
         cols=("date","kind","amount","category","counterparty","memo"); self.tree=ttk.Treeview(r,columns=cols,show="headings")
         for c,t in zip(cols,["日付","種別","金額","勘定科目","取引先","摘要"]): self.tree.heading(c,text=t); self.tree.column(c,width=120)
         self.tree.pack(fill="both",expand=True,pady=(8,0))
     def pick(self):
-        x=filedialog.askopenfilename(title="領収書・請求書などを選択"); 
+        x=filedialog.askopenfilename(title="領収書・請求書などを選択")
         if x:self.v["docpath"].set(x)
+    def import_receipts(self):
+        paths=filedialog.askopenfilenames(title="複数のレシート・請求書画像/PDFを選択")
+        if not paths:return
+        added=self.store.enqueue_receipts(paths)
+        messagebox.showinfo("証憑取り込み",f"{added}件をローカル待ち行列に追加しました。\n\n現段階では画像から自動確定はしません。今後、OCR→候補抽出→ユーザー確認→仕訳候補の順で処理します。")
+    def lookup_help(self):
+        q=simpledialog.askstring("科目・帳簿検索","例: 家賃 / パソコン / 個人カード / 売掛 / 固定資産 / 資産除去債務")
+        if not q:return
+        accounts=self.store.search_help(q,limit=6,include_advanced=True)
+        books=self.store.search_book_help(q,limit=4)
+        lines=[]
+        if accounts:
+            lines.append("【勘定科目候補】")
+            for a in accounts:
+                level="上級・要確認" if a["audience"]=="advanced" else a["audience"]
+                lines.append(f'・{a["name"]} ({a["type"]} / {level})\n  使う場面: {a["use_text"]}\n  帳簿: {a["books"]}\n  例: {a["example"]}')
+        if books:
+            lines.append("\n【帳簿候補】")
+            for b in books:lines.append(f'・{b["book"]}: {b["purpose"]}')
+        if not lines:lines=["該当候補が見つかりませんでした。摘要や用途を別の言葉で検索してください。"]
+        messagebox.showinfo("科目・帳簿検索","\n".join(lines[:18]))
     def suggest(self):
         text=" ".join([self.v["counterparty"].get(),self.v["memo"].get(),self.v["doctype"].get()])
         result=suggest_category(text,self.v["kind"].get())
