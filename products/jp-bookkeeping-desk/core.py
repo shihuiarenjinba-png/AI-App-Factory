@@ -95,6 +95,16 @@ class Store:
    if (db>0)==(cr>0):raise BookError("各行は借方または貸方のどちらか一方を入力してください")
    td+=db;tc+=cr;z.append((int(a["id"]),db,cr))
   if len(z)<2 or td<=0 or td!=tc:raise BookError("借方合計と貸方合計を一致させてください")
+  # A finalized bank statement is a historical control point. Backdated
+  # bank postings must not silently change its underlying ledger balance.
+  # Non-bank corrections remain possible, subject to the ordinary period lock.
+  if self.conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='bank_statements'").fetchone():
+   for account_id,_,_ in z:
+    closed=self.conn.execute(
+     "SELECT 1 FROM bank_statements WHERE account_id=? AND status='FINALIZED' AND statement_date>=? LIMIT 1",
+     (account_id,d)).fetchone()
+    if closed:
+     raise BookError("銀行照合確定済みの期間には預金仕訳を追加できません。後日付の訂正仕訳で処理してください")
   with self.conn:
    c=self.conn.execute("INSERT INTO entries(entry_date,description) VALUES(?,?)",(d,desc.strip()));eid=int(c.lastrowid)
    self.conn.executemany("INSERT INTO lines(entry_id,account_id,debit_yen,credit_yen) VALUES(?,?,?,?)",[(eid,*x) for x in z])
