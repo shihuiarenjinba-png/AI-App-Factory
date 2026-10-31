@@ -6,6 +6,39 @@ from pathlib import Path
 
 CATEGORIES = ["売上高","仕入高","外注工賃","給料賃金","減価償却費","貸倒金","地代家賃","利子割引料","租税公課","荷造運賃","水道光熱費","旅費交通費","通信費","広告宣伝費","接待交際費","損害保険料","修繕費","消耗品費","福利厚生費","雑費","その他"]
 DOCUMENT_TYPES = ["領収書","請求書","レシート","契約書","振込記録","通帳・明細","その他"]
+
+SUGGEST_RULES = [
+    ("通信費", ["通信", "携帯", "スマホ", "電話", "internet", "wifi", "回線", "プロバイダ"]),
+    ("旅費交通費", ["電車", "バス", "タクシー", "交通", "新幹線", "航空", "ホテル", "宿泊", "出張"]),
+    ("地代家賃", ["家賃", "賃料", "オフィス", "事務所", "コワーキング"]),
+    ("広告宣伝費", ["広告", "ad", "宣伝", "google ads", "meta ads", "チラシ"]),
+    ("外注工賃", ["外注", "業務委託", "freelance", "請負"]),
+    ("消耗品費", ["文具", "インク", "トナー", "ケーブル", "備品", "消耗品"]),
+    ("支払手数料", ["手数料", "決済", "振込手数料", "stripe", "paypal"]),
+    ("水道光熱費", ["電気", "水道", "ガス", "光熱"]),
+    ("接待交際費", ["会食", "接待", "贈答", "手土産"]),
+    ("損害保険料", ["保険", "insurance"]),
+    ("修繕費", ["修理", "修繕", "repair"]),
+    ("租税公課", ["印紙", "登録免許", "事業税", "固定資産税"]),
+    ("売上高", ["売上", "報酬", "請求", "入金", "制作料", "業務報酬", "service fee"]),
+]
+
+def suggest_category(text, kind="経費", limit=3):
+    hay=(text or "").strip().lower()
+    if not hay:
+        return []
+    scored=[]
+    for category, words in SUGGEST_RULES:
+        if kind=="収入" and category!="売上高":
+            continue
+        if kind=="経費" and category=="売上高":
+            continue
+        hits=[w for w in words if w.lower() in hay]
+        if hits:
+            score=min(0.95, 0.55 + 0.12*len(hits))
+            scored.append({"category":category,"confidence":round(score,2),"matched":hits})
+    scored.sort(key=lambda x:(-x["confidence"], x["category"]))
+    return scored[:max(1,int(limit))]
 class LedgerError(ValueError): pass
 
 def default_db_path():
@@ -56,6 +89,12 @@ class Store:
         out={"収入":0,"経費":0}
         for r in rows: out[r["kind"]]=int(r["t"])
         out["差引"]=out["収入"]-out["経費"]; return out
+    def annual_summary(self,year):
+        rows=self.conn.execute("SELECT kind,COALESCE(SUM(amount_yen),0) t FROM transactions WHERE txn_date LIKE ? GROUP BY kind",(f"{year:04d}-%",)).fetchall()
+        out={"収入":0,"経費":0}
+        for r in rows: out[r["kind"]]=int(r["t"])
+        out["差引"]=out["収入"]-out["経費"]
+        return out
     def annual_category_summary(self,year):
         rows=self.conn.execute("SELECT kind,category,SUM(amount_yen) t FROM transactions WHERE txn_date LIKE ? GROUP BY kind,category ORDER BY kind,category",(f"{year:04d}-%",)).fetchall()
         return [dict(r) for r in rows]
