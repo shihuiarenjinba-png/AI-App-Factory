@@ -170,13 +170,22 @@ def find_duplicate_groups(rows):
                     before=os.fstat(stream.fileno())
                     if not stat.S_ISREG(before.st_mode) or not 0<before.st_size<=MAX_BYTES or before.st_size!=size:
                         raise ValueError("File no longer matches inventory size")
+                    # A re-saved same-size file can hash equal but no longer match
+                    # the inventory snapshot. Never present it as a verified group.
+                    expected_mtime=rows[index].get("modified_ns")
+                    if expected_mtime is not None and before.st_mtime_ns!=expected_mtime:
+                        raise ValueError("File modified since inventory scan; rescan before duplicate review")
                     digest=hashlib.sha256()
                     while True:
                         chunk=stream.read(1048576)
                         if not chunk:break
                         digest.update(chunk)
                     after=os.fstat(stream.fileno())
-                    if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns) or path.is_symlink():
+                    # Detect writes, inode swaps and path replacement during hashing.
+                    current=path.stat()
+                    identity=lambda st:(st.st_dev,st.st_ino,st.st_size,st.st_mtime_ns)
+                    if (identity(before)!=identity(after) or identity(before)!=identity(current)
+                            or path.is_symlink()):
                         raise ValueError("File changed during hashing")
                 hashed.setdefault((size,digest.hexdigest()),[]).append(index)
             except (OSError,ValueError) as exc:
