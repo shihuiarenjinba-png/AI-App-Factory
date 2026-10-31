@@ -3,6 +3,7 @@ import csv,os,sqlite3
 from datetime import date
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from pathlib import Path
+from account_catalog import ACCOUNT_CATALOG,BOOK_GUIDE
 TYPES=("資産","負債","純資産","収益","費用")
 DEFAULT=[
 ("1000","現金","資産"),("1010","小口現金","資産"),("1100","普通預金","資産"),("1110","当座預金","資産"),("1120","定期預金","資産"),
@@ -58,17 +59,44 @@ def y(v):
  return int(d.quantize(Decimal("1"),rounding=ROUND_HALF_UP))
 class Store:
  def __init__(self,path=None):
-  self.path=Path(path) if path else pth();self.path.parent.mkdir(parents=True,exist_ok=True);self.conn=sqlite3.connect(self.path);self.conn.row_factory=sqlite3.Row;self.schema();self.seed()
+  self.path=Path(path) if path else pth();self.path.parent.mkdir(parents=True,exist_ok=True);self.conn=sqlite3.connect(self.path);self.conn.row_factory=sqlite3.Row;self.schema();self.seed();self.seed_help()
  def schema(self):
   self.conn.executescript("""PRAGMA foreign_keys=ON;
   CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL,type TEXT NOT NULL CHECK(type IN ('資産','負債','純資産','収益','費用')),active INTEGER NOT NULL DEFAULT 1);
   CREATE TABLE IF NOT EXISTS entries(id INTEGER PRIMARY KEY AUTOINCREMENT,entry_date TEXT NOT NULL,description TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
   CREATE TABLE IF NOT EXISTS lines(id INTEGER PRIMARY KEY AUTOINCREMENT,entry_id INTEGER NOT NULL REFERENCES entries(id) ON DELETE CASCADE,account_id INTEGER NOT NULL REFERENCES accounts(id),debit_yen INTEGER NOT NULL DEFAULT 0 CHECK(debit_yen>=0),credit_yen INTEGER NOT NULL DEFAULT 0 CHECK(credit_yen>=0),CHECK((debit_yen>0 AND credit_yen=0) OR (credit_yen>0 AND debit_yen=0)));
   CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY,value TEXT NOT NULL);
-  CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,action TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);""");self.conn.commit()
+  CREATE TABLE IF NOT EXISTS audit_log(id INTEGER PRIMARY KEY AUTOINCREMENT,action TEXT NOT NULL,detail TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);
+  CREATE TABLE IF NOT EXISTS account_help(code TEXT PRIMARY KEY,name TEXT NOT NULL,type TEXT NOT NULL,audience TEXT NOT NULL,use_text TEXT NOT NULL,books TEXT NOT NULL,keywords TEXT NOT NULL,example TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS book_help(book TEXT PRIMARY KEY,purpose TEXT NOT NULL,keywords TEXT NOT NULL);
+  CREATE TABLE IF NOT EXISTS receipt_queue(id INTEGER PRIMARY KEY AUTOINCREMENT,file_path TEXT NOT NULL UNIQUE,status TEXT NOT NULL DEFAULT 'PENDING',suggested_entry TEXT NOT NULL DEFAULT '',note TEXT NOT NULL DEFAULT '',created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP);""");self.conn.commit()
  def seed(self):
   if self.conn.execute("SELECT COUNT(*) FROM accounts").fetchone()[0]:return
   with self.conn:self.conn.executemany("INSERT INTO accounts(code,name,type) VALUES(?,?,?)",DEFAULT)
+ def seed_help(self):
+  with self.conn:
+   for a in ACCOUNT_CATALOG:self.conn.execute("INSERT OR REPLACE INTO account_help(code,name,type,audience,use_text,books,keywords,example) VALUES(?,?,?,?,?,?,?,?)",(a["code"],a["name"],a["type"],a["audience"],a["use"]," / ".join(a["books"])," / ".join(a["keywords"]),a["example"]))
+   for b in BOOK_GUIDE:self.conn.execute("INSERT OR REPLACE INTO book_help(book,purpose,keywords) VALUES(?,?,?)",(b["book"],b["purpose"]," / ".join(b["keywords"])))
+ def search_help(self,q,limit=8,include_advanced=True):
+  q=(q or "").strip()
+  if not q:return []
+  like=f"%{q}%";sql="SELECT code,name,type,audience,use_text,books,keywords,example FROM account_help WHERE (name LIKE ? OR use_text LIKE ? OR keywords LIKE ? OR example LIKE ? OR books LIKE ?)"
+  args=[like]*5
+  if not include_advanced:sql+=" AND audience!='advanced'"
+  sql+=" ORDER BY CASE WHEN name=? THEN 0 WHEN name LIKE ? THEN 1 ELSE 2 END, code LIMIT ?";args.extend([q,like,max(1,min(int(limit),30))])
+  return [dict(r) for r in self.conn.execute(sql,args)]
+ def search_book_help(self,q,limit=5):
+  q=(q or "").strip()
+  if not q:return []
+  like=f"%{q}%";return [dict(r) for r in self.conn.execute("SELECT book,purpose,keywords FROM book_help WHERE book LIKE ? OR purpose LIKE ? OR keywords LIKE ? ORDER BY book LIMIT ?",(like,like,like,max(1,min(int(limit),20))))]
+ def enqueue_receipts(self,paths):
+  n=0
+  with self.conn:
+   for p in paths:
+    p=str(p).strip()
+    if p:
+     cur=self.conn.execute("INSERT OR IGNORE INTO receipt_queue(file_path) VALUES(?)",(p,));n+=cur.rowcount
+  return n
  def accounts(self):return [dict(r) for r in self.conn.execute("SELECT * FROM accounts WHERE active=1 ORDER BY code")]
  def add_account(self,code,name,t):
   if not code.strip() or not name.strip() or t not in TYPES:raise BookError("科目コード・名称・区分を確認してください")
