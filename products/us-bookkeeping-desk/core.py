@@ -1,5 +1,5 @@
 from __future__ import annotations
-import csv,os,sqlite3
+import csv,os,re,sqlite3
 from datetime import date
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from pathlib import Path
@@ -40,16 +40,23 @@ def review_requirements_for_codes(codes):
  return out
 
 def suggest_entry(text):
+ """Offer a reviewable candidate only when the local evidence is unambiguous."""
  hay=(text or "").strip().lower()
  if not hay:return None
- best=None
+ candidates=[]
  for words,debit,credit,label in SUGGEST_ENTRY_RULES:
-  hits=[w for w in words if w in hay]
+  # Substrings are unsafe for financial categorization ("gas" in "Vegas").
+  hits=[w for w in words if re.search(r"(?<![A-Za-z0-9])"+re.escape(w)+r"(?![A-Za-z0-9])",hay)]
   if hits:
    score=min(0.95,0.58+0.12*len(hits))
-   cand={"debit_code":debit,"credit_code":credit,"label":label,"confidence":round(score,2),"matched":hits,"review_reasons":review_requirements_for_codes([debit,credit])}
-   if best is None or cand["confidence"]>best["confidence"]:best=cand
- return best
+   candidates.append({"debit_code":debit,"credit_code":credit,"label":label,
+                      "confidence":round(score,2),"matched":hits,
+                      "review_reasons":review_requirements_for_codes([debit,credit])})
+ candidates.sort(key=lambda item:(-item["confidence"],item["debit_code"],item["credit_code"]))
+ # Equal top scores across different journal rules are not evidence of a reliable entry.
+ if len(candidates)>1 and candidates[0]["confidence"]==candidates[1]["confidence"]:
+  return None
+ return candidates[0] if candidates else None
 class BookError(ValueError):pass
 def pth():
  b=Path(os.environ.get("APPDATA") or (Path.home()/".local"/"share"));p=b/"USBookkeepingDesk";p.mkdir(parents=True,exist_ok=True);return p/"books.sqlite3"
