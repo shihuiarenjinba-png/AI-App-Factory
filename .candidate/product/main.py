@@ -1,425 +1,478 @@
-"""Private offline image-header inventory. No image writes or network."""
-import csv, hashlib, io, json, os, shutil, stat, struct, tempfile
+from __future__ import annotations
+import csv
+import json
+from dataclasses import dataclass, asdict
+from datetime import date, datetime
+from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, filedialog, messagebox
+from tkinter import filedialog, messagebox, simpledialog, ttk
 
-MAX_BYTES=64*1024*1024
-MAX_ITEMS=200
-# Conservative, non-certifying MSIX desktop screenshot triage.
-# Microsoft: PNG, landscape/portrait, desktop 1366x768+, up to 10, <=50 MB.
-# Portrait dimension interpretation and MB byte boundary require manual review.
-MSIX_PROFILE_URL="https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images"
-MSIX_PROFILE_CHECKED="2026-10-31"
-MSIX_DESKTOP_MAX_SCREENSHOTS=10
+APP_NAME = "Local Double-Entry Bookkeeper"
+ACCOUNT_TYPES = ("asset", "liability", "equity", "income", "expense")
+DEFAULT_ACCOUNTS = [
+    ("1000", "Cash", "asset"),
+    ("1010", "Bank", "asset"),
+    ("1100", "Accounts Receivable", "asset"),
+    ("1500", "Equipment", "asset"),
+    ("2000", "Accounts Payable", "liability"),
+    ("2100", "Loan Payable", "liability"),
+    ("3000", "Owner's Equity", "equity"),
+    ("4000", "Sales", "income"),
+    ("4100", "Service Revenue", "income"),
+    ("5000", "Rent Expense", "expense"),
+    ("5100", "Supplies Expense", "expense"),
+    ("5200", "Utilities Expense", "expense"),
+    ("5900", "Miscellaneous Expense", "expense"),
+]
 
-def check_msix_screenshot(row):
-    """Return a triage code and actionable explanation; NEVER Store approval."""
-    fmt,w,h,n=(row["format"],row["width"],row["height"],row["bytes"])
-    if fmt!="PNG":
-        return "FAIL_FORMAT","MSIX screenshots require PNG; select or export a PNG."
-    if n>50*1024*1024:
-        return "FAIL_SIZE","Larger than 50 MiB; exceeds either common 50 MB interpretation."
-    if n>=50_000_000:
-        return "REVIEW_SIZE_LIMIT","Near the 50 MB boundary; confirm Partner Center byte interpretation."
-    if w<h:
-        if max(w,h)<1366 or min(w,h)<768:
-            return "FAIL_DIMENSIONS","Below the documented 1366 x 768 desktop minimum."
-        return "REVIEW_PORTRAIT","Portrait is permitted; confirm how desktop minima apply to orientation."
-    if w<1366 or h<768:
-        return "FAIL_DIMENSIONS","Desktop screenshot should be at least 1366 x 768."
-    return "BASIC_CANDIDATE","Header-only checks look plausible; visual content and upload still need review."
+def app_data_dir() -> Path:
+    import os
+    root = os.environ.get("APPDATA")
+    path = Path(root) / "LocalDoubleEntryBookkeeper" if root else Path.home() / ".local-double-entry-bookkeeper"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
 
-def msix_summary(rows):
-    counts={}
-    for row in rows:
-        code,_=check_msix_screenshot(row)
-        counts[code]=counts.get(code,0)+1
-    return {"images":len(rows),"issues":len(rows)-counts.get("BASIC_CANDIDATE",0),
-            "over_limit":len(rows)>MSIX_DESKTOP_MAX_SCREENSHOTS,"counts":counts}
-
-def select_inventory(rows, orientation="all", min_width=0, min_height=0,
-                     max_bytes=None, issues_only=False):
-    """Return (original index, row) pairs; filtering never mutates a snapshot."""
-    if orientation not in ("all", "landscape", "portrait", "square"):
-        raise ValueError("Invalid orientation filter")
-    for value in (min_width, min_height):
-        if type(value) is not int or not 0 <= value <= 100000:
-            raise ValueError("Invalid minimum dimension")
-    if max_bytes is not None and (type(max_bytes) is not int or not 0 < max_bytes <= MAX_BYTES):
-        raise ValueError("Invalid maximum size")
-    if type(issues_only) is not bool:
-        raise ValueError("Invalid issues-only filter")
-    result=[]
-    for index,row in enumerate(rows):
-        width,height=row["width"],row["height"]
-        shape="square" if width==height else "landscape" if width>height else "portrait"
-        if orientation!="all" and orientation!=shape:continue
-        if width<min_width or height<min_height:continue
-        if max_bytes is not None and row["bytes"]>max_bytes:continue
-        if issues_only and check_msix_screenshot(row)[0]=="BASIC_CANDIDATE":continue
-        result.append((index,row))
-    return result
-
-LABELS={
-"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","store_review":"Review Store issues","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10.","filter":"Apply filters","reset_filter":"Reset","all":"All","landscape":"Wide","portrait":"Tall","square":"Square","min_w":"Min width","min_h":"Min height","max_mib":"Max MiB","shown":"Showing {shown}/{n}.","batch_over":"Batch exceeds 10 screenshots; remove extras before upload.","invalid_filter":"Enter whole-number minimum dimensions (0-100000) and max MiB (1-64).","duplicates":"Find duplicates","duplicate_col":"Duplicate group","duplicate_summary":"Duplicate candidates: {files} files in {groups} groups; unreadable: {errors}. Reset shows all."},
-"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","store_review":"Store要確認だけ表示","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。","filter":"絞り込み","reset_filter":"解除","all":"全て","landscape":"横長","portrait":"縦長","square":"正方形","min_w":"幅以上","min_h":"高さ以上","max_mib":"容量上限MiB","shown":"表示 {shown}/{n}件。","batch_over":"10枚を超えています。提出前に枚数を減らしてください。","invalid_filter":"最小幅・高さは0〜100000の整数、容量上限は1〜64 MiBの整数で入力してください。","duplicates":"重複候補を探す","duplicate_col":"重複グループ","duplicate_summary":"重複候補：{files}件・{groups}グループ、読取不可：{errors}件。解除で全件表示。"}}
-
-def jpeg_dimensions(data):
-    if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
-    i=2
-    while i<len(data):
-        if data[i]!=255: raise ValueError("Invalid JPEG marker")
-        while i<len(data) and data[i]==255:i+=1
-        if i>=len(data):break
-        marker=data[i];i+=1
-        if marker in (0xd8,0x01) or 0xd0<=marker<=0xd7:continue
-        if marker in (0xd9,0xda):break
-        if i+2>len(data):break
-        length=int.from_bytes(data[i:i+2],"big")
-        if length<2 or i+length>len(data):raise ValueError("Truncated JPEG")
-        if marker in (0xc0,0xc1,0xc2,0xc3,0xc5,0xc6,0xc7,0xc9,0xca,0xcb,0xcd,0xce,0xcf):
-            if length<7:raise ValueError("Invalid JPEG frame")
-            return int.from_bytes(data[i+5:i+7],"big"),int.from_bytes(data[i+3:i+5],"big")
-        i+=length
-    raise ValueError("JPEG frame not found in first MiB")
-
-def inspect_image(path):
-    p=Path(path).absolute()
-    if p.is_symlink():raise ValueError("Symlink rejected")
-    st=p.stat()
-    if not stat.S_ISREG(st.st_mode) or not 0<st.st_size<=MAX_BYTES:
-        raise ValueError("Not a regular image within 64 MiB")
-    with p.open("rb") as f:data=f.read(min(st.st_size,1048576))
-    if data.startswith(b"\x89PNG\r\n\x1a\n"):
-        if len(data)<24 or data[12:16]!=b"IHDR" or int.from_bytes(data[8:12],"big")!=13:
-            raise ValueError("Invalid PNG")
-        w,h=struct.unpack(">II",data[16:24]);fmt="PNG"
-    elif data[:6] in (b"GIF87a",b"GIF89a"):
-        if len(data)<10:raise ValueError("Invalid GIF")
-        w,h=struct.unpack("<HH",data[6:10]);fmt="GIF"
-    elif data.startswith(b"BM"):
-        if len(data)<26 or int.from_bytes(data[14:18],"little")<40:raise ValueError("Invalid BMP")
-        w,h=struct.unpack("<ii",data[18:26]);h=abs(h);fmt="BMP"
-    elif data.startswith(b"\xff\xd8"):
-        w,h=jpeg_dimensions(data);fmt="JPEG"
-    else:raise ValueError("Unsupported image")
-    if not 1<=w<=100000 or not 1<=h<=100000:raise ValueError("Invalid dimensions")
-    return {"path":str(p),"format":fmt,"width":w,"height":h,"bytes":st.st_size}
-
-def scan(paths):
-    if not isinstance(paths,(tuple,list)) or len(paths)>MAX_ITEMS:raise ValueError("Too many images")
-    rows=[];errors=[];seen=set()
-    for item in paths:
-        try:
-            if not isinstance(item,(str,Path)):raise ValueError("Invalid path")
-            p=Path(item).absolute()
-            if len(str(p))>4096 or str(p) in seen:raise ValueError("Duplicate or oversized path")
-            seen.add(str(p));rows.append(inspect_image(p))
-        except (OSError,ValueError,struct.error) as exc:errors.append((str(item),str(exc)))
-    return rows,errors
-
-def append_images(existing, paths):
-    """Append new files without rescanning or silently dropping saved inventory rows."""
-    if not isinstance(existing, list) or not isinstance(paths, (list, tuple)):
-        raise ValueError("Invalid inventory")
-    if len(existing) + len(paths) > MAX_ITEMS:
-        raise ValueError("Too many images")
-    rows = list(existing)
-    errors = []
-    seen = {row["path"] for row in existing}
-    for item in paths:
-        try:
-            if not isinstance(item, (str, Path)):
-                raise ValueError("Invalid path")
-            path = Path(item).absolute()
-            if len(str(path)) > 4096 or str(path) in seen:
-                raise ValueError("Duplicate or oversized path")
-            seen.add(str(path))
-            rows.append(inspect_image(path))
-        except (OSError, ValueError, struct.error) as exc:
-            errors.append((str(item), str(exc)))
-    return rows, errors
-
-
-def find_duplicate_groups(rows):
-    """Read-only SHA256 groups of same-size files; no image writes or deletion."""
-    if not isinstance(rows,list) or len(rows)>MAX_ITEMS:
-        raise ValueError("Invalid inventory")
-    sizes={}
-    for index,row in enumerate(rows):
-        sizes.setdefault(row["bytes"],[]).append(index)
-    hashed={};errors=[]
-    for size,indexes in sizes.items():
-        if len(indexes)<2:continue
-        for index in indexes:
-            path=Path(rows[index]["path"]).absolute()
-            try:
-                if path.is_symlink():raise ValueError("Symlink rejected")
-                flags=os.O_RDONLY|getattr(os,"O_BINARY",0)|getattr(os,"O_NOFOLLOW",0)
-                fd=os.open(path,flags)
-                with os.fdopen(fd,"rb") as stream:
-                    before=os.fstat(stream.fileno())
-                    if not stat.S_ISREG(before.st_mode) or not 0<before.st_size<=MAX_BYTES or before.st_size!=size:
-                        raise ValueError("File no longer matches inventory size")
-                    digest=hashlib.sha256()
-                    while True:
-                        chunk=stream.read(1048576)
-                        if not chunk:break
-                        digest.update(chunk)
-                    after=os.fstat(stream.fileno())
-                    if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns) or path.is_symlink():
-                        raise ValueError("File changed during hashing")
-                hashed.setdefault((size,digest.hexdigest()),[]).append(index)
-            except (OSError,ValueError) as exc:
-                errors.append((str(path),str(exc)))
-    groups={};number=0
-    for indexes in hashed.values():
-        if len({rows[i]["path"] for i in indexes})<2:continue
-        number+=1
-        for index in indexes:groups[index]="D"+str(number)
-    return groups,errors
-
-def validate_session(value):
-    if not isinstance(value,dict) or set(value)!={"schema","paths"} or type(value["schema"]) is not int or value["schema"]!=1:
-        raise ValueError("Invalid session schema")
-    paths=value["paths"]
-    if not isinstance(paths,list) or len(paths)>MAX_ITEMS or any(not isinstance(p,str) or not p or len(p)>4096 or not Path(p).is_absolute() for p in paths) or len(set(paths))!=len(paths):
-        raise ValueError("Invalid session paths")
+def validate_date(value: str) -> str:
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        raise ValueError("Date must be YYYY-MM-DD.")
     return value
 
-def atomic_write(path,content,protected=()):
-    p=Path(path).absolute();guard={Path(x).absolute() for x in protected}
-    backup=p.with_name(p.name+".bak")
-    if p in guard or backup in guard or p.is_symlink() or backup.is_symlink() or not p.parent.is_dir() or (p.exists() and not p.is_file()) or (backup.exists() and not backup.is_file()):
-        raise ValueError("Unsafe output path")
-    if p.exists():shutil.copyfile(p,backup)
-    fd,tmp=tempfile.mkstemp(prefix=".image-inventory-",dir=p.parent)
+def parse_money(text: str) -> int:
     try:
-        with os.fdopen(fd,"w",encoding="utf-8",newline="") as f:
-            f.write(content);f.flush();os.fsync(f.fileno())
-        os.replace(tmp,p)
-    finally:
-        if os.path.exists(tmp):os.unlink(tmp)
+        value = Decimal(str(text).replace(",", "").strip()).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+    except InvalidOperation:
+        raise ValueError("Enter a valid amount.")
+    if value <= 0:
+        raise ValueError("Amount must be greater than zero.")
+    return int(value * 100)
 
-def save_session(path,rows):
-    value=validate_session({"schema":1,"paths":[r["path"] for r in rows]})
-    content=json.dumps(value,ensure_ascii=False,indent=2)+"\n"
-    if len(content.encode("utf-8"))>1048576:raise ValueError("Session too large")
-    atomic_write(path,content,[r["path"] for r in rows])
+def money(cents: int) -> str:
+    sign = "-" if cents < 0 else ""
+    return f"{sign}{abs(cents) / 100:,.2f}"
 
-def load_session(path):
-    p=Path(path).absolute()
-    if p.is_symlink() or p.stat().st_size>1048576:raise ValueError("Unsafe session")
-    return validate_session(json.loads(p.read_text(encoding="utf-8")))
+@dataclass
+class Account:
+    code: str
+    name: str
+    type: str
 
-def recover_session(path):
-    p=Path(path).absolute()
-    return load_session(p.with_name(p.name+".bak"))
+@dataclass
+class Line:
+    account_code: str
+    debit: int = 0
+    credit: int = 0
 
-def export_csv(path,rows):
-    if not rows:raise ValueError("No images")
-    output=io.StringIO(newline="");writer=csv.writer(output,lineterminator="\n")
-    writer.writerow(["path","format","width","height","bytes"])
-    for row in rows:writer.writerow([row[k] for k in ("path","format","width","height","bytes")])
-    atomic_write(path,output.getvalue(),[r["path"] for r in rows])
+@dataclass
+class Entry:
+    id: int
+    date: str
+    memo: str
+    reference: str
+    lines: list
 
-def export_msix_csv(path,rows):
-    """Export reproducible per-file triage without changing source images."""
-    if not rows:raise ValueError("No images")
-    output=io.StringIO(newline="");writer=csv.writer(output,lineterminator="\n")
-    writer.writerow(["path","format","width","height","bytes","msix_check","action",
-                     "profile_checked","profile_source","batch_count","desktop_limit","batch_check"])
-    for row in rows:
-        code,reason=check_msix_screenshot(row)
-        writer.writerow([row[k] for k in ("path","format","width","height","bytes")]+
-                        [code,reason,MSIX_PROFILE_CHECKED,MSIX_PROFILE_URL,
-                         len(rows),MSIX_DESKTOP_MAX_SCREENSHOTS,
-                         "REVIEW_BATCH_LIMIT" if len(rows)>MSIX_DESKTOP_MAX_SCREENSHOTS else ""])
-    atomic_write(path,output.getvalue(),[r["path"] for r in rows])
+class Book:
+    def __init__(self, accounts=None, entries=None):
+        self.accounts = accounts or [Account(*row) for row in DEFAULT_ACCOUNTS]
+        self.entries = entries or []
 
-class Desk:
-    def __init__(self,root):
-        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False)
-        self.orientation=tk.StringVar(value="all")
-        self.min_width=tk.StringVar();self.min_height=tk.StringVar();self.max_mib=tk.StringVar()
-        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
-        self.duplicate_groups={};self.duplicates_only=False
-        root.geometry("1024x768");root.minsize(850,600)
-        body=ttk.Frame(root,padding=12);body.pack(fill="both",expand=True)
-        self.heading=ttk.Label(body,font=("Segoe UI",18,"bold"));self.heading.pack(anchor="w")
-        self.intro=ttk.Label(body,wraplength=950);self.intro.pack(anchor="w",pady=8)
-        bar=ttk.Frame(body);bar.pack(fill="x",pady=6)
-        self.buttons={}
-        for key,fn in (("add",self.add),("remove",self.remove),("clear",self.clear),("save",self.save),("open",self.open),("export",self.export),("duplicates",self.find_duplicates)):
-            b=ttk.Button(bar,command=fn);b.pack(side="left",padx=(0,5));self.buttons[key]=b
-        self.lang=ttk.Button(bar,command=self.toggle);self.lang.pack(side="right")
-        checkbar=ttk.Frame(body);checkbar.pack(fill="x",pady=(2,4))
-        self.preflight_box=ttk.Checkbutton(checkbar,variable=self.preflight,command=self.toggle_preflight)
-        self.preflight_box.pack(side="left",padx=(0,12))
-        self.issues_box=ttk.Checkbutton(checkbar,variable=self.issues,command=self.refresh)
-        self.issues_box.pack(side="left",padx=(0,12))
-        self.check_export_button=ttk.Button(checkbar,command=self.export_check)
-        self.check_export_button.pack(side="left")
-        self.store_review_button=ttk.Button(checkbar,command=self.store_review_preset)
-        self.store_review_button.pack(side="left",padx=(8,0))
-        filters=ttk.Frame(body);filters.pack(fill="x",pady=(2,4))
-        self.orientation_buttons={}
-        for key in ("all","landscape","portrait","square"):
-            widget=ttk.Radiobutton(filters,variable=self.orientation,value=key)
-            widget.pack(side="left",padx=(0,5));self.orientation_buttons[key]=widget
-        self.filter_labels={}
-        for key,var,width in (("min_w",self.min_width,6),("min_h",self.min_height,6),
-                              ("max_mib",self.max_mib,5)):
-            label=ttk.Label(filters);label.pack(side="left",padx=(7,2))
-            self.filter_labels[key]=label
-            ttk.Entry(filters,textvariable=var,width=width).pack(side="left")
-        self.apply_button=ttk.Button(filters,command=self.apply_filters)
-        self.apply_button.pack(side="left",padx=(8,2))
-        self.reset_button=ttk.Button(filters,command=self.reset_filters)
-        self.reset_button.pack(side="left",padx=2)
-        self.notice=ttk.Label(body,wraplength=950);self.notice.pack(anchor="w")
-        frame=ttk.Frame(body);frame.pack(fill="both",expand=True,pady=6)
-        self.tree=ttk.Treeview(frame,columns=("path","format","dimensions","bytes","check","duplicate_col"),show="headings",selectmode="extended")
-        for k,width in (("path",290),("format",65),("dimensions",110),("bytes",85),("check",150),("duplicate_col",115)):
-            self.tree.column(k,width=width,stretch=k=="path")
-        scroll=ttk.Scrollbar(frame,orient="vertical",command=self.tree.yview)
-        self.tree.configure(yscrollcommand=scroll.set)
-        self.tree.pack(side="left",fill="both",expand=True);scroll.pack(side="right",fill="y")
-        ttk.Label(body,textvariable=self.status,wraplength=950).pack(anchor="w",pady=4)
-        self.localize();self.status.set(self.t("ready"))
-    def t(self,key):return LABELS[self.language][key]
-    def localize(self):
-        self.root.title(self.t("title"));self.heading.configure(text=self.t("title"))
-        self.intro.configure(text=self.t("help"));self.lang.configure(text=self.t("lang"))
-        for k,b in self.buttons.items():b.configure(text=self.t(k))
-        self.preflight_box.configure(text=self.t("preflight"))
-        self.issues_box.configure(text=self.t("issues"))
-        self.check_export_button.configure(text=self.t("check_export"))
-        self.store_review_button.configure(text=self.t("store_review"))
-        self.notice.configure(text=self.t("notice") if self.preflight.get() else "")
-        for key,widget in self.orientation_buttons.items():widget.configure(text=self.t(key))
-        for key,widget in self.filter_labels.items():widget.configure(text=self.t(key))
-        self.apply_button.configure(text=self.t("filter"))
-        self.reset_button.configure(text=self.t("reset_filter"))
-        for k in ("path","format","dimensions","bytes","check","duplicate_col"):self.tree.heading(k,text=self.t(k))
-    def toggle(self):
-        self.language="ja" if self.language=="en" else "en";self.localize()
-    def toggle_preflight(self):
-        if not self.preflight.get():self.issues.set(False)
-        self.localize();self.refresh()
-    def store_review_preset(self):
-        """One-click, read-only Store review: reset stale filters, show issues."""
-        self.orientation.set("all")
-        self.min_width.set("");self.min_height.set("");self.max_mib.set("")
-        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
-        self.preflight.set(True);self.issues.set(True)
-        self.duplicates_only=False
-        self.localize();self.refresh()
+    def account_map(self):
+        return {a.code: a for a in self.accounts}
 
-    def find_duplicates(self):
-        groups,errors=find_duplicate_groups(self.rows)
-        self.orientation.set("all")
-        self.min_width.set("");self.min_height.set("");self.max_mib.set("")
-        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
-        self.issues.set(False)
-        self.duplicate_groups=groups;self.duplicates_only=True
-        self.refresh()
-        self.status.set(self.t("duplicate_summary").format(
-            files=len(groups),groups=len(set(groups.values())),errors=len(errors)))
-        if errors:self.error("\\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
+    def add_account(self, code: str, name: str, account_type: str):
+        code = code.strip()
+        name = name.strip()
+        if not code or not name:
+            raise ValueError("Account code and name are required.")
+        if account_type not in ACCOUNT_TYPES:
+            raise ValueError("Unknown account type.")
+        if code in self.account_map():
+            raise ValueError("Account code already exists.")
+        self.accounts.append(Account(code[:20], name[:100], account_type))
+        self.accounts.sort(key=lambda a: a.code)
 
-    def apply_filters(self):
+    def next_id(self):
+        return max((e.id for e in self.entries), default=0) + 1
+
+    def add_simple_entry(self, date_text, memo, reference, debit_code, credit_code, amount_text):
+        validate_date(date_text)
+        amap = self.account_map()
+        if debit_code not in amap or credit_code not in amap:
+            raise ValueError("Choose valid accounts.")
+        if debit_code == credit_code:
+            raise ValueError("Debit and credit accounts must differ.")
+        amount = parse_money(amount_text)
+        entry = Entry(
+            self.next_id(), date_text, memo.strip()[:300], reference.strip()[:100],
+            [Line(debit_code, debit=amount), Line(credit_code, credit=amount)]
+        )
+        self.entries.append(entry)
+        return entry
+
+    def add_entry(self, date_text, memo, reference, lines):
+        validate_date(date_text)
+        amap = self.account_map()
+        parsed = []
+        for line in lines:
+            if line.account_code not in amap:
+                raise ValueError("Unknown account.")
+            if line.debit < 0 or line.credit < 0 or (line.debit and line.credit):
+                raise ValueError("Each line must contain a non-negative debit or credit, not both.")
+            if not line.debit and not line.credit:
+                raise ValueError("Zero-value line.")
+            parsed.append(line)
+        if len(parsed) < 2:
+            raise ValueError("At least two lines are required.")
+        if sum(x.debit for x in parsed) != sum(x.credit for x in parsed):
+            raise ValueError("Entry is not balanced.")
+        entry = Entry(self.next_id(), date_text, memo.strip()[:300], reference.strip()[:100], parsed)
+        self.entries.append(entry)
+        return entry
+
+    def delete_entry(self, entry_id: int):
+        old = len(self.entries)
+        self.entries = [e for e in self.entries if e.id != entry_id]
+        return len(self.entries) != old
+
+    def trial_balance(self):
+        totals = {a.code: {"debit": 0, "credit": 0} for a in self.accounts}
+        for entry in self.entries:
+            for line in entry.lines:
+                totals[line.account_code]["debit"] += line.debit
+                totals[line.account_code]["credit"] += line.credit
+        return totals
+
+    def account_balance(self, code: str):
+        account = self.account_map()[code]
+        totals = self.trial_balance()[code]
+        if account.type in ("asset", "expense"):
+            return totals["debit"] - totals["credit"]
+        return totals["credit"] - totals["debit"]
+
+    def profit_loss(self):
+        income = sum(self.account_balance(a.code) for a in self.accounts if a.type == "income")
+        expenses = sum(self.account_balance(a.code) for a in self.accounts if a.type == "expense")
+        return {"income": income, "expenses": expenses, "profit": income - expenses}
+
+    def balance_sheet(self):
+        assets = sum(self.account_balance(a.code) for a in self.accounts if a.type == "asset")
+        liabilities = sum(self.account_balance(a.code) for a in self.accounts if a.type == "liability")
+        equity = sum(self.account_balance(a.code) for a in self.accounts if a.type == "equity")
+        earnings = self.profit_loss()["profit"]
+        return {
+            "assets": assets,
+            "liabilities": liabilities,
+            "equity": equity,
+            "current_earnings": earnings,
+            "difference": assets - (liabilities + equity + earnings),
+        }
+
+    def to_dict(self):
+        return {
+            "schema": 1,
+            "accounts": [asdict(a) for a in self.accounts],
+            "entries": [
+                {
+                    "id": e.id,
+                    "date": e.date,
+                    "memo": e.memo,
+                    "reference": e.reference,
+                    "lines": [asdict(line) for line in e.lines],
+                }
+                for e in self.entries
+            ],
+        }
+
+    @classmethod
+    def from_dict(cls, data):
+        if not isinstance(data, dict) or data.get("schema") != 1:
+            raise ValueError("Unsupported or invalid book file.")
+        accounts = [Account(**raw) for raw in data.get("accounts", [])]
+        if not accounts:
+            raise ValueError("Book must contain accounts.")
+        book = cls(accounts, [])
+        seen = set()
+        for raw in data.get("entries", []):
+            entry_id = int(raw["id"])
+            if entry_id in seen:
+                raise ValueError("Duplicate entry id.")
+            seen.add(entry_id)
+            lines = [Line(**line) for line in raw.get("lines", [])]
+            entry = book.add_entry(
+                raw["date"], raw.get("memo", ""), raw.get("reference", ""), lines
+            )
+            entry.id = entry_id
+        return book
+
+def save_atomic(path: Path, book: Book):
+    if path.is_symlink():
+        raise ValueError("Refusing to write through a symbolic link.")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    bak = path.with_suffix(path.suffix + ".bak")
+    tmp.write_text(json.dumps(book.to_dict(), ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    Book.from_dict(json.loads(tmp.read_text(encoding="utf-8")))
+    if path.exists():
+        bak_tmp = bak.with_suffix(bak.suffix + ".tmp")
+        bak_tmp.write_bytes(path.read_bytes())
+        bak_tmp.replace(bak)
+    tmp.replace(path)
+
+def load_book(path: Path) -> Book:
+    try:
+        return Book.from_dict(json.loads(path.read_text(encoding="utf-8")))
+    except Exception:
+        bak = path.with_suffix(path.suffix + ".bak")
+        if bak.exists():
+            return Book.from_dict(json.loads(bak.read_text(encoding="utf-8")))
+        raise
+
+def export_journal_csv(path: Path, book: Book):
+    amap = book.account_map()
+    with path.open("w", newline="", encoding="utf-8-sig") as handle:
+        writer = csv.writer(handle)
+        writer.writerow([
+            "entry_id", "date", "memo", "reference", "account_code",
+            "account_name", "debit", "credit"
+        ])
+        for entry in sorted(book.entries, key=lambda e: (e.date, e.id)):
+            for line in entry.lines:
+                writer.writerow([
+                    entry.id, entry.date, entry.memo, entry.reference,
+                    line.account_code, amap[line.account_code].name,
+                    money(line.debit) if line.debit else "",
+                    money(line.credit) if line.credit else "",
+                ])
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title(APP_NAME)
+        self.geometry("1100x760")
+        self.minsize(980, 680)
+        self.path = app_data_dir() / "book.json"
         try:
-            width=int(self.min_width.get().strip() or "0")
-            height=int(self.min_height.get().strip() or "0")
-            text=self.max_mib.get().strip()
-            limit=int(text) if text else None
-            if limit is not None and not 1<=limit<=64:
-                raise ValueError("Maximum MiB must be between 1 and 64")
-            selected={"orientation":self.orientation.get(),"min_width":width,
-                      "min_height":height,"max_bytes":limit*1048576 if limit else None}
-            select_inventory(self.rows,**selected)
-        except ValueError:
-            self.error(self.t("invalid_filter"));return
-        self.active_filter=selected;self.refresh()
-    def reset_filters(self):
-        self.orientation.set("all");self.min_width.set("");self.min_height.set("")
-        self.max_mib.set("")
-        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
-        self.duplicates_only=False
-        self.refresh()
-    def refresh(self):
-        for i in self.tree.get_children():self.tree.delete(i)
-        selected=select_inventory(self.rows,**self.active_filter,
-                                  issues_only=self.preflight.get() and self.issues.get())
-        if self.duplicates_only:selected=[(i,r) for i,r in selected if i in self.duplicate_groups]
-        for i,r in selected:
-            code,_=check_msix_screenshot(r) if self.preflight.get() else ("NOT_CHECKED","")
-            self.tree.insert("","end",iid=str(i),values=(
-                r["path"],r["format"],str(r["width"])+" × "+str(r["height"]),
-                str(r["bytes"]),code if self.preflight.get() else "—",self.duplicate_groups.get(i,"")))
-        if self.preflight.get():
-            summary=msix_summary(self.rows)
-            message=self.t("summary").format(n=summary["images"],issues=summary["issues"])
-            message+=" "+self.t("shown").format(shown=len(selected),n=len(self.rows))
-            if summary["over_limit"]:message+=" "+self.t("batch_over")
-            self.status.set(message)
+            self.book = load_book(self.path) if self.path.exists() else Book()
+        except Exception as exc:
+            messagebox.showwarning(APP_NAME, f"Could not load book. Starting new.\n{exc}")
+            self.book = Book()
+
+        self.date_var = tk.StringVar(value=date.today().isoformat())
+        self.memo = tk.StringVar()
+        self.reference = tk.StringVar()
+        self.amount = tk.StringVar()
+        self.debit = tk.StringVar()
+        self.credit = tk.StringVar()
+        self.status = tk.StringVar(value="Local only / ローカル保存")
+        self._build()
+        self.refresh_all()
+
+    def _build(self):
+        header = ttk.Frame(self, padding=10)
+        header.pack(fill="x")
+        ttk.Label(header, text=APP_NAME, font=("Segoe UI", 16, "bold")).pack(side="left")
+        ttk.Button(header, text="Export journal CSV / 仕訳CSV", command=self.export).pack(side="right")
+        ttk.Label(
+            self,
+            text="Double-entry bookkeeping only; tax filing and tax advice are outside this app. / 複式簿記用。税務申告・税務判断は対象外です。",
+            foreground="#555", padding=(10, 0, 10, 8)
+        ).pack(fill="x")
+
+        self.tabs = ttk.Notebook(self)
+        self.tabs.pack(fill="both", expand=True, padx=10, pady=(0, 10))
+        self.journal_tab = ttk.Frame(self.tabs, padding=10)
+        self.accounts_tab = ttk.Frame(self.tabs, padding=10)
+        self.reports_tab = ttk.Frame(self.tabs, padding=10)
+        self.tabs.add(self.journal_tab, text="Journal / 仕訳")
+        self.tabs.add(self.accounts_tab, text="Accounts / 勘定科目")
+        self.tabs.add(self.reports_tab, text="Reports / 帳票")
+        self._build_journal()
+        self._build_accounts()
+        self._build_reports()
+        ttk.Label(self, textvariable=self.status, padding=(10, 0, 10, 8)).pack(fill="x")
+
+    def _build_journal(self):
+        form = ttk.LabelFrame(self.journal_tab, text="Simple balanced entry / 1対1仕訳", padding=10)
+        form.pack(fill="x")
+        row1 = ttk.Frame(form); row1.pack(fill="x", pady=3)
+        self._field(row1, "Date / 日付", self.date_var, 12)
+        self._field(row1, "Memo / 摘要", self.memo, 30)
+        self._field(row1, "Ref / 証憑", self.reference, 16)
+
+        row2 = ttk.Frame(form); row2.pack(fill="x", pady=3)
+        ttk.Label(row2, text="Debit / 借方").pack(side="left")
+        self.debit_box = ttk.Combobox(row2, textvariable=self.debit, state="readonly", width=30)
+        self.debit_box.pack(side="left", padx=(4, 10))
+        ttk.Label(row2, text="Credit / 貸方").pack(side="left")
+        self.credit_box = ttk.Combobox(row2, textvariable=self.credit, state="readonly", width=30)
+        self.credit_box.pack(side="left", padx=(4, 10))
+        self._field(row2, "Amount / 金額", self.amount, 14)
+        ttk.Button(row2, text="Post / 記帳", command=self.post).pack(side="left", padx=8)
+
+        columns = ("date", "memo", "debit", "credit", "amount", "ref")
+        self.tree = ttk.Treeview(self.journal_tab, columns=columns, show="headings", selectmode="browse")
+        for name, title, width in [
+            ("date", "Date", 90), ("memo", "Memo", 260), ("debit", "Debit", 180),
+            ("credit", "Credit", 180), ("amount", "Amount", 110), ("ref", "Ref", 120)
+        ]:
+            self.tree.heading(name, text=title)
+            self.tree.column(name, width=width, anchor="w")
+        self.tree.pack(fill="both", expand=True, pady=10)
+        ttk.Button(self.journal_tab, text="Delete selected / 選択削除", command=self.delete).pack(anchor="e")
+
+    def _build_accounts(self):
+        columns = ("code", "name", "type", "balance")
+        self.accounts_tree = ttk.Treeview(self.accounts_tab, columns=columns, show="headings")
+        for name, title, width in [
+            ("code", "Code", 90), ("name", "Account / 科目", 300),
+            ("type", "Type", 120), ("balance", "Balance", 130)
+        ]:
+            self.accounts_tree.heading(name, text=title)
+            self.accounts_tree.column(name, width=width, anchor="w")
+        self.accounts_tree.pack(fill="both", expand=True)
+        ttk.Button(self.accounts_tab, text="Add account / 科目追加", command=self.add_account_dialog).pack(anchor="e", pady=8)
+
+    def _build_reports(self):
+        self.report_text = tk.Text(self.reports_tab, wrap="none", height=28)
+        self.report_text.pack(fill="both", expand=True)
+        buttons = ttk.Frame(self.reports_tab); buttons.pack(fill="x", pady=8)
+        ttk.Button(buttons, text="Trial Balance / 試算表", command=lambda: self.show_report("trial")).pack(side="left")
+        ttk.Button(buttons, text="Profit & Loss / 損益", command=lambda: self.show_report("pl")).pack(side="left", padx=6)
+        ttk.Button(buttons, text="Balance Sheet / 貸借", command=lambda: self.show_report("bs")).pack(side="left")
+
+    def _field(self, parent, label, variable, width):
+        ttk.Label(parent, text=label).pack(side="left", padx=(0, 4))
+        ttk.Entry(parent, textvariable=variable, width=width).pack(side="left", padx=(0, 10))
+
+    def account_values(self):
+        return [f"{a.code} — {a.name}" for a in self.book.accounts]
+
+    def code_from_value(self, value):
+        return value.split(" — ", 1)[0] if " — " in value else value
+
+    def refresh_all(self):
+        values = self.account_values()
+        self.debit_box["values"] = values
+        self.credit_box["values"] = values
+        if not self.debit.get() and values:
+            self.debit.set(values[0])
+        if not self.credit.get() and len(values) > 1:
+            self.credit.set(values[1])
+
+        for item in self.tree.get_children():
+            self.tree.delete(item)
+        amap = self.book.account_map()
+        for entry in sorted(self.book.entries, key=lambda e: (e.date, e.id), reverse=True):
+            if len(entry.lines) == 2:
+                debit = next((line for line in entry.lines if line.debit), None)
+                credit = next((line for line in entry.lines if line.credit), None)
+                amount = debit.debit if debit else 0
+                self.tree.insert("", "end", iid=str(entry.id), values=(
+                    entry.date, entry.memo,
+                    amap[debit.account_code].name if debit else "Split",
+                    amap[credit.account_code].name if credit else "Split",
+                    money(amount), entry.reference
+                ))
+
+        for item in self.accounts_tree.get_children():
+            self.accounts_tree.delete(item)
+        for account in self.book.accounts:
+            self.accounts_tree.insert("", "end", values=(
+                account.code, account.name, account.type, money(self.book.account_balance(account.code))
+            ))
+        self.show_report("trial")
+
+    def post(self):
+        try:
+            self.book.add_simple_entry(
+                self.date_var.get(), self.memo.get(), self.reference.get(),
+                self.code_from_value(self.debit.get()), self.code_from_value(self.credit.get()),
+                self.amount.get()
+            )
+            save_atomic(self.path, self.book)
+            self.memo.set(""); self.reference.set(""); self.amount.set("")
+            self.status.set("Saved locally / 保存済み")
+            self.refresh_all()
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+
+    def delete(self):
+        selected = self.tree.selection()
+        if not selected:
+            return
+        if messagebox.askyesno(APP_NAME, "Delete selected journal entry? / 選択仕訳を削除しますか？"):
+            self.book.delete_entry(int(selected[0]))
+            save_atomic(self.path, self.book)
+            self.refresh_all()
+
+    def add_account_dialog(self):
+        code = simpledialog.askstring(APP_NAME, "Account code / 科目コード:", parent=self)
+        if code is None:
+            return
+        name = simpledialog.askstring(APP_NAME, "Account name / 科目名:", parent=self)
+        if name is None:
+            return
+        account_type = simpledialog.askstring(
+            APP_NAME, "Type: asset, liability, equity, income, expense", parent=self
+        )
+        if account_type is None:
+            return
+        try:
+            self.book.add_account(code, name, account_type.strip().lower())
+            save_atomic(self.path, self.book)
+            self.refresh_all()
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+
+    def show_report(self, kind):
+        self.report_text.delete("1.0", "end")
+        if kind == "trial":
+            tb = self.book.trial_balance()
+            self.report_text.insert("end", "TRIAL BALANCE / 試算表\n\n")
+            self.report_text.insert("end", f'{"Code":<8} {"Account":<28} {"Debit":>14} {"Credit":>14}\n')
+            for account in self.book.accounts:
+                totals = tb[account.code]
+                if totals["debit"] or totals["credit"]:
+                    self.report_text.insert(
+                        "end",
+                        f'{account.code:<8} {account.name[:28]:<28} '
+                        f'{money(totals["debit"]):>14} {money(totals["credit"]):>14}\n'
+                    )
+            debit_total = sum(v["debit"] for v in tb.values())
+            credit_total = sum(v["credit"] for v in tb.values())
+            self.report_text.insert("end", f"\nTotal debit: {money(debit_total)}   Total credit: {money(credit_total)}\n")
+        elif kind == "pl":
+            result = self.book.profit_loss()
+            self.report_text.insert(
+                "end",
+                "PROFIT & LOSS / 損益\n\n"
+                f'Income / 収益: {money(result["income"])}\n'
+                f'Expenses / 費用: {money(result["expenses"])}\n'
+                f'Profit / 利益: {money(result["profit"])}\n'
+            )
         else:
-            self.status.set(self.t("shown").format(shown=len(selected),n=len(self.rows)))
-    def error(self,exc):messagebox.showerror(self.t("error"),str(exc),parent=self.root)
-    def add(self):
-        paths=filedialog.askopenfilenames(parent=self.root,title=self.t("add"),filetypes=[("Images","*.png *.jpg *.jpeg *.gif *.bmp"),("All","*.*")])
-        if not paths:return
-        try:rows,errors=append_images(self.rows,list(paths))
-        except ValueError as exc:self.error(exc);return
-        self.rows=rows;self.duplicate_groups={};self.duplicates_only=False
-        self.refresh();self.status.set(self.t("result").format(n=len(rows),bad=len(errors)))
-        if errors:self.error("\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
-    def remove(self):
-        chosen={int(i) for i in self.tree.selection()}
-        self.rows=[r for i,r in enumerate(self.rows) if i not in chosen]
-        self.duplicate_groups={};self.duplicates_only=False;self.refresh()
-        self.status.set(self.t("result").format(n=len(self.rows),bad=0))
-    def clear(self):
-        self.rows=[];self.duplicate_groups={};self.duplicates_only=False
-        self.refresh();self.status.set(self.t("empty"))
-    def output(self,ext):
-        return filedialog.asksaveasfilename(parent=self.root,defaultextension=ext,filetypes=[(ext.upper(),"*"+ext)])
-    def confirm(self,path):
-        return not Path(path).exists() or messagebox.askyesno(self.t("title"),self.t("replace"),parent=self.root)
-    def save(self):
-        if not self.rows:self.status.set(self.t("empty"));return
-        path=self.output(".json")
-        if not path or not self.confirm(path):return
-        try:save_session(path,self.rows);self.status.set(self.t("saved"))
-        except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
-    def open(self):
-        path=filedialog.askopenfilename(parent=self.root,filetypes=[("JSON","*.json")])
-        if not path:return
-        try:
-            try:value=load_session(path)
-            except (OSError,ValueError,UnicodeError,RecursionError):
-                if not messagebox.askyesno(self.t("error"),self.t("recover"),parent=self.root):return
-                value=recover_session(path)
-            self.rows,errors=scan(value["paths"])
-            self.duplicate_groups={};self.duplicates_only=False;self.refresh()
-            self.status.set(self.t("loaded")+" "+self.t("result").format(n=len(self.rows),bad=len(errors)))
-            if errors:self.error("\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
-        except (OSError,ValueError,UnicodeError,RecursionError) as exc:self.error(exc)
-    def export_check(self):
-        if not self.rows:self.status.set(self.t("empty"));return
-        path=self.output(".csv")
-        if not path or not self.confirm(path):return
-        try:export_msix_csv(path,self.rows);self.status.set(self.t("exported"))
-        except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
-    def export(self):
-        if not self.rows:self.status.set(self.t("empty"));return
-        path=self.output(".csv")
-        if not path or not self.confirm(path):return
-        try:export_csv(path,self.rows);self.status.set(self.t("exported"))
-        except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
+            result = self.book.balance_sheet()
+            self.report_text.insert(
+                "end",
+                "BALANCE SHEET / 貸借対照サマリ\n\n"
+                f'Assets / 資産: {money(result["assets"])}\n'
+                f'Liabilities / 負債: {money(result["liabilities"])}\n'
+                f'Equity / 純資産: {money(result["equity"])}\n'
+                f'Current earnings / 当期損益: {money(result["current_earnings"])}\n'
+                f'Check difference / 差額: {money(result["difference"])}\n'
+            )
 
-def main():
-    root=tk.Tk();Desk(root);root.mainloop()
-if __name__=="__main__":main()
+    def export(self):
+        target = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV", "*.csv")])
+        if not target:
+            return
+        try:
+            export_journal_csv(Path(target), self.book)
+            self.status.set("Journal CSV exported / 仕訳CSV出力済み")
+        except Exception as exc:
+            messagebox.showerror(APP_NAME, str(exc))
+
+if __name__ == "__main__":
+    App().mainloop()
