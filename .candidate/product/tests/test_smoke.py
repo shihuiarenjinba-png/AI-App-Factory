@@ -1,5 +1,5 @@
 """Headless image inventory functional tests."""
-import csv, struct, sys, tempfile, unittest
+import csv, os, struct, sys, tempfile, unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import main as app
@@ -379,6 +379,27 @@ class Tests(unittest.TestCase):
         self.assertIn("rescan",stale[0]["source_action"].lower())
         refreshed,summary=app.build_review_report([app.inspect_image(good)])
         self.assertEqual(refreshed[0]["source_check"],"SOURCE_MATCH")
+        self.assertEqual(summary["stale_sources"],0)
+
+    def test_review_report_flags_same_size_source_rewrite(self):
+        snapshot=app.inspect_image(self.png)
+        original=self.png.read_bytes()
+        self.png.write_bytes(original[:-1]+bytes([original[-1]^1]))
+        # Force a distinguishable mtime even on coarse-timestamp filesystems.
+        changed_ns=snapshot["modified_ns"]+5_000_000_000
+        os.utime(self.png,ns=(changed_ns,changed_ns))
+        report,summary=app.build_review_report([snapshot])
+        self.assertEqual(report[0]["source_check"],"SOURCE_CHANGED")
+        self.assertIn("modification time",report[0]["source_action"])
+        self.assertEqual(report[0]["needs_review"],"YES")
+        self.assertEqual(summary["stale_sources"],1)
+        self.assertEqual(self.png.read_bytes(),original[:-1]+bytes([original[-1]^1]))
+
+    def test_review_report_legacy_snapshot_without_mtime_is_supported(self):
+        snapshot=app.inspect_image(self.png)
+        snapshot.pop("modified_ns")
+        report,summary=app.build_review_report([snapshot])
+        self.assertEqual(report[0]["source_check"],"SOURCE_MATCH")
         self.assertEqual(summary["stale_sources"],0)
 
     def test_review_report_flags_missing_source_even_without_duplicates(self):
