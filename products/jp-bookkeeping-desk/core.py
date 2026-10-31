@@ -3,7 +3,18 @@ import csv,os,sqlite3
 from datetime import date
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from pathlib import Path
-from account_catalog import ACCOUNT_CATALOG,BOOK_GUIDE
+try:
+    from account_catalog import ACCOUNT_CATALOG,BOOK_GUIDE
+except ModuleNotFoundError:
+    import importlib.util as _importlib_util
+    import sys as _sys
+    _catalog_path=Path(__file__).with_name("account_catalog.py")
+    _spec=_importlib_util.spec_from_file_location(f"{__name__}_account_catalog",_catalog_path)
+    _mod=_importlib_util.module_from_spec(_spec)
+    _sys.modules[_spec.name]=_mod
+    _spec.loader.exec_module(_mod)
+    ACCOUNT_CATALOG=_mod.ACCOUNT_CATALOG
+    BOOK_GUIDE=_mod.BOOK_GUIDE
 TYPES=("資産","負債","純資産","収益","費用")
 DEFAULT=[
 ("1000","現金","資産"),("1010","小口現金","資産"),("1100","普通預金","資産"),("1110","当座預金","資産"),("1120","定期預金","資産"),
