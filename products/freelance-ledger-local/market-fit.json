@@ -1,0 +1,25 @@
+{
+  "product": "Freelance Ledger Local",
+  "date": "2026-10-31",
+  "status": "MARKET_FIT_HOLD",
+  "score": 76,
+  "why_pay": "Local-only JP/US freelancer bookkeeping without an account or recurring subscription, with reviewable CSV handoff.",
+  "strengths": [
+    "local-only data ownership",
+    "no login or cloud dependency",
+    "Japan and US profiles in one Windows app",
+    "simple accountant/tax-preparer handoff",
+    "audit log and local backup"
+  ],
+  "risks": [
+    "GnuCash is a strong free desktop alternative",
+    "Yayoi has an installed Japanese tax-accounting product",
+    "cloud competitors provide bank feeds, OCR and tax filing",
+    "no direct willingness-to-pay validation yet"
+  ],
+  "go_conditions_missing": [
+    "customer interviews or equivalent purchase-intent evidence",
+    "real Store review gap evidence",
+    "Windows GUI usability evidence"
+  ]
+}
