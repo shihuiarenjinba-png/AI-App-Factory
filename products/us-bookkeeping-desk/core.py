@@ -128,6 +128,11 @@ class Store:
  def post(self,d,desc,lines):
   d=vd(d)
   if self.locked and d<=self.locked:raise BookError("Period is locked")
+  # A finalized bank statement is an audit boundary; backdating any journal
+  # entry into that period would make the saved reconciliation misleading.
+  if self.conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='bank_reconciliations'").fetchone():
+   if self.conn.execute("SELECT 1 FROM bank_reconciliations WHERE end_date>=? LIMIT 1",(d,)).fetchone():
+    raise BookError("Cannot backdate into a reconciled statement period")
   if not desc.strip():raise BookError("Description is required")
   z=[];td=tc=0
   for code,deb,cred in lines:
