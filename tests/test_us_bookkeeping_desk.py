@@ -7,6 +7,18 @@ class T(unittest.TestCase):
    s=m.Store(Path(d)/"x.db");self.assertIn("Cash",{x["name"] for x in s.accounts()});self.assertIn(s.accounting_method,m.METHODS);s.close()
  def test_journal_suggestion(self):
   x=m.suggest_entry("monthly office rent payment");self.assertEqual(x["debit_code"],"5200");self.assertEqual(x["credit_code"],"1100")
+ def test_journal_suggestion_abstains_on_substrings_and_ambiguity(self):
+  self.assertIsNone(m.suggest_entry("Vegas conference"))
+  self.assertIsNone(m.suggest_entry("rent and hotel"))
+  self.assertIsNone(m.suggest_entry("unclassified payment"))
+  self.assertIsNone(m.suggest_entry(""))
+  vehicle=m.suggest_entry("gas station parking")
+  self.assertEqual(vehicle["debit_code"],"5350")
+  self.assertIn("gas",vehicle["matched"])
+  self.assertTrue(vehicle["review_reasons"])
+  travel=m.suggest_entry("hotel reservation")
+  self.assertEqual(travel["debit_code"],"5400")
+  self.assertTrue(travel["review_reasons"])
  def test_balance_check(self):
   with tempfile.TemporaryDirectory() as d:
    s=m.Store(Path(d)/"x.db");s.post("2026-10-31","sale",[("1000","100.00",""),("4000","","100.00")]);self.assertTrue(s.balance_check()["balanced"]);s.close()
