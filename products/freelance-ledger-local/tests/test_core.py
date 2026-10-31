@@ -1,11 +1,13 @@
 import importlib.util
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("freelance_core", HERE / "core.py")
 core = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = core
 SPEC.loader.exec_module(core)
 
 class LedgerTests(unittest.TestCase):
