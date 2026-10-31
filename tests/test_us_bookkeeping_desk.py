@@ -10,4 +10,11 @@ class T(unittest.TestCase):
  def test_balance_check(self):
   with tempfile.TemporaryDirectory() as d:
    s=m.Store(Path(d)/"x.db");s.post("2026-10-31","sale",[("1000","100.00",""),("4000","","100.00")]);self.assertTrue(s.balance_check()["balanced"]);s.close()
+ def test_review_accounts(self):
+  self.assertTrue(m.review_requirements_for_codes(["5350"]))
+  self.assertTrue(m.review_requirements_for_codes(["5450"]))
+  self.assertTrue(m.review_requirements_for_codes(["5600"]))
+  x=m.suggest_entry("business vehicle mileage")
+  self.assertEqual(x["debit_code"],"5350")
+  self.assertTrue(x["review_reasons"])
 if __name__=="__main__":unittest.main()
