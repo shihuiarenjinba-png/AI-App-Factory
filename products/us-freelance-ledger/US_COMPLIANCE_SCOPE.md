@@ -66,3 +66,16 @@ This checklist documents design scope, **not** a compliance certification. Re-ch
 **Change watch:** The 2025 Schedule C instructions contain changed depreciation/Section 179 rules and a Future Developments notice. Do not transplant those figures into a future tax year. [Form 3115 page](https://www.irs.gov/forms-pubs/about-form-3115) links to recent guidance; verify applicable revenue procedures before release.
 
 **Current package gate:** `COMPLIANCE_HOLD` and `MARKET_FIT_HOLD`. Unimplemented cash/accrual recognition, incomplete evidence/restore QA, and unverified Windows GUI/EXE prevent any tax-method or sales-readiness claim. Bookkeeping net is **not taxable income**.
+
+
+## 2026-11-01 official-source recheck and receipt-intake implementation
+
+Verified on **2026-11-01** against primary IRS sources:
+- [IRS: What kind of records should I keep?](https://www.irs.gov/businesses/small-businesses-self-employed/what-kind-of-records-should-i-keep) — electronic records must follow the same basic recordkeeping principles as paper records. **Design:** receipt queue stores local file references, SHA-256 and size; duplicates are rejected; source files remain unchanged.
+- [IRS Publication 583](https://www.irs.gov/publications/p583) — maintain records supporting transactions. **Design:** user must review the document and enter the transaction; no OCR, income/tax eligibility inference or automatic posting.
+- [IRS Publication 538](https://www.irs.gov/publications/p538) and [Form 3115 instructions](https://www.irs.gov/instructions/i3115) — accounting-method changes can require IRS consent. **Design:** existing method-change lock remains; receipt intake does not alter method recognition or tax reporting.
+- [IRS Publication 946 (2025)](https://www.irs.gov/publications/p946) — special depreciation rules are acquisition-date and tax-year sensitive. **Design:** no rates or Section 179 eligibility are inferred from receipt images.
+
+Implemented **local receipt queue**: multi-file PDF/PNG/JPEG intake, per-file errors (one bad file does not stop the batch), SHA-256 duplicate detection, 25 MiB per-file/100-file per-batch limits, symlink rejection, manual selection, and unchanged-file verification before linking to a user-confirmed transaction. The user-facing flow explicitly says OCR is not provided.
+
+**Remaining safety gaps:** files are *referenced*, not archived or copied; a user can move/delete them later. SQLite backup does not include receipt bytes. No content-format decoder, malware scanner, OCR, legal evidence retention guarantee, federal deduction decision, or actual cash/accrual recognition logic is provided. These gaps keep **COMPLIANCE_HOLD / MARKET_FIT_HOLD** and prohibit Store packaging or certification claims. GUI at 1024x768 and Windows EXE remain unverified until actual Windows execution.
