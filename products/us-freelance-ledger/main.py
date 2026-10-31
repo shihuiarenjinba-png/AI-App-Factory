@@ -3,6 +3,7 @@ from datetime import date
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,METHODS,LedgerError,Store,suggest_category,review_requirements
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
+from receipt_queue import enqueue_receipts, list_receipts, link_receipt
 
 class App(tk.Tk):
     def __init__(self):
@@ -10,7 +11,7 @@ class App(tk.Tk):
         self.store=Store();self.protocol("WM_DELETE_WINDOW",self.close)
         self.v={k:tk.StringVar() for k in ["date","kind","amount","category","party","doctype","docpath","memo","method"]}
         self.v["date"].set(date.today().isoformat());self.v["kind"].set("income");self.v["category"].set(CATEGORIES[0]);self.v["doctype"].set(DOCUMENT_TYPES[0]);self.v["method"].set(self.store.accounting_method)
-        self.summary=tk.StringVar();self.build();self.refresh()
+        self.summary=tk.StringVar();self.receipt_summary=tk.StringVar();self.build();self.refresh();self.refresh_receipts()
 
     def build(self):
         ttk.Label(self,text="Freelance Ledger US",font=("Segoe UI",18,"bold")).pack(anchor="w",padx=14,pady=(14,2))
@@ -38,10 +39,64 @@ class App(tk.Tk):
         f.columnconfigure(1,weight=1)
         r=ttk.Labelframe(p,text="Ledger",padding=10);p.add(r,weight=3)
         ttk.Label(r,textvariable=self.summary,font=("Segoe UI",11,"bold")).pack(anchor="w")
+        receipt_actions=ttk.Frame(r);receipt_actions.pack(fill="x",pady=(6,2))
+        ttk.Button(receipt_actions,text="Add receipts / PDFs",command=self.add_receipts).pack(side="left",padx=(0,6))
+        ttk.Button(receipt_actions,text="Review receipt queue",command=self.review_receipts).pack(side="left",padx=(0,6))
+        ttk.Label(r,textvariable=self.receipt_summary).pack(anchor="w")
         cols=("date","kind","amount","category","party","memo");self.tree=ttk.Treeview(r,columns=cols,show="headings")
         for c,t in zip(cols,["Date","Type","Amount","Category","Payer / payee","Memo"]):
             self.tree.heading(c,text=t);self.tree.column(c,width=120)
         self.tree.pack(fill="both",expand=True,pady=(8,0))
+
+    def refresh_receipts(self):
+        rows=list_receipts(self.store.conn)
+        pending=sum(row["status"]=="PENDING_MANUAL_REVIEW" for row in rows)
+        linked=sum(row["status"]=="LINKED" for row in rows)
+        self.receipt_summary.set(
+            f"Receipts: {pending} awaiting manual entry, {linked} linked. "
+            "No OCR or automatic tax decisions."
+        )
+
+    def add_receipts(self):
+        paths=filedialog.askopenfilenames(
+            title="Choose receipt files to review",
+            filetypes=[("Receipts (PDF, PNG, JPEG)","*.pdf *.png *.jpg *.jpeg")],
+        )
+        if not paths:return
+        results=enqueue_receipts(self.store.conn,paths)
+        counts={status:sum(r["status"]==status for r in results)
+                for status in ("QUEUED","DUPLICATE","REJECTED")}
+        failures=[f'{r["path"]}: {r["reason"]}' for r in results if r["status"]=="REJECTED"]
+        self.refresh_receipts()
+        messagebox.showinfo(
+            "Receipt intake",
+            f'{counts["QUEUED"]} added, {counts["DUPLICATE"]} already queued, '
+            f'{counts["REJECTED"]} could not be added.\\n'
+            "Files remain in their original locations. Review each receipt and enter the details yourself."
+            + ("\\n\\nIssues:\\n" + "\\n".join(failures[:5]) if failures else "")
+        )
+
+    def review_receipts(self):
+        rows=[r for r in list_receipts(self.store.conn)
+              if r["status"]=="PENDING_MANUAL_REVIEW"]
+        if not rows:
+            messagebox.showinfo("Receipt queue","No receipts are awaiting manual review.")
+            return
+        win=tk.Toplevel(self);win.title("Receipts awaiting manual entry")
+        win.geometry("760x430");win.minsize(540,320)
+        ttk.Label(win,text="Select a receipt, then enter its date, amount and category manually.").pack(anchor="w",padx=12,pady=(12,4))
+        listing=tk.Listbox(win,exportselection=False)
+        listing.pack(fill="both",expand=True,padx=12,pady=6)
+        for r in rows:
+            listing.insert("end",f'{r["id"]}: {r["source_path"]}')
+        def choose():
+            selection=listing.curselection()
+            if not selection:return
+            selected=rows[selection[0]]["source_path"]
+            self.v["docpath"].set(selected)
+            self.v["doctype"].set("Receipt")
+            win.destroy()
+        ttk.Button(win,text="Use selected file for this transaction",command=choose).pack(pady=(2,12))
 
     def change_method(self):
         if not messagebox.askyesno(
@@ -78,11 +133,21 @@ class App(tk.Tk):
             msg="This category has special federal/state rules:\n\n- "+"\n- ".join(reasons)+"\n\nRecord it as bookkeeping data anyway?"
             if not messagebox.askyesno("Review required",msg):
                 return
-        try:self.store.add(
+        try:txn_id=self.store.add(
             self.v["date"].get(),self.v["kind"].get(),self.v["amount"].get(),self.v["category"].get(),
             self.v["party"].get(),self.v["doctype"].get(),self.v["docpath"].get(),self.v["memo"].get()
         )
         except LedgerError as e:messagebox.showerror("Input error",str(e));return
+        source=self.v["docpath"].get()
+        if source and any(r["source_path"]==source and r["status"]=="PENDING_MANUAL_REVIEW"
+                          for r in list_receipts(self.store.conn)):
+            if not link_receipt(self.store.conn,source,txn_id):
+                messagebox.showwarning(
+                    "Receipt needs review",
+                    "Transaction saved, but the receipt file changed or could not be verified. "
+                    "Check the original document before relying on this reference."
+                )
+        self.refresh_receipts()
         for k in ["amount","party","docpath","memo"]:self.v[k].set("")
         self.refresh()
 
