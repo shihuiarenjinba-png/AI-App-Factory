@@ -1,5 +1,6 @@
 """Market-fit MSIX gate regression tests: missing, false and stale evidence HOLD."""
 import json
+from datetime import date, timedelta
 from pathlib import Path
 import subprocess
 import tempfile
@@ -23,26 +24,33 @@ class MarketFitGateTests(unittest.TestCase):
         self.git("add", ".")
         self.git("commit", "-qm", "baseline source")
         baseline = self.git("rev-parse", "HEAD")
+        self.as_date = date.today()
+        self.today = self.as_date.isoformat()
+        self.recent = (self.as_date - timedelta(days=5)).isoformat()
         self.document = {
             "schema_version": "app5-market-fit-v1",
-            "researched_on": "2026-10-30",
+            "researched_on": self.today,
             "slug": self.slug,
             "decision": "MARKET_FIT_PASS",
             "commercial_msix_allowed": True,
             "feature_expansion_allowed": True,
             "direct_competitors": [
-                {"name": "competitor A", "source": "https://vendor-a.test/pricing", "checked": "2026-10-30"},
-                {"name": "competitor B", "source": "https://vendor-b.test/pricing", "checked": "2026-10-30"},
-                {"name": "competitor C", "source": "https://vendor-c.test/pricing", "checked": "2026-10-30"},
+                {"name": "competitor A", "source": "https://vendor-a.test/pricing", "checked": self.today},
+                {"name": "competitor B", "source": "https://vendor-b.test/pricing", "checked": self.today},
+                {"name": "competitor C", "source": "https://vendor-c.test/pricing", "checked": self.today},
             ],
-            "free_alternatives": ["free A", "free B", "free C"],
+            "free_alternatives": [
+                {"name": "free A", "source": "https://free-a.test/", "checked": self.today},
+                {"name": "free B", "source": "https://free-b.test/", "checked": self.today},
+                {"name": "free C", "source": "https://free-c.test/", "checked": self.today},
+            ],
             "paid_price_range": "USD 10-50 one time",
             "buyer_persona": "Windows local-only professional operator",
             "why_pay_statement": "A complete local handoff report avoids manual reconciliation.",
             "common_review_complaints": [{
                 "complaint": "Difficult export workflow",
                 "source": "https://forum.test/review/123",
-                "post_date": "2026-10-25",
+                "post_date": self.recent,
             }],
             "store_search_keywords": ["offline report", "Windows local"],
             "price_hypothesis": {"one_time_jpy": 900},
@@ -245,7 +253,7 @@ class MarketFitGateTests(unittest.TestCase):
             assert_market_fit(self.root, self.slug)
 
     def test_duplicate_free_alternatives_hold(self):
-        self.document["free_alternatives"] = ["free A", "free A", "free B"]
+        self.document["free_alternatives"][1]["name"] = "free A"
         self.write_doc()
         self.commit("duplicate free alternatives")
         with self.assertRaisesRegex(MarketFitHold, "distinct free alternatives"):
@@ -270,6 +278,68 @@ class MarketFitGateTests(unittest.TestCase):
         self.write_doc()
         self.commit("missing research date")
         with self.assertRaisesRegex(MarketFitHold, "research date"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_string_only_free_alternatives_hold(self):
+        self.document["free_alternatives"] = ["free A", "free B", "free C"]
+        self.write_doc()
+        self.commit("unsourced free alternatives")
+        with self.assertRaisesRegex(MarketFitHold, "free alternative source"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_free_alternative_missing_source_holds(self):
+        self.document["free_alternatives"][0].pop("source")
+        self.write_doc()
+        self.commit("missing free alternative source")
+        with self.assertRaisesRegex(MarketFitHold, "free alternative source"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_stale_free_alternative_check_holds(self):
+        self.document["free_alternatives"][0]["checked"] = (
+            self.as_date - timedelta(days=181)).isoformat()
+        self.write_doc()
+        self.commit("stale free alternative")
+        with self.assertRaisesRegex(MarketFitHold, "free alternative source"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_future_competitor_check_holds(self):
+        self.document["direct_competitors"][0]["checked"] = (
+            self.as_date + timedelta(days=3)).isoformat()
+        self.write_doc()
+        self.commit("future competitor date")
+        with self.assertRaisesRegex(MarketFitHold, "competitor source"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_stale_competitor_check_holds(self):
+        self.document["direct_competitors"][0]["checked"] = (
+            self.as_date - timedelta(days=181)).isoformat()
+        self.write_doc()
+        self.commit("stale competitor check")
+        with self.assertRaisesRegex(MarketFitHold, "competitor source"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_stale_research_date_holds(self):
+        self.document["researched_on"] = (
+            self.as_date - timedelta(days=181)).isoformat()
+        self.write_doc()
+        self.commit("stale research")
+        with self.assertRaisesRegex(MarketFitHold, "research date"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_future_research_date_holds(self):
+        self.document["researched_on"] = (
+            self.as_date + timedelta(days=3)).isoformat()
+        self.write_doc()
+        self.commit("future research")
+        with self.assertRaisesRegex(MarketFitHold, "research date"):
+            assert_market_fit(self.root, self.slug)
+
+    def test_future_review_complaint_date_holds(self):
+        self.document["common_review_complaints"][0]["post_date"] = (
+            self.as_date + timedelta(days=3)).isoformat()
+        self.write_doc()
+        self.commit("future complaint date")
+        with self.assertRaisesRegex(MarketFitHold, "dated, source-linked"):
             assert_market_fit(self.root, self.slug)
 
     def test_workflow_and_direct_builder_both_call_gate(self):
