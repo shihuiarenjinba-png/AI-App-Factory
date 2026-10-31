@@ -104,6 +104,54 @@ class Tests(unittest.TestCase):
         try:p.symlink_to(self.png)
         except (OSError,NotImplementedError):return
         with self.assertRaises(ValueError):app.export_csv(p,[app.inspect_image(self.png)])
+    def msix_row(self, fmt="PNG", width=1366, height=768, size=1000):
+        return {"path":str(self.png),"format":fmt,"width":width,"height":height,"bytes":size}
+
+    def test_msix_landscape_basic_candidate_is_not_certification(self):
+        code,reason=app.check_msix_screenshot(self.msix_row())
+        self.assertEqual(code,"BASIC_CANDIDATE")
+        self.assertIn("review",reason.lower())
+
+    def test_msix_rejects_jpeg_even_at_valid_dimensions(self):
+        self.assertEqual(app.check_msix_screenshot(self.msix_row(fmt="JPEG"))[0],"FAIL_FORMAT")
+
+    def test_msix_rejects_small_landscape(self):
+        self.assertEqual(app.check_msix_screenshot(self.msix_row(width=1024,height=768))[0],"FAIL_DIMENSIONS")
+
+    def test_msix_portrait_requires_manual_review_not_false_reject(self):
+        self.assertEqual(app.check_msix_screenshot(self.msix_row(width=768,height=1366))[0],"REVIEW_PORTRAIT")
+        self.assertEqual(app.check_msix_screenshot(self.msix_row(width=600,height=1000))[0],"FAIL_DIMENSIONS")
+
+    def test_msix_size_boundary_is_manual_review(self):
+        self.assertEqual(app.check_msix_screenshot(self.msix_row(size=49_999_999))[0],"BASIC_CANDIDATE")
+        for size in (50_000_000,50_000_001,50*1024*1024):
+            self.assertEqual(app.check_msix_screenshot(self.msix_row(size=size))[0],"REVIEW_SIZE_LIMIT")
+        self.assertEqual(app.check_msix_screenshot(self.msix_row(size=50*1024*1024+1))[0],"FAIL_SIZE")
+
+    def test_msix_summary_over_ten_is_warning_not_certification(self):
+        rows=[self.msix_row() for _ in range(11)]
+        report=app.msix_summary(rows)
+        self.assertTrue(report["over_limit"])
+        self.assertEqual(report["issues"],0)
+        self.assertEqual(report["counts"]["BASIC_CANDIDATE"],11)
+
+    def test_msix_csv_preserves_image_and_protects_source(self):
+        row=self.msix_row(fmt="JPEG")
+        path=self.d/"msix-report.csv"
+        before=self.png.read_bytes()
+        app.export_msix_csv(path,[row])
+        with path.open(encoding="utf-8",newline="") as stream:
+            report=list(csv.DictReader(stream))
+        self.assertEqual(report[0]["msix_check"],"FAIL_FORMAT")
+        self.assertEqual(report[0]["profile_source"],app.MSIX_PROFILE_URL)
+        self.assertEqual(report[0]["desktop_limit"],"10")
+        self.assertEqual(self.png.read_bytes(),before)
+        with self.assertRaises(ValueError):
+            app.export_msix_csv(self.png,[row])
+
+    def test_msix_csv_empty_is_rejected(self):
+        with self.assertRaises(ValueError):app.export_msix_csv(self.d/"empty.csv",[])
+
     def test_bilingual(self):
         self.assertEqual(set(app.LABELS["ja"]),set(app.LABELS["en"]))
         self.assertTrue(callable(app.main))
