@@ -2,6 +2,7 @@ import tkinter as tk
 from datetime import date
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import TYPES,METHODS,BookError,Store,suggest_entry,review_requirements_for_codes
+from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
 
 class App(tk.Tk):
  def __init__(self):
@@ -24,7 +25,8 @@ class App(tk.Tk):
   ttk.Button(f,text="Post entry",command=self.post).grid(row=11,column=0,sticky="ew")
   ttk.Button(f,text="Add account",command=self.add_account).grid(row=11,column=1,sticky="ew")
   ttk.Button(f,text="Lock period",command=self.lock).grid(row=11,column=2,sticky="ew")
-  ttk.Button(f,text="Export journal CSV",command=self.export).grid(row=12,column=0,columnspan=3,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
+  ttk.Button(f,text="Tax / fixed assets",command=self.tax_assets).grid(row=12,column=0,columnspan=3,sticky="ew",pady=3)
+  ttk.Button(f,text="Export journal CSV",command=self.export).grid(row=13,column=0,columnspan=3,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
   nb=ttk.Notebook(p);p.add(nb,weight=3);j=ttk.Frame(nb,padding=8);r=ttk.Frame(nb,padding=8);nb.add(j,text="Journal");nb.add(r,text="Reports")
   self.tree=ttk.Treeview(j,columns=("d","x","a","db","cr"),show="headings")
   for c,t in zip(("d","x","a","db","cr"),("Date","Description","Account","Debit","Credit")):self.tree.heading(c,text=t)
@@ -99,6 +101,42 @@ class App(tk.Tk):
       f'Accounting method: {self.s.accounting_method}']
   self.report.configure(state="normal");self.report.delete("1.0","end");self.report.insert("1.0","\n".join(t));self.report.configure(state="disabled")
 
+ def tax_assets(self):
+  mode=simpledialog.askstring("Tax / fixed assets","Enter sales tax, book depreciation, or tax depreciation")
+  if not mode:return
+  try:
+   lower=mode.lower()
+   if "sales" in lower:
+    amount=simpledialog.askfloat("Sales tax","Amount before tax",minvalue=0)
+    rate=simpledialog.askfloat("Sales tax","Jurisdiction rate (%) — enter manually",minvalue=0)
+    jurisdiction=simpledialog.askstring("Sales tax","Jurisdiction name (state/city/local)")
+    if amount is None or rate is None:return
+    x=manual_sales_tax(amount,rate)
+    messagebox.showinfo("Sales tax",f'Jurisdiction: {jurisdiction or "manual"}\nNet USD {x["net"]}\nTax USD {x["tax"]}\nGross USD {x["gross"]}\n\nThis is arithmetic only, not a nexus/taxability determination.')
+   elif "tax dep" in lower:
+    source=simpledialog.askstring("Tax depreciation","IRS source URL",initialvalue="https://www.irs.gov/publications/p946")
+    tax_year=simpledialog.askinteger("Tax depreciation","Tax year",initialvalue=date.today().year,minvalue=2000)
+    method=simpledialog.askstring("Tax depreciation","Method/profile name (for example MACRS table review)")
+    require_tax_profile(source,tax_year,method or "")
+    cost=simpledialog.askfloat("Tax depreciation","Depreciable basis (USD)",minvalue=0)
+    start=simpledialog.askinteger("Tax depreciation","First schedule year",initialvalue=tax_year,minvalue=2000)
+    raw=simpledialog.askstring("Tax depreciation","Year percentages, comma-separated (example 20,32,19.2,11.52,11.52,5.76)")
+    if cost is None or start is None or not raw:return
+    vals=[v.strip() for v in raw.split(",") if v.strip()]
+    schedule=custom_tax_depreciation_schedule(cost,{start+i:v for i,v in enumerate(vals)})
+    text="\n".join(f'{r["year"]}: {r["percentage"]}% = USD {r["business_depreciation"]}' for r in schedule[:12])
+    messagebox.showinfo("Tax depreciation",text+"\n\nReview IRS tax-year tables/convention/eligibility before using these amounts.")
+   else:
+    cost=simpledialog.askfloat("Book depreciation","Asset cost (USD)",minvalue=0)
+    first=simpledialog.askstring("Book depreciation","Placed-in-service date YYYY-MM-DD",initialvalue=date.today().isoformat())
+    life=simpledialog.askinteger("Book depreciation","Useful life in years",minvalue=1)
+    salvage=simpledialog.askfloat("Book depreciation","Salvage value",initialvalue=0,minvalue=0)
+    use=simpledialog.askfloat("Book depreciation","Business-use percent",initialvalue=100,minvalue=0,maxvalue=100)
+    if cost is None or not first or life is None:return
+    rows=straight_line_book_schedule(cost,first,life,salvage_value=salvage or 0,business_use_percent=use or 0,through_year=date.today().year+life)
+    text="\n".join(f'{r["year"]}: USD {r["business_depreciation"]} / {r["months"]} months' for r in rows[:12])
+    messagebox.showinfo("Book depreciation",text+"\n\nBook depreciation is separate from federal/state tax depreciation.")
+  except Exception as e:messagebox.showerror("Calculation error",str(e))
  def export(self):
   x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
   if x:self.s.export(x);messagebox.showinfo("Export","Journal exported")
