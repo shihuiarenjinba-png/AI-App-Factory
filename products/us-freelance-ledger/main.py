@@ -1,5 +1,6 @@
 import tkinter as tk
 from datetime import date
+from pathlib import Path
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,METHODS,LedgerError,Store,suggest_category,review_requirements
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
@@ -139,7 +140,7 @@ class App(tk.Tk):
         )
         except LedgerError as e:messagebox.showerror("Input error",str(e));return
         source=self.v["docpath"].get()
-        if source and any(r["source_path"]==source and r["status"]=="PENDING_MANUAL_REVIEW"
+        if source and any(Path(r["source_path"]).resolve()==Path(source).resolve() and r["status"]=="PENDING_MANUAL_REVIEW"
                           for r in list_receipts(self.store.conn)):
             if not link_receipt(self.store.conn,source,txn_id):
                 messagebox.showwarning(
