@@ -1,5 +1,5 @@
 """Private offline image-header inventory. No image writes or network."""
-import csv, io, json, os, shutil, stat, struct, tempfile
+import csv, hashlib, io, json, os, shutil, stat, struct, tempfile
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -62,8 +62,8 @@ def select_inventory(rows, orientation="all", min_width=0, min_height=0,
     return result
 
 LABELS={
-"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","store_review":"Review Store issues","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10.","filter":"Apply filters","reset_filter":"Reset","all":"All","landscape":"Wide","portrait":"Tall","square":"Square","min_w":"Min width","min_h":"Min height","max_mib":"Max MiB","shown":"Showing {shown}/{n}.","batch_over":"Batch exceeds 10 screenshots; remove extras before upload.","invalid_filter":"Enter whole-number minimum dimensions (0-100000) and max MiB (1-64)."},
-"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","store_review":"Store要確認だけ表示","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。","filter":"絞り込み","reset_filter":"解除","all":"全て","landscape":"横長","portrait":"縦長","square":"正方形","min_w":"幅以上","min_h":"高さ以上","max_mib":"容量上限MiB","shown":"表示 {shown}/{n}件。","batch_over":"10枚を超えています。提出前に枚数を減らしてください。","invalid_filter":"最小幅・高さは0〜100000の整数、容量上限は1〜64 MiBの整数で入力してください。"}}
+"en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","store_review":"Review Store issues","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10.","filter":"Apply filters","reset_filter":"Reset","all":"All","landscape":"Wide","portrait":"Tall","square":"Square","min_w":"Min width","min_h":"Min height","max_mib":"Max MiB","shown":"Showing {shown}/{n}.","batch_over":"Batch exceeds 10 screenshots; remove extras before upload.","invalid_filter":"Enter whole-number minimum dimensions (0-100000) and max MiB (1-64).","duplicates":"Find duplicates","duplicate_col":"Duplicate group","duplicate_summary":"Duplicate candidates: {files} files in {groups} groups; unreadable: {errors}. Reset shows all."},
+"ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","store_review":"Store要確認だけ表示","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。","filter":"絞り込み","reset_filter":"解除","all":"全て","landscape":"横長","portrait":"縦長","square":"正方形","min_w":"幅以上","min_h":"高さ以上","max_mib":"容量上限MiB","shown":"表示 {shown}/{n}件。","batch_over":"10枚を超えています。提出前に枚数を減らしてください。","invalid_filter":"最小幅・高さは0〜100000の整数、容量上限は1〜64 MiBの整数で入力してください。","duplicates":"重複候補を探す","duplicate_col":"重複グループ","duplicate_summary":"重複候補：{files}件・{groups}グループ、読取不可：{errors}件。解除で全件表示。"}}
 
 def jpeg_dimensions(data):
     if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
@@ -142,6 +142,44 @@ def append_images(existing, paths):
     return rows, errors
 
 
+def find_duplicate_groups(rows):
+    """Read-only SHA256 groups of same-size files; no image writes or deletion."""
+    if not isinstance(rows,list) or len(rows)>MAX_ITEMS:
+        raise ValueError("Invalid inventory")
+    sizes={}
+    for index,row in enumerate(rows):
+        sizes.setdefault(row["bytes"],[]).append(index)
+    hashed={};errors=[]
+    for size,indexes in sizes.items():
+        if len(indexes)<2:continue
+        for index in indexes:
+            path=Path(rows[index]["path"]).absolute()
+            try:
+                if path.is_symlink():raise ValueError("Symlink rejected")
+                flags=os.O_RDONLY|getattr(os,"O_BINARY",0)|getattr(os,"O_NOFOLLOW",0)
+                fd=os.open(path,flags)
+                with os.fdopen(fd,"rb") as stream:
+                    before=os.fstat(stream.fileno())
+                    if not stat.S_ISREG(before.st_mode) or not 0<before.st_size<=MAX_BYTES or before.st_size!=size:
+                        raise ValueError("File no longer matches inventory size")
+                    digest=hashlib.sha256()
+                    while True:
+                        chunk=stream.read(1048576)
+                        if not chunk:break
+                        digest.update(chunk)
+                    after=os.fstat(stream.fileno())
+                    if (before.st_size,before.st_mtime_ns)!=(after.st_size,after.st_mtime_ns) or path.is_symlink():
+                        raise ValueError("File changed during hashing")
+                hashed.setdefault((size,digest.hexdigest()),[]).append(index)
+            except (OSError,ValueError) as exc:
+                errors.append((str(path),str(exc)))
+    groups={};number=0
+    for indexes in hashed.values():
+        if len({rows[i]["path"] for i in indexes})<2:continue
+        number+=1
+        for index in indexes:groups[index]="D"+str(number)
+    return groups,errors
+
 def validate_session(value):
     if not isinstance(value,dict) or set(value)!={"schema","paths"} or type(value["schema"]) is not int or value["schema"]!=1:
         raise ValueError("Invalid session schema")
@@ -206,13 +244,14 @@ class Desk:
         self.orientation=tk.StringVar(value="all")
         self.min_width=tk.StringVar();self.min_height=tk.StringVar();self.max_mib=tk.StringVar()
         self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
+        self.duplicate_groups={};self.duplicates_only=False
         root.geometry("1024x768");root.minsize(850,600)
         body=ttk.Frame(root,padding=12);body.pack(fill="both",expand=True)
         self.heading=ttk.Label(body,font=("Segoe UI",18,"bold"));self.heading.pack(anchor="w")
         self.intro=ttk.Label(body,wraplength=950);self.intro.pack(anchor="w",pady=8)
         bar=ttk.Frame(body);bar.pack(fill="x",pady=6)
         self.buttons={}
-        for key,fn in (("add",self.add),("remove",self.remove),("clear",self.clear),("save",self.save),("open",self.open),("export",self.export)):
+        for key,fn in (("add",self.add),("remove",self.remove),("clear",self.clear),("save",self.save),("open",self.open),("export",self.export),("duplicates",self.find_duplicates)):
             b=ttk.Button(bar,command=fn);b.pack(side="left",padx=(0,5));self.buttons[key]=b
         self.lang=ttk.Button(bar,command=self.toggle);self.lang.pack(side="right")
         checkbar=ttk.Frame(body);checkbar.pack(fill="x",pady=(2,4))
@@ -241,8 +280,8 @@ class Desk:
         self.reset_button.pack(side="left",padx=2)
         self.notice=ttk.Label(body,wraplength=950);self.notice.pack(anchor="w")
         frame=ttk.Frame(body);frame.pack(fill="both",expand=True,pady=6)
-        self.tree=ttk.Treeview(frame,columns=("path","format","dimensions","bytes","check"),show="headings",selectmode="extended")
-        for k,width in (("path",395),("format",85),("dimensions",125),("bytes",100),("check",210)):
+        self.tree=ttk.Treeview(frame,columns=("path","format","dimensions","bytes","check","duplicate_col"),show="headings",selectmode="extended")
+        for k,width in (("path",290),("format",65),("dimensions",110),("bytes",85),("check",150),("duplicate_col",115)):
             self.tree.column(k,width=width,stretch=k=="path")
         scroll=ttk.Scrollbar(frame,orient="vertical",command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
@@ -263,7 +302,7 @@ class Desk:
         for key,widget in self.filter_labels.items():widget.configure(text=self.t(key))
         self.apply_button.configure(text=self.t("filter"))
         self.reset_button.configure(text=self.t("reset_filter"))
-        for k in ("path","format","dimensions","bytes","check"):self.tree.heading(k,text=self.t(k))
+        for k in ("path","format","dimensions","bytes","check","duplicate_col"):self.tree.heading(k,text=self.t(k))
     def toggle(self):
         self.language="ja" if self.language=="en" else "en";self.localize()
     def toggle_preflight(self):
@@ -275,7 +314,16 @@ class Desk:
         self.min_width.set("");self.min_height.set("");self.max_mib.set("")
         self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
         self.preflight.set(True);self.issues.set(True)
+        self.duplicates_only=False
         self.localize();self.refresh()
+
+    def find_duplicates(self):
+        groups,errors=find_duplicate_groups(self.rows)
+        self.duplicate_groups=groups;self.duplicates_only=True
+        self.refresh()
+        self.status.set(self.t("duplicate_summary").format(
+            files=len(groups),groups=len(set(groups.values())),errors=len(errors)))
+        if errors:self.error("\\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
 
     def apply_filters(self):
         try:
@@ -295,16 +343,18 @@ class Desk:
         self.orientation.set("all");self.min_width.set("");self.min_height.set("")
         self.max_mib.set("")
         self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
+        self.duplicates_only=False
         self.refresh()
     def refresh(self):
         for i in self.tree.get_children():self.tree.delete(i)
         selected=select_inventory(self.rows,**self.active_filter,
                                   issues_only=self.preflight.get() and self.issues.get())
+        if self.duplicates_only:selected=[(i,r) for i,r in selected if i in self.duplicate_groups]
         for i,r in selected:
             code,_=check_msix_screenshot(r) if self.preflight.get() else ("NOT_CHECKED","")
             self.tree.insert("","end",iid=str(i),values=(
                 r["path"],r["format"],str(r["width"])+" × "+str(r["height"]),
-                str(r["bytes"]),code if self.preflight.get() else "—"))
+                str(r["bytes"]),code if self.preflight.get() else "—",self.duplicate_groups.get(i,"")))
         if self.preflight.get():
             summary=msix_summary(self.rows)
             message=self.t("summary").format(n=summary["images"],issues=summary["issues"])
@@ -319,14 +369,17 @@ class Desk:
         if not paths:return
         try:rows,errors=append_images(self.rows,list(paths))
         except ValueError as exc:self.error(exc);return
-        self.rows=rows;self.refresh();self.status.set(self.t("result").format(n=len(rows),bad=len(errors)))
+        self.rows=rows;self.duplicate_groups={};self.duplicates_only=False
+        self.refresh();self.status.set(self.t("result").format(n=len(rows),bad=len(errors)))
         if errors:self.error("\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
     def remove(self):
         chosen={int(i) for i in self.tree.selection()}
-        self.rows=[r for i,r in enumerate(self.rows) if i not in chosen];self.refresh()
+        self.rows=[r for i,r in enumerate(self.rows) if i not in chosen]
+        self.duplicate_groups={};self.duplicates_only=False;self.refresh()
         self.status.set(self.t("result").format(n=len(self.rows),bad=0))
     def clear(self):
-        self.rows=[];self.refresh();self.status.set(self.t("empty"))
+        self.rows=[];self.duplicate_groups={};self.duplicates_only=False
+        self.refresh();self.status.set(self.t("empty"))
     def output(self,ext):
         return filedialog.asksaveasfilename(parent=self.root,defaultextension=ext,filetypes=[(ext.upper(),"*"+ext)])
     def confirm(self,path):
@@ -345,7 +398,8 @@ class Desk:
             except (OSError,ValueError,UnicodeError,RecursionError):
                 if not messagebox.askyesno(self.t("error"),self.t("recover"),parent=self.root):return
                 value=recover_session(path)
-            self.rows,errors=scan(value["paths"]);self.refresh()
+            self.rows,errors=scan(value["paths"])
+            self.duplicate_groups={};self.duplicates_only=False;self.refresh()
             self.status.set(self.t("loaded")+" "+self.t("result").format(n=len(self.rows),bad=len(errors)))
             if errors:self.error("\n".join(f"{Path(p).name}: {e}" for p,e in errors[:8]))
         except (OSError,ValueError,UnicodeError,RecursionError) as exc:self.error(exc)
