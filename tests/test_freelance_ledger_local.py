@@ -1,5 +1,6 @@
 import importlib.util
 import tempfile
+import sys
 import unittest
 from pathlib import Path
 
@@ -7,6 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 CORE = ROOT / "products" / "freelance-ledger-local" / "core.py"
 SPEC = importlib.util.spec_from_file_location("freelance_ledger_core", CORE)
 mod = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = mod
 SPEC.loader.exec_module(mod)
 
 class FactoryFreelanceLedgerContract(unittest.TestCase):
