@@ -319,6 +319,10 @@ class Desk:
 
     def find_duplicates(self):
         groups,errors=find_duplicate_groups(self.rows)
+        self.orientation.set("all")
+        self.min_width.set("");self.min_height.set("");self.max_mib.set("")
+        self.active_filter={"orientation":"all","min_width":0,"min_height":0,"max_bytes":None}
+        self.issues.set(False)
         self.duplicate_groups=groups;self.duplicates_only=True
         self.refresh()
         self.status.set(self.t("duplicate_summary").format(
