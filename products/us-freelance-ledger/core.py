@@ -7,6 +7,36 @@ from pathlib import Path
 CATEGORIES=["Business income","Advertising","Car and truck expenses","Commissions and fees","Contract labor","Insurance","Interest","Legal and professional services","Office expense","Rent or lease","Repairs and maintenance","Supplies","Taxes and licenses","Travel","Meals - review","Utilities","Other expenses"]
 DOCUMENT_TYPES=["Receipt","Invoice","Bank statement","Card statement","1099 form","Contract","Mileage/supporting record","Other"]
 METHODS=("cash","accrual")
+SUGGEST_RULES=[
+ ("Advertising",["advertising","ad spend","google ads","meta ads","marketing"]),
+ ("Car and truck expenses",["mileage","gas","fuel","parking","toll","vehicle","car"]),
+ ("Commissions and fees",["commission","platform fee","merchant fee","processing fee","stripe","paypal"]),
+ ("Contract labor",["contractor","freelancer","subcontractor","1099 contractor"]),
+ ("Insurance",["insurance","premium"]),
+ ("Legal and professional services",["lawyer","attorney","accountant","bookkeeper","cpa","legal"]),
+ ("Office expense",["office","paper","printer","software subscription","stationery"]),
+ ("Rent or lease",["rent","lease","coworking","office space"]),
+ ("Repairs and maintenance",["repair","maintenance"]),
+ ("Supplies",["supplies","materials","ink","toner","cable"]),
+ ("Taxes and licenses",["license","permit","business tax","registration fee"]),
+ ("Travel",["flight","hotel","travel","airfare","lodging"]),
+ ("Meals - review",["meal","restaurant","lunch","dinner"]),
+ ("Utilities",["electric","utility","internet","phone","water","gas"]),
+ ("Business income",["invoice paid","client payment","service revenue","sales","income"])
+]
+
+def suggest_category(text,kind="expense",limit=3):
+    hay=(text or "").strip().lower()
+    if not hay:return []
+    out=[]
+    for category,words in SUGGEST_RULES:
+        if kind=="income" and category!="Business income":continue
+        if kind=="expense" and category=="Business income":continue
+        hits=[w for w in words if w in hay]
+        if hits:
+            out.append({"category":category,"confidence":round(min(0.95,0.55+0.12*len(hits)),2),"matched":hits})
+    out.sort(key=lambda x:(-x["confidence"],x["category"]))
+    return out[:max(1,int(limit))]
 class LedgerError(ValueError): pass
 
 def default_db_path():
@@ -65,6 +95,12 @@ class Store:
         out={"income":0,"expense":0}
         for r in rows:out[r["kind"]]=int(r["t"])
         out["net"]=out["income"]-out["expense"];return out
+    def annual_summary(self,year):
+        rows=self.conn.execute("SELECT kind,COALESCE(SUM(amount_cents),0) t FROM transactions WHERE txn_date LIKE ? GROUP BY kind",(f"{year:04d}-%",)).fetchall()
+        out={"income":0,"expense":0}
+        for r in rows:out[r["kind"]]=int(r["t"])
+        out["net"]=out["income"]-out["expense"]
+        return out
     def schedule_c_prep_summary(self,year):
         rows=self.conn.execute("SELECT kind,category,SUM(amount_cents) t FROM transactions WHERE txn_date LIKE ? GROUP BY kind,category ORDER BY kind,category",(f"{year:04d}-%",)).fetchall()
         return [dict(r) for r in rows]
