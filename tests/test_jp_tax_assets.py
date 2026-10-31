@@ -11,4 +11,7 @@ class T(unittest.TestCase):
   adj=m.retrospective_adjustment(rows,{2026:20000});self.assertEqual(adj["rows"][0]["difference"],10000);self.assertTrue(adj["review_required"])
  def test_declining_requires_official_rates(self):
   with self.assertRaises(ValueError):m.jp_depreciation_schedule(100000,"2026-01-01",4,method="定率法")
+ def test_main_syntax(self):
+  p=Path(__file__).resolve().parents[1]/"products/jp-bookkeeping-desk/main.py"
+  compile(p.read_text(encoding="utf-8"),str(p),"exec")
 if __name__=="__main__":unittest.main()
