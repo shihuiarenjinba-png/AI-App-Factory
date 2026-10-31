@@ -1,12 +1,16 @@
-"""Discover the US bank statement reconciliation fixtures in Factory core CI."""
+"""Load US statement reconciliation fixtures without requiring a package __init__.py."""
+import importlib.util
 import unittest
 from pathlib import Path
 
 def load_tests(loader, tests, pattern):
-    product_tests=Path(__file__).resolve().parents[1]/"products"/"us-bookkeeping-desk"/"tests"
-    if not product_tests.is_dir():
-        raise AssertionError("US bookkeeping product tests missing")
-    suite=loader.discover(str(product_tests),pattern="test_reconciliation.py")
+    path=(Path(__file__).resolve().parents[1]/"products"/"us-bookkeeping-desk"/"tests"/"test_reconciliation.py")
+    if not path.is_file():
+        raise AssertionError("US bookkeeping reconciliation tests missing")
+    spec=importlib.util.spec_from_file_location("us_bookkeeping_reconciliation_fixtures",path)
+    module=importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    suite=loader.loadTestsFromModule(module)
     if suite.countTestCases()==0:
         raise AssertionError("No reconciliation tests discovered")
     return suite
