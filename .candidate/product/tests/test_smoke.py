@@ -152,6 +152,49 @@ class Tests(unittest.TestCase):
     def test_msix_csv_empty_is_rejected(self):
         with self.assertRaises(ValueError):app.export_msix_csv(self.d/"empty.csv",[])
 
+    def test_filter_dimensions_capacity_orientation_and_original_index(self):
+        rows=[
+            self.msix_row(width=1600,height=900,size=3*1048576),
+            self.msix_row(width=900,height=1600,size=1048576),
+            self.msix_row(width=1024,height=1024,size=512),
+            self.msix_row(width=2000,height=1000,size=1048576),
+        ]
+        self.assertEqual([i for i,_ in app.select_inventory(rows,orientation="landscape")],[0,3])
+        self.assertEqual([i for i,_ in app.select_inventory(rows,orientation="portrait")],[1])
+        self.assertEqual([i for i,_ in app.select_inventory(rows,orientation="square")],[2])
+        self.assertEqual([i for i,_ in app.select_inventory(rows,min_width=1366,min_height=768,
+                           max_bytes=2*1048576)],[3])
+        self.assertEqual(len(rows),4)
+
+    def test_filter_issues_only_and_preserves_source_rows(self):
+        rows=[self.msix_row(),self.msix_row(fmt="JPEG"),self.msix_row(width=900)]
+        original=[dict(row) for row in rows]
+        self.assertEqual([i for i,_ in app.select_inventory(rows,issues_only=True)],[1,2])
+        self.assertEqual(rows,original)
+
+    def test_filter_rejects_invalid_inputs(self):
+        row=[self.msix_row()]
+        for kwargs in ({"orientation":"diagonal"},{"min_width":-1},
+                       {"min_height":True},{"max_bytes":0},
+                       {"max_bytes":float("nan")},{"issues_only":1}):
+            with self.subTest(kwargs=kwargs):
+                with self.assertRaises(ValueError):app.select_inventory(row,**kwargs)
+
+    def test_msix_batch_over_limit_is_explicit_in_export(self):
+        rows=[self.msix_row() for _ in range(11)]
+        self.assertTrue(app.msix_summary(rows)["over_limit"])
+        p=self.d/"batch.csv"
+        app.export_msix_csv(p,rows)
+        with p.open(encoding="utf-8",newline="") as f:
+            report=list(csv.DictReader(f))
+        self.assertEqual(len(report),11)
+        self.assertEqual({r["batch_check"] for r in report},{"REVIEW_BATCH_LIMIT"})
+        self.assertEqual({r["msix_check"] for r in report},{"BASIC_CANDIDATE"})
+        app.export_msix_csv(p,rows[:10])
+        with p.open(encoding="utf-8",newline="") as f:
+            report=list(csv.DictReader(f))
+        self.assertEqual({r["batch_check"] for r in report},{""})
+
     def test_bilingual(self):
         self.assertEqual(set(app.LABELS["ja"]),set(app.LABELS["en"]))
         self.assertTrue(callable(app.main))
