@@ -7,4 +7,7 @@ class T(unittest.TestCase):
   self.assertEqual(str(m.manual_sales_tax("50","7.5")["gross"]),"53.75")
  def test_tax_profile(self):
   x=m.require_tax_profile("https://www.irs.gov/publications/p946",2026,"MACRS review");self.assertTrue(x["review_required"])
+ def test_main_syntax(self):
+  p=Path(__file__).resolve().parents[1]/"products/us-freelance-ledger/main.py"
+  compile(p.read_text(encoding="utf-8"),str(p),"exec")
 if __name__=="__main__":unittest.main()
