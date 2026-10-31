@@ -14,9 +14,12 @@ class App(tk.Tk):
   ttk.Label(f,text="勘定科目").grid(row=2,column=0);ttk.Label(f,text="借方").grid(row=2,column=1);ttk.Label(f,text="貸方").grid(row=2,column=2)
   for i in range(6):
    a,b,c=tk.StringVar(),tk.StringVar(),tk.StringVar();box=ttk.Combobox(f,textvariable=a,state="readonly");box.grid(row=3+i,column=0,sticky="ew");ttk.Entry(f,textvariable=b).grid(row=3+i,column=1);ttk.Entry(f,textvariable=c).grid(row=3+i,column=2);self.lines.append((a,b,c,box))
-  ttk.Button(f,text="仕訳候補を推測",command=self.suggest).grid(row=9,column=0,columnspan=3,sticky="ew",pady=3)
-  ttk.Button(f,text="記帳",command=self.post).grid(row=10,column=0,sticky="ew");ttk.Button(f,text="科目追加",command=self.add_account).grid(row=10,column=1,sticky="ew");ttk.Button(f,text="期間を締める",command=self.lock).grid(row=10,column=2,sticky="ew");ttk.Button(f,text="税率・固定資産計算",command=self.tax_assets).grid(row=11,column=0,columnspan=3,sticky="ew",pady=3)
-  ttk.Button(f,text="CSV出力",command=self.export).grid(row=12,column=0,columnspan=3,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
+  ttk.Button(f,text="科目・帳簿を調べる",command=self.lookup_help).grid(row=9,column=0,columnspan=3,sticky="ew",pady=3)
+  ttk.Button(f,text="複数レシートを取り込む",command=self.import_receipts).grid(row=10,column=0,columnspan=3,sticky="ew",pady=3)
+  ttk.Button(f,text="仕訳候補を推測",command=self.suggest).grid(row=11,column=0,columnspan=3,sticky="ew",pady=3)
+  ttk.Button(f,text="記帳",command=self.post).grid(row=12,column=0,sticky="ew");ttk.Button(f,text="科目追加",command=self.add_account).grid(row=12,column=1,sticky="ew");ttk.Button(f,text="期間を締める",command=self.lock).grid(row=12,column=2,sticky="ew")
+  ttk.Button(f,text="税率・固定資産計算",command=self.tax_assets).grid(row=13,column=0,columnspan=3,sticky="ew",pady=3)
+  ttk.Button(f,text="CSV出力",command=self.export).grid(row=14,column=0,columnspan=3,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
   nb=ttk.Notebook(p);p.add(nb,weight=3);j=ttk.Frame(nb,padding=8);r=ttk.Frame(nb,padding=8);nb.add(j,text="仕訳帳");nb.add(r,text="帳票")
   self.tree=ttk.Treeview(j,columns=("d","x","a","db","cr"),show="headings")
   for c,t in zip(("d","x","a","db","cr"),("日付","摘要","勘定科目","借方","貸方")):self.tree.heading(c,text=t)
@@ -25,6 +28,25 @@ class App(tk.Tk):
   vals=[f'{a["code"]} {a["name"]}' for a in self.s.accounts()]
   for _,_,_,b in self.lines:b["values"]=vals
  def code(self,x):return x.split()[0] if x.strip() else ""
+ def lookup_help(self):
+  q=simpledialog.askstring("科目・帳簿検索","例: 家賃 / パソコン / 個人カード / 売掛 / 原状回復 / 資産除去債務")
+  if not q:return
+  accounts=self.s.search_help(q,limit=7,include_advanced=True);books=self.s.search_book_help(q,limit=4);lines=[]
+  if accounts:
+   lines.append("【勘定科目候補】")
+   for a in accounts:
+    level="上級・要確認" if a["audience"]=="advanced" else a["audience"]
+    lines.append(f'・{a["code"]} {a["name"]} ({a["type"]} / {level})\n  使う場面: {a["use_text"]}\n  帳簿: {a["books"]}\n  例: {a["example"]}')
+  if books:
+   lines.append("\n【帳簿候補】")
+   for b in books:lines.append(f'・{b["book"]}: {b["purpose"]}')
+  if not lines:lines=["候補が見つかりませんでした。用途・取引内容を別の言葉で検索してください。"]
+  messagebox.showinfo("科目・帳簿検索","\n".join(lines[:20]))
+ def import_receipts(self):
+  paths=filedialog.askopenfilenames(title="複数のレシート・請求書画像/PDFを選択")
+  if not paths:return
+  added=self.s.enqueue_receipts(paths)
+  messagebox.showinfo("証憑取り込み",f"{added}件をローカル待ち行列に追加しました。\n\n次段階はOCR→日付/金額/店名→科目候補→仕訳候補→確認です。現時点では画像だけで自動確定しません。")
  def suggest(self):
   cand=suggest_entry(self.desc.get())
   if not cand:
