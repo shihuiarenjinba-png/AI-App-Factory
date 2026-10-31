@@ -1,15 +1,15 @@
 from __future__ import annotations
-import csv, os, sqlite3
+import csv, os, re, sqlite3
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
 
-CATEGORIES=["Business income","Advertising","Car and truck expenses - review","Commissions and fees","Contract labor","Insurance","Interest","Legal and professional services","Office expense","Rent or lease","Repairs and maintenance","Supplies","Taxes and licenses - review","Travel - review","Meals - review","Utilities","Business use of home - review","Depreciation / Section 179 - review","Other expenses"]
+CATEGORIES=["Business income","Advertising","Car and truck expenses - review","Commissions and fees","Contract labor","Insurance","Interest","Legal and professional services","Office expense","Rent or lease","Repairs and maintenance","Supplies","Taxes and licenses - review","Travel - review","Meals - review","Utilities","Business use of home - review","Depreciation / Section 179 - review","Inventory / COGS - review","Other expenses"]
 DOCUMENT_TYPES=["Receipt","Invoice","Bank statement","Card statement","1099 form","Contract","Mileage/supporting record","Other"]
 METHODS=("cash","accrual")
 SUGGEST_RULES=[
  ("Advertising",["advertising","ad spend","google ads","meta ads","marketing"]),
- ("Car and truck expenses - review",["mileage","gas","fuel","parking","toll","vehicle","car"]),
+ ("Car and truck expenses - review",["mileage","gasoline","fuel","parking","toll","vehicle","car"]),
  ("Commissions and fees",["commission","platform fee","merchant fee","processing fee","stripe","paypal"]),
  ("Contract labor",["contractor","freelancer","subcontractor","1099 contractor"]),
  ("Insurance",["insurance","premium"]),
@@ -21,9 +21,10 @@ SUGGEST_RULES=[
  ("Taxes and licenses - review",["license","permit","business tax","registration fee"]),
  ("Travel - review",["flight","hotel","travel","airfare","lodging"]),
  ("Meals - review",["meal","restaurant","lunch","dinner"]),
- ("Utilities",["electric","utility","internet","phone","water","gas"]),
+ ("Utilities",["electric","utility","internet","phone","water","gas utility","natural gas bill"]),
  ("Business use of home - review",["home office","business use of home"]),
  ("Depreciation / Section 179 - review",["depreciation","section 179","capital asset","equipment purchase","fixed asset"]),
+ ("Inventory / COGS - review",["inventory","goods for resale","cost of goods sold","cogs"]),
  ("Business income",["invoice paid","client payment","service revenue","sales","income"])
 ]
 
@@ -33,7 +34,8 @@ REVIEW_RULES={
  "Travel - review":["Travel requires business-purpose, tax-home and substantiation review."],
  "Business use of home - review":["Home-office rules have qualification tests and limitations."],
  "Depreciation / Section 179 - review":["Capitalization, depreciation and Section 179 require separate tax-year/entity review."],
- "Taxes and licenses - review":["Federal, state and local treatment varies; state/local requirements are outside automated scope."]
+ "Taxes and licenses - review":["Federal, state and local treatment varies; state/local requirements are outside automated scope."],
+ "Inventory / COGS - review":["Inventory and cost-of-goods-sold treatment requires a separate method and documentation review."]
 }
 def review_requirements(category):
     return list(REVIEW_RULES.get(category,[]))
@@ -45,10 +47,12 @@ def suggest_category(text,kind="expense",limit=3):
     for category,words in SUGGEST_RULES:
         if kind=="income" and category!="Business income":continue
         if kind=="expense" and category=="Business income":continue
-        hits=[w for w in words if w in hay]
+        hits=[w for w in words if re.search(r"(?<![A-Za-z0-9])"+re.escape(w)+r"(?![A-Za-z0-9])",hay)]
         if hits:
             out.append({"category":category,"confidence":round(min(0.95,0.55+0.12*len(hits)),2),"matched":hits,"requires_review":bool(review_requirements(category)),"review_reasons":review_requirements(category)})
     out.sort(key=lambda x:(-x["confidence"],x["category"]))
+    # An equal-scoring cross-category match is ambiguous, not a reliable guess.
+    if len(out)>1 and out[0]["confidence"]==out[1]["confidence"]:return []
     return out[:max(1,int(limit))]
 class LedgerError(ValueError): pass
 
@@ -63,7 +67,10 @@ def usd_to_cents(v):
     try:d=Decimal(str(v))
     except (InvalidOperation,ValueError) as e: raise LedgerError("Invalid amount") from e
     if not d.is_finite() or d<=0: raise LedgerError("Amount must be positive")
-    return int((d*100).quantize(Decimal("1"),rounding=ROUND_HALF_UP))
+    cents=int((d*100).quantize(Decimal("1"),rounding=ROUND_HALF_UP))
+    if cents<1:raise LedgerError("Amount rounds to zero cents")
+    if cents>2**63-1:raise LedgerError("Amount exceeds supported range")
+    return cents
 
 class Store:
     def __init__(self,path=None,accounting_method="cash"):
