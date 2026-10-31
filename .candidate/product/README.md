@@ -1,33 +1,39 @@
-# Offline Image Inventory Desk
+# Freelance Ledger JP/US
 
-Private offline read-only image-header inventory for PNG/JPEG/GIF/BMP. Python stdlib and Tkinter only. No uploads, login, telemetry or image edits.
+Local-only Windows bookkeeping organizer for freelancers and sole proprietors who want to keep business records without uploading financial data to a vendor.
 
-Run `python main.py`. Add up to 200 local images; review dimensions, format and byte count. Save/reopen JSON sessions containing only local paths with `.bak` recovery, or export CSV. File replacement requires confirmation.
+## Features
 
-Limitations: header inspection only, not full pixel validation, EXIF inspection, resizing or thumbnails. Files over 64 MiB, symlinks and invalid headers are rejected; JPEG frame header must appear in first 1 MiB. Windows GUI QA remains unverified.
+- Japan / United States mode in one app.
+- Income and expense ledger with region-specific category suggestions.
+- User-supplied business-use percentage for mixed personal/business expenses.
+- Counterparty, payment account, description and evidence-reference fields.
+- Region-filtered income, expense and net summaries.
+- CSV export for a tax professional or downstream accounting workflow.
+- Atomic local JSON save with last-known-good .bak recovery.
+- Japanese/English labels and a 1024x768-friendly Tkinter layout.
 
-Headless tests: `python -m unittest discover -s tests -v`.
+## Scope
 
-## Experimental MSIX desktop screenshot check (review only)
+This is bookkeeping software, not tax filing or tax advice. Category names are organizational suggestions only. It does not decide whether an expense is deductible, calculate a tax return, submit Schedule C, submit a Japanese income-tax return, or replace a qualified professional.
 
-Enable **MSIX screenshot check** after adding images; optionally select **Issues only** and **Export check CSV**. This is a read-only, header-only triage for Store listing screenshots, not image editing, upload, certification or a claim of Partner Center acceptance. It preserves previous snapshot rows when adding images.
+The design is informed by:
+- Japan NTA bookkeeping/storage guidance: https://www.nta.go.jp/taxes/shiraberu/shinkoku/kojin_jigyo/0023005-091_01.pdf
+- IRS recordkeeping guidance: https://www.irs.gov/businesses/small-businesses-self-employed/recordkeeping
+- IRS Schedule C information: https://www.irs.gov/forms-pubs/about-schedule-c-form-1040
 
-Based on [Microsoft's MSIX screenshot guidance](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images), rechecked 2026-10-31: PNG, desktop 1366 x 768 or larger, portrait/landscape allowed, max 10 desktop screenshots and a documented 50 MB per-image limit. Landscape below 1366 x 768 and non-PNG images are flagged; portrait screenshots that meet rotated bounds require manual review because exact threshold semantics are not explicit. Files near 50 MB require manual review because byte interpretation is not specified; >50 MiB is flagged as over either common interpretation. A "BASIC_CANDIDATE" is never Store-ready: this header scanner cannot verify image pixels, content, overlay text, localization, listing completeness or actual Partner Center acceptance. A list with over 10 files is shown as a batch warning, not silently dropped.
+## Market position
 
-The CSV includes per-image status, actionable explanation, rule URL, checked date, batch count and limit, plus an explicit `REVIEW_BATCH_LIMIT` flag on every row if the full batch exceeds ten screenshots. The UI displays the same batch warning even if every individual screenshot passes its basic header check.
+The product is deliberately not a cloud bank-sync competitor. Its proposed paid-use value is privacy-first local bookkeeping, no account, no subscription dependency, and a clean CSV handoff to an accountant/tax preparer. That thesis still requires user validation before Store packaging.
 
-## Inventory filters (candidate; Windows GUI QA pending)
+## Run and test
 
-Choose **All / Wide / Tall / Square**, optionally enter minimum width, minimum height and maximum whole MiB, then click **Apply filters**. **Reset** clears these view-only filters. The filters never delete or change source files, the inventory snapshot or original row indices; **Remove selected** removes the selected visible rows only. **Issues only** further narrows the visible list while the MSIX check is enabled. Save session and both CSV exports intentionally include the full inventory rather than the visible subset, to avoid silently losing evidence. Invalid numeric inputs show an error without replacing the active filter.
+python main.py
 
-The filter interface is bilingual (English/Japanese) and needs actual 1024x768 Windows GUI inspection before any UI PASS claim. All source images remain unchanged. **MARKET_FIT_HOLD 64/100** remains in force; no paid-release or commercial MSIX permission follows from this prototype. This feature must pass real Windows GUI 1024x768 review and market validation before Store packaging.
+Tests are headless and live in tests/test_smoke.py.
 
-## One-click Store review preset (candidate)
+Python 3.12+ standard library is sufficient. No network, telemetry, login, payment, remote shell, credential handling or automatic downloads.
 
-**Review Store issues** / **Store要確認だけ表示** turns on the header-only MSIX check and Issues-only view in one click, clearing stale size and orientation filters first. It does not change, remove, upload, or certify images. A batch with more than ten screenshots still displays the explicit count warning even when all individual headers pass. Both CSV exports and session saves continue to include the entire inventory, not only the filtered rows. Windows GUI validation remains pending.
+## Status
 
-## Read-only duplicate candidates (candidate; GUI QA pending)
-
-Click **Find duplicates / 重複候補を探す** to hash only files sharing an inventory byte size with another file. Identical SHA-256 digests are grouped as D1, D2, etc., and the view shows candidate duplicates. **Reset / 解除** returns to the full list. Stale orientation, size and Store-issues filters are cleared before duplicate review. The tool never deletes or edits images and does not upload content; the full inventory remains in session saves and CSV exports. Hashes are recomputed on demand, not cached across file additions, removals or session reloads.
-
-The operation checks regular files, symlinks, file sizes and modifications during hashing; missing or changed files are skipped with an error. This is exact-byte duplicate triage, not visual similarity or proof that two different encodings depict the same image. No duplicate is automatically removed. Actual Windows 1024x768 GUI QA and the product's **MARKET_FIT_HOLD 64/100** still block commercial packaging.
+Review-only candidate. Windows installation, signing, MSIX packaging, accessibility and Store certification are downstream gates and are not claimed here.
