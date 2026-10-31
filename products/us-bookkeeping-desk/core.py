@@ -8,16 +8,37 @@ METHODS=("cash","accrual")
 DEFAULT=[
 ("1000","Cash","asset"),("1100","Bank","asset"),("1200","Accounts Receivable","asset"),("1300","Inventory","asset"),("1500","Fixed Assets","asset"),
 ("2000","Accounts Payable","liability"),("2100","Accrued Liabilities","liability"),("3000","Owner Equity","equity"),("4000","Sales / Service Revenue","revenue"),("4100","Other Income","revenue"),
-("5000","Cost of Goods Sold","expense"),("5100","Contract Labor","expense"),("5200","Rent Expense","expense"),("5300","Utilities","expense"),("5400","Travel Expense","expense"),("5500","Supplies Expense","expense"),("5600","Depreciation Expense","expense"),("5900","Other Expense","expense")]
+("5000","Cost of Goods Sold - review","expense"),("5100","Contract Labor","expense"),("5200","Rent Expense","expense"),("5300","Utilities","expense"),("5350","Vehicle Expense - review","expense"),("5400","Travel Expense - review","expense"),("5450","Meals Expense - review","expense"),("5500","Supplies Expense","expense"),("5600","Depreciation Expense - review","expense"),("5700","Taxes and Licenses - review","expense"),("5750","Business Use of Home - review","expense"),("5900","Other Expense","expense")]
 SUGGEST_ENTRY_RULES=[
  (["rent","lease","office space"],"5200","1100","Rent Expense"),
  (["utility","utilities","internet","phone","electric","water","gas"],"5300","1100","Utilities"),
- (["travel","flight","hotel","airfare","lodging"],"5400","1100","Travel Expense"),
+ (["travel","flight","hotel","airfare","lodging"],"5400","1100","Travel Expense - review"),
+ (["mileage","vehicle","car","truck","gas","fuel","parking","toll"],"5350","1100","Vehicle Expense - review"),
+ (["meal","restaurant","lunch","dinner"],"5450","1100","Meals Expense - review"),
  (["supply","supplies","paper","ink","toner","cable"],"5500","1100","Supplies Expense"),
  (["contractor","freelancer","subcontractor","contract labor"],"5100","1100","Contract Labor"),
- (["inventory","goods for resale","cost of goods"],"5000","1100","Cost of Goods Sold"),
+ (["inventory","goods for resale","cost of goods"],"5000","1100","Cost of Goods Sold - review"),
+ (["depreciation","section 179","capital asset","fixed asset"],"5600","1100","Depreciation Expense - review"),
+ (["business tax","license","permit","registration fee"],"5700","1100","Taxes and Licenses - review"),
+ (["home office","business use of home"],"5750","1100","Business Use of Home - review"),
  (["sale","client payment","service revenue","invoice paid","income"],"1100","4000","Sales / Service Revenue"),
 ]
+REVIEW_ACCOUNT_RULES={
+ "5000":["Inventory and cost-of-goods-sold treatment can depend on inventory and accounting rules."],
+ "5350":["Vehicle deductions require substantiation and method-specific review."],
+ "5400":["Travel requires business-purpose, tax-home and substantiation review."],
+ "5450":["Business meals have special qualification and percentage rules."],
+ "5600":["Capitalization, depreciation and Section 179 require tax-year/entity review."],
+ "5700":["Federal/state/local tax and license treatment varies; state/local rules are not automated."],
+ "5750":["Business-use-of-home deductions have qualification tests and limitations."]
+}
+def review_requirements_for_codes(codes):
+ out=[]
+ for code in codes:
+  for msg in REVIEW_ACCOUNT_RULES.get(str(code),[]):
+   if msg not in out:out.append(msg)
+ return out
+
 def suggest_entry(text):
  hay=(text or "").strip().lower()
  if not hay:return None
@@ -26,7 +47,7 @@ def suggest_entry(text):
   hits=[w for w in words if w in hay]
   if hits:
    score=min(0.95,0.58+0.12*len(hits))
-   cand={"debit_code":debit,"credit_code":credit,"label":label,"confidence":round(score,2),"matched":hits}
+   cand={"debit_code":debit,"credit_code":credit,"label":label,"confidence":round(score,2),"matched":hits,"review_reasons":review_requirements_for_codes([debit,credit])}
    if best is None or cand["confidence"]>best["confidence"]:best=cand
  return best
 class BookError(ValueError):pass
