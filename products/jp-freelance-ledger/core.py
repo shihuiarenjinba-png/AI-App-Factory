@@ -3,7 +3,18 @@ import csv, os, sqlite3
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
-from account_catalog import ACCOUNT_CATALOG,BOOK_GUIDE
+try:
+    from account_catalog import ACCOUNT_CATALOG,BOOK_GUIDE
+except ModuleNotFoundError:
+    import importlib.util as _importlib_util
+    import sys as _sys
+    _catalog_path=Path(__file__).with_name("account_catalog.py")
+    _spec=_importlib_util.spec_from_file_location(f"{__name__}_account_catalog",_catalog_path)
+    _mod=_importlib_util.module_from_spec(_spec)
+    _sys.modules[_spec.name]=_mod
+    _spec.loader.exec_module(_mod)
+    ACCOUNT_CATALOG=_mod.ACCOUNT_CATALOG
+    BOOK_GUIDE=_mod.BOOK_GUIDE
 
 CATEGORIES = ["売上高","受取手数料","雑収入","仕入高","外注工賃","給料賃金","専従者給与","法定福利費","福利厚生費","地代家賃","水道光熱費","旅費交通費","通信費","広告宣伝費","接待交際費","損害保険料","修繕費","消耗品費","租税公課","荷造運賃","支払手数料","新聞図書費","会議費","車両費","研修費","ソフトウェア利用料","リース料","減価償却費","貸倒金","利子割引料","雑費","その他"]
 DOCUMENT_TYPES = ["領収書","請求書","レシート","契約書","振込記録","通帳・明細","その他"]
