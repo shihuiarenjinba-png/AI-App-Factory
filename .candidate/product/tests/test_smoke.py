@@ -320,8 +320,8 @@ class Tests(unittest.TestCase):
         copy=self.d/"copy.png"
         copy.write_bytes(self.png.read_bytes())
         good=self.d/"store.png"
-        good.write_bytes(b"\\x89PNG\\r\\n\\x1a\\n"+struct.pack(">I",13)+
-                         b"IHDR"+struct.pack(">II",1366,768)+b"\\x08\\x02\\x00\\x00\\x00")
+        good.write_bytes(b"\x89PNG\r\n\x1a\n"+struct.pack(">I",13)+
+                         b"IHDR"+struct.pack(">II",1366,768)+b"\x08\x02\x00\x00\x00")
         rows=[app.inspect_image(good),app.inspect_image(self.png),app.inspect_image(copy)]
         report,summary=app.build_review_report(rows)
         self.assertEqual(summary["images"],3)
