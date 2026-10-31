@@ -67,6 +67,7 @@ def usd_to_cents(v):
     try:d=Decimal(str(v))
     except (InvalidOperation,ValueError) as e: raise LedgerError("Invalid amount") from e
     if not d.is_finite() or d<=0: raise LedgerError("Amount must be positive")
+    if d>Decimal(2**63-1)/100:raise LedgerError("Amount exceeds supported range")
     cents=int((d*100).quantize(Decimal("1"),rounding=ROUND_HALF_UP))
     if cents<1:raise LedgerError("Amount rounds to zero cents")
     if cents>2**63-1:raise LedgerError("Amount exceeds supported range")
