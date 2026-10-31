@@ -1,7 +1,7 @@
 import tkinter as tk
 from datetime import date
 from tkinter import filedialog,messagebox,simpledialog,ttk
-from core import TYPES,BookError,Store
+from core import TYPES,BookError,Store,suggest_entry
 class App(tk.Tk):
  def __init__(self):
   super().__init__();self.title("複式簿記デスク 日本版");self.geometry("1180x760");self.minsize(980,650);self.s=Store();self.protocol("WM_DELETE_WINDOW",self.close)
@@ -13,7 +13,8 @@ class App(tk.Tk):
   ttk.Label(f,text="勘定科目").grid(row=2,column=0);ttk.Label(f,text="借方").grid(row=2,column=1);ttk.Label(f,text="貸方").grid(row=2,column=2)
   for i in range(6):
    a,b,c=tk.StringVar(),tk.StringVar(),tk.StringVar();box=ttk.Combobox(f,textvariable=a,state="readonly");box.grid(row=3+i,column=0,sticky="ew");ttk.Entry(f,textvariable=b).grid(row=3+i,column=1);ttk.Entry(f,textvariable=c).grid(row=3+i,column=2);self.lines.append((a,b,c,box))
-  ttk.Button(f,text="記帳",command=self.post).grid(row=9,column=0,sticky="ew");ttk.Button(f,text="科目追加",command=self.add_account).grid(row=9,column=1,sticky="ew");ttk.Button(f,text="期間を締める",command=self.lock).grid(row=9,column=2,sticky="ew");ttk.Button(f,text="CSV出力",command=self.export).grid(row=10,column=0,columnspan=3,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
+  ttk.Button(f,text="仕訳候補を推測",command=self.suggest).grid(row=9,column=0,columnspan=3,sticky="ew",pady=3)
+  ttk.Button(f,text="記帳",command=self.post).grid(row=10,column=0,sticky="ew");ttk.Button(f,text="科目追加",command=self.add_account).grid(row=10,column=1,sticky="ew");ttk.Button(f,text="期間を締める",command=self.lock).grid(row=10,column=2,sticky="ew");ttk.Button(f,text="CSV出力",command=self.export).grid(row=11,column=0,columnspan=3,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
   nb=ttk.Notebook(p);p.add(nb,weight=3);j=ttk.Frame(nb,padding=8);r=ttk.Frame(nb,padding=8);nb.add(j,text="仕訳帳");nb.add(r,text="帳票")
   self.tree=ttk.Treeview(j,columns=("d","x","a","db","cr"),show="headings")
   for c,t in zip(("d","x","a","db","cr"),("日付","摘要","勘定科目","借方","貸方")):self.tree.heading(c,text=t)
@@ -22,6 +23,13 @@ class App(tk.Tk):
   vals=[f'{a["code"]} {a["name"]}' for a in self.s.accounts()]
   for _,_,_,b in self.lines:b["values"]=vals
  def code(self,x):return x.split()[0] if x.strip() else ""
+ def suggest(self):
+  cand=suggest_entry(self.desc.get())
+  if not cand:
+   messagebox.showinfo("仕訳候補","摘要から候補を絞れませんでした。手動で勘定科目を選択してください。");return
+  vals={a["code"]:f'{a["code"]} {a["name"]}' for a in self.s.accounts()}
+  self.lines[0][0].set(vals.get(cand["debit_code"],""));self.lines[1][0].set(vals.get(cand["credit_code"],""))
+  messagebox.showinfo("仕訳候補",f'候補: {cand["label"]}\n借方 {cand["debit_code"]} / 貸方 {cand["credit_code"]}\n確信度 {cand["confidence"]:.0%}\n一致語 {", ".join(cand["matched"])}\n\n金額と科目は記帳前に確認してください。')
  def post(self):
   try:self.s.post(self.d.get(),self.desc.get(),[(self.code(a.get()),b.get(),c.get()) for a,b,c,_ in self.lines])
   except BookError as e:messagebox.showerror("仕訳エラー",str(e));return
@@ -42,10 +50,10 @@ class App(tk.Tk):
  def refresh(self):
   for i in self.tree.get_children():self.tree.delete(i)
   for i,r in enumerate(self.s.journal()):self.tree.insert("","end",iid=str(i),values=(r["entry_date"],r["description"],f'{r["code"]} {r["name"]}',f'{r["debit_yen"]:,}' if r["debit_yen"] else "",f'{r["credit_yen"]:,}' if r["credit_yen"] else ""))
-  p=self.s.pnl();b=self.s.bs();t=["試算表","="*60]
+  p=self.s.pnl();b=self.s.bs();chk=self.s.balance_check();t=["試算表","="*60]
   for x in self.s.trial():
    if x["debit"] or x["credit"]:t.append(f'{x["code"]:<6}{x["name"]:<18}{x["debit"]:>14,}{x["credit"]:>14,}')
-  t+=["","損益計算書",f'収益 {p["収益"]:,}円',f'費用 {p["費用"]:,}円',f'当期利益 {p["利益"]:,}円',"","貸借対照表",f'資産 {b["資産"]:,}円',f'負債 {b["負債"]:,}円',f'純資産 {b["純資産"]:,}円',f'当期利益 {b["当期利益"]:,}円']
+  t+=["",f'貸借一致: {"OK" if chk["balanced"] else "要確認"} / 差額 {chk["difference"]:,}円',"","損益計算書",f'収益 {p["収益"]:,}円',f'費用 {p["費用"]:,}円',f'当期利益 {p["利益"]:,}円',"","貸借対照表",f'資産 {b["資産"]:,}円',f'負債 {b["負債"]:,}円',f'純資産 {b["純資産"]:,}円',f'当期利益 {b["当期利益"]:,}円']
   self.report.configure(state="normal");self.report.delete("1.0","end");self.report.insert("1.0","\n".join(t));self.report.configure(state="disabled")
  def export(self):
   x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
