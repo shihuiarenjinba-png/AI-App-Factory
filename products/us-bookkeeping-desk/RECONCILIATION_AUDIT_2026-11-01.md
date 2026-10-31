@@ -18,3 +18,19 @@ Unmatched statement items remain review-needed; outstanding ledger movements are
 - Cash/accrual tax recognition and tax deductibility are not inferred. Book net income is not taxable income.
 - No GUI evidence or Windows EXE artifact from this branch.
 - MARKET_FIT_HOLD / COMPLIANCE_HOLD; no formal Factory promotion, Identity binding, signed MSIX, Store submission or commercial readiness.
+
+## Federal compliance cross-check (2026-11-01; not a tax-law certification)
+1. Sole proprietor / Schedule C scope: https://www.irs.gov/instructions/i1040sc — no filer eligibility inference.
+2. Cash/accrual: https://www.irs.gov/publications/p538 — reconciliation never changes recognition timing.
+3. Method changes/Form 3115: https://www.irs.gov/forms-pubs/about-form-3115 — no automatic method change.
+4. 1099 vs recorded income: https://www.irs.gov/publications/p334 — bank reconciliation is not income completeness proof.
+5. Vehicle/mileage records: https://www.irs.gov/publications/p463 — no automated vehicle deductions.
+6. Travel/meals substantiation: https://www.irs.gov/publications/p463 — no deductible amount inferred.
+7. Home-office eligibility: https://www.irs.gov/publications/p587 — outside reconciliation.
+8. Depreciation/Section 179: https://www.irs.gov/publications/p946 — 2025-specific changes, no hardcoded schedules.
+9. Inventory/COGS: https://www.irs.gov/publications/p334 — no inventory accounting claim.
+10. Records retention: https://www.irs.gov/publications/p583 — no automatic deletion.
+11. Computerized source-document traceability: https://www.irs.gov/publications/p583 — explicit journal line IDs, but statement source storage/audit retention remain HOLD.
+12. State/local tax and licenses: https://www.irs.gov/instructions/i1040sc — federal and state/local rules are separate.
+
+**Release safety:** Source links and future developments must be rechecked for the applicable tax year. Book reconciliation and net income do not prove taxable income or tax compliance. No rates or thresholds are inferred by this feature.
