@@ -7,7 +7,7 @@ This gate never promotes a candidate, binds Identity or submits to the Store.
 from __future__ import annotations
 
 import argparse
-from datetime import date
+from datetime import date, timedelta
 import json
 from pathlib import Path
 import re
@@ -26,6 +26,7 @@ WEIGHTS = {
     "discoverability": 10,
     "implementation_risk": 5,
 }
+MAX_RESEARCH_AGE_DAYS = 180
 GO_FLAGS = (
     "one_sentence_why_pay",
     "two_distinctions_from_free_alternatives",
@@ -55,6 +56,19 @@ def _valid_evidence_url(value: object) -> bool:
     return (parsed.scheme == "https" and bool(parsed.hostname)
             and parsed.username is None and parsed.password is None
             and parsed.hostname not in {"localhost", "example.com", "example.invalid"})
+
+
+def _fresh_date(value: object, today: date) -> bool:
+    """Current research and competitor checks; allow one day for timezones."""
+    if not _valid_date(value):
+        return False
+    checked = date.fromisoformat(value)
+    return today - timedelta(days=MAX_RESEARCH_AGE_DAYS) <= checked <= today + timedelta(days=1)
+
+
+def _not_future_date(value: object, today: date) -> bool:
+    """Historical complaints can be old, but cannot be dated in the future."""
+    return _valid_date(value) and date.fromisoformat(value) <= today + timedelta(days=1)
 
 
 class MarketFitHold(ValueError):
@@ -104,8 +118,9 @@ def assert_market_fit(root: Path, slug: str) -> dict:
         raise MarketFitHold("commercial MSIX is not explicitly allowed")
     if doc.get("feature_expansion_allowed") is not True:
         raise MarketFitHold("product expansion has not been approved")
-    if not _valid_date(doc.get("researched_on")):
-        raise MarketFitHold("research date missing or invalid")
+    today = date.today()
+    if not _fresh_date(doc.get("researched_on"), today):
+        raise MarketFitHold("research date missing, future or older than 180 days")
     competitors = doc.get("direct_competitors")
     alternatives = doc.get("free_alternatives")
     if (not isinstance(competitors, list) or len(competitors) < 3
@@ -117,12 +132,19 @@ def assert_market_fit(root: Path, slug: str) -> dict:
            or not isinstance(item.get("name"), str)
            or not item["name"].strip()
            or not _valid_evidence_url(item.get("source"))
-           or not _valid_date(item.get("checked")) for item in competitors):
+           or not _fresh_date(item.get("checked"), today) for item in competitors):
         raise MarketFitHold("competitor source URL/date missing or invalid")
     if len({item["name"].strip().casefold() for item in competitors}) < 3:
         raise MarketFitHold("fewer than three distinct competitors")
-    if (any(not isinstance(item, str) or not item.strip() for item in alternatives)
-            or len({item.strip().casefold() for item in alternatives}) < 3):
+    # Free alternatives must be independently checkable, not merely named.
+    # Existing HOLD documents may retain string-only rows; PASS cannot.
+    if any(not isinstance(item, dict)
+           or not isinstance(item.get("name"), str)
+           or not item["name"].strip()
+           or not _valid_evidence_url(item.get("source"))
+           or not _fresh_date(item.get("checked"), today) for item in alternatives):
+        raise MarketFitHold("free alternative source URL/date missing or invalid")
+    if len({item["name"].strip().casefold() for item in alternatives}) < 3:
         raise MarketFitHold("fewer than three distinct free alternatives")
     for field in ("paid_price_range", "buyer_persona", "why_pay_statement"):
         if not isinstance(doc.get(field), str) or len(doc[field].strip()) < 10:
@@ -136,7 +158,7 @@ def assert_market_fit(root: Path, slug: str) -> dict:
                and isinstance(item.get("complaint"), str)
                and len(item["complaint"].strip()) >= 10
                and _valid_evidence_url(item.get("source"))
-               and _valid_date(item.get("post_date")) for item in complaints):
+               and _not_future_date(item.get("post_date"), today) for item in complaints):
         raise MarketFitHold("no dated, source-linked review complaint")
     if not isinstance(doc.get("store_search_keywords"), list) or not doc["store_search_keywords"]:
         raise MarketFitHold("Store discoverability not documented")
