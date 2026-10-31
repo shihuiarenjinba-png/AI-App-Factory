@@ -72,9 +72,9 @@ class App(tk.Tk):
         messagebox.showinfo(
             "Receipt intake",
             f'{counts["QUEUED"]} added, {counts["DUPLICATE"]} already queued, '
-            f'{counts["REJECTED"]} could not be added.\\n'
+            f'{counts["REJECTED"]} could not be added.\n'
             "Files remain in their original locations. Review each receipt and enter the details yourself."
-            + ("\\n\\nIssues:\\n" + "\\n".join(failures[:5]) if failures else "")
+            + ("\n\nIssues:\n" + "\n".join(failures[:5]) if failures else "")
         )
 
     def review_receipts(self):
