@@ -195,6 +195,28 @@ class Tests(unittest.TestCase):
             report=list(csv.DictReader(f))
         self.assertEqual({r["batch_check"] for r in report},{""})
 
+    def test_store_review_preset_clears_stale_filters_and_shows_issues(self):
+        class Var:
+            def __init__(self,value):self.value=value
+            def set(self,value):self.value=value
+            def get(self):return self.value
+        desk=app.Desk.__new__(app.Desk)
+        desk.orientation=Var("portrait");desk.min_width=Var("2000")
+        desk.min_height=Var("1000");desk.max_mib=Var("1")
+        desk.preflight=Var(False);desk.issues=Var(False)
+        desk.active_filter={"orientation":"portrait","min_width":2000,
+                            "min_height":1000,"max_bytes":1048576}
+        calls=[]
+        desk.localize=lambda:calls.append("localize")
+        desk.refresh=lambda:calls.append("refresh")
+        desk.store_review_preset()
+        self.assertTrue(desk.preflight.get() and desk.issues.get())
+        self.assertEqual(desk.active_filter,{"orientation":"all","min_width":0,
+                                            "min_height":0,"max_bytes":None})
+        self.assertEqual([desk.orientation.get(),desk.min_width.get(),
+                          desk.min_height.get(),desk.max_mib.get()],["all","","",""])
+        self.assertEqual(calls,["localize","refresh"])
+
     def test_bilingual(self):
         self.assertEqual(set(app.LABELS["ja"]),set(app.LABELS["en"]))
         self.assertTrue(callable(app.main))
