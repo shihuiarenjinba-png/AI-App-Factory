@@ -1,5 +1,5 @@
 """Headless image inventory functional tests."""
-import csv, struct, sys, tempfile, unittest
+import csv, os, struct, sys, tempfile, unittest
 from pathlib import Path
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
 import main as app
@@ -244,6 +244,48 @@ class Tests(unittest.TestCase):
         self.assertEqual(groups,{})
         self.assertEqual(len(errors),1)
 
+    def test_duplicate_groups_reject_stale_same_size_identical_bytes(self):
+        """An identical re-save is still stale and must not receive a D-group."""
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        original=copy.read_bytes()
+        copy.write_bytes(original)
+        changed_ns=rows[1]["modified_ns"]+5_000_000_000
+        os.utime(copy,ns=(changed_ns,changed_ns))
+        groups,errors=app.find_duplicate_groups(rows)
+        self.assertEqual(groups,{})
+        self.assertEqual(len(errors),1)
+        self.assertIn("since inventory scan",errors[0][1])
+        report,summary=app.build_review_report(rows)
+        stale=next(r for r in report if r["path"]==str(copy))
+        self.assertEqual(stale["source_check"],"SOURCE_CHANGED")
+        self.assertTrue(stale["duplicate_scan_error"])
+        self.assertEqual(summary["duplicate_files"],0)
+        self.assertEqual(summary["hash_errors"],1)
+        self.assertEqual(copy.read_bytes(),original)
+
+    def test_duplicate_groups_accept_rescanned_same_size_copy(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        changed_ns=rows[1]["modified_ns"]+5_000_000_000
+        os.utime(copy,ns=(changed_ns,changed_ns))
+        self.assertEqual(app.find_duplicate_groups(rows)[0],{})
+        refreshed=[app.inspect_image(p) for p in (self.png,copy)]
+        groups,errors=app.find_duplicate_groups(refreshed)
+        self.assertEqual(errors,[])
+        self.assertEqual(groups,{0:"D1",1:"D1"})
+
+    def test_duplicate_groups_legacy_rows_without_timestamp(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        for row in rows:row.pop("modified_ns")
+        groups,errors=app.find_duplicate_groups(rows)
+        self.assertEqual(errors,[])
+        self.assertEqual(groups,{0:"D1",1:"D1"})
+
     def test_duplicate_groups_reject_symlinks_and_invalid_inventory(self):
         link=self.d/"linked.png"
         try:link.symlink_to(self.png)
@@ -314,6 +356,186 @@ class Tests(unittest.TestCase):
         desk=app.Desk.__new__(app.Desk)
         desk.tree=EmptyTree()
         desk.show_selection_details()
+
+
+    def test_review_report_prioritizes_issues_and_exact_duplicates(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        good=self.d/"store.png"
+        good.write_bytes(b"\x89PNG\r\n\x1a\n"+struct.pack(">I",13)+
+                         b"IHDR"+struct.pack(">II",1366,768)+b"\x08\x02\x00\x00\x00")
+        rows=[app.inspect_image(good),app.inspect_image(self.png),app.inspect_image(copy)]
+        report,summary=app.build_review_report(rows)
+        self.assertEqual(summary["images"],3)
+        self.assertEqual(summary["duplicate_files"],2)
+        self.assertEqual(summary["duplicate_groups"],1)
+        self.assertEqual(summary["attention"],2)
+        self.assertEqual([r["original_index"] for r in report],[2,3,1])
+        self.assertEqual([r["duplicate_group"] for r in report],["D1","D1",""])
+        self.assertEqual(report[-1]["needs_review"],"NO")
+        self.assertEqual(report[-1]["msix_check"],"BASIC_CANDIDATE")
+
+    def test_review_csv_is_read_only_and_reviewable(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        before=[p.read_bytes() for p in (self.png,copy)]
+        output=self.d/"review.csv"
+        summary=app.export_review_csv(output,rows)
+        with output.open(encoding="utf-8",newline="") as stream:
+            report=list(csv.DictReader(stream))
+        self.assertEqual(summary["attention"],2)
+        self.assertEqual([r["duplicate_group"] for r in report],["D1","D1"])
+        self.assertEqual({r["needs_review"] for r in report},{"YES"})
+        self.assertTrue(all(r["profile_source"]==app.MSIX_PROFILE_URL for r in report))
+        self.assertEqual(before,[p.read_bytes() for p in (self.png,copy)])
+        with self.assertRaises(ValueError):
+            app.export_review_csv(self.png,rows)
+        self.assertEqual(before,[p.read_bytes() for p in (self.png,copy)])
+
+    def test_review_report_exposes_stale_duplicate_source(self):
+        copy=self.d/"copy.png"
+        copy.write_bytes(self.png.read_bytes())
+        rows=[app.inspect_image(p) for p in (self.png,copy)]
+        copy.write_bytes(copy.read_bytes()+b"x")
+        report,summary=app.build_review_report(rows)
+        self.assertEqual(summary["hash_errors"],1)
+        self.assertEqual(summary["duplicate_files"],0)
+        self.assertTrue(any(r["duplicate_scan_error"] for r in report))
+        self.assertEqual({r["needs_review"] for r in report},{"YES"})
+
+    def test_review_report_flags_stale_single_source_and_recovers_after_rescan(self):
+        good=self.d/"single-store.png"
+        good.write_bytes(b"\x89PNG\r\n\x1a\n"+struct.pack(">I",13)+
+                         b"IHDR"+struct.pack(">II",1366,768)+b"\x08\x02\x00\x00\x00")
+        snapshot=app.inspect_image(good)
+        initial,initial_summary=app.build_review_report([snapshot])
+        self.assertEqual(initial[0]["source_check"],"SOURCE_MATCH")
+        self.assertEqual(initial[0]["needs_review"],"NO")
+        good.write_bytes(good.read_bytes()+b"x")
+        stale,summary=app.build_review_report([snapshot])
+        self.assertEqual(stale[0]["msix_check"],"BASIC_CANDIDATE")
+        self.assertEqual(stale[0]["source_check"],"SOURCE_CHANGED")
+        self.assertEqual(stale[0]["needs_review"],"YES")
+        self.assertEqual(summary["stale_sources"],1)
+        self.assertIn("rescan",stale[0]["source_action"].lower())
+        refreshed,summary=app.build_review_report([app.inspect_image(good)])
+        self.assertEqual(refreshed[0]["source_check"],"SOURCE_MATCH")
+        self.assertEqual(summary["stale_sources"],0)
+
+    def test_review_report_flags_same_size_source_rewrite(self):
+        snapshot=app.inspect_image(self.png)
+        original=self.png.read_bytes()
+        self.png.write_bytes(original[:-1]+bytes([original[-1]^1]))
+        # Force a distinguishable mtime even on coarse-timestamp filesystems.
+        changed_ns=snapshot["modified_ns"]+5_000_000_000
+        os.utime(self.png,ns=(changed_ns,changed_ns))
+        report,summary=app.build_review_report([snapshot])
+        self.assertEqual(report[0]["source_check"],"SOURCE_CHANGED")
+        self.assertIn("modification time",report[0]["source_action"])
+        self.assertEqual(report[0]["needs_review"],"YES")
+        self.assertEqual(summary["stale_sources"],1)
+        self.assertEqual(self.png.read_bytes(),original[:-1]+bytes([original[-1]^1]))
+
+    def test_review_report_legacy_snapshot_without_mtime_is_supported(self):
+        snapshot=app.inspect_image(self.png)
+        snapshot.pop("modified_ns")
+        report,summary=app.build_review_report([snapshot])
+        self.assertEqual(report[0]["source_check"],"SOURCE_MATCH")
+        self.assertEqual(summary["stale_sources"],0)
+
+    def test_review_report_flags_missing_source_even_without_duplicates(self):
+        row=app.inspect_image(self.png)
+        self.png.unlink()
+        report,summary=app.build_review_report([row])
+        self.assertEqual(report[0]["source_check"],"SOURCE_UNAVAILABLE")
+        self.assertEqual(report[0]["needs_review"],"YES")
+        self.assertEqual(summary["stale_sources"],1)
+
+    def test_review_csv_exposes_stale_source_without_touching_images(self):
+        row=app.inspect_image(self.png)
+        self.png.write_bytes(self.png.read_bytes()+b"extra")
+        before=self.png.read_bytes()
+        summary=app.export_review_csv(self.d/"stale.csv",[row])
+        with (self.d/"stale.csv").open(encoding="utf-8",newline="") as f:
+            csv_rows=list(csv.DictReader(f))
+        self.assertEqual(csv_rows[0]["source_check"],"SOURCE_CHANGED")
+        self.assertEqual(csv_rows[0]["needs_review"],"YES")
+        self.assertEqual(summary["stale_sources"],1)
+        self.assertEqual(self.png.read_bytes(),before)
+
+    def test_review_report_overlimit_and_empty(self):
+        with self.assertRaises(ValueError):app.build_review_report([])
+        with self.assertRaises(ValueError):app.export_review_csv(self.d/"empty.csv",[])
+        rows=[dict(self.msix_row(),bytes=1000+i) for i in range(11)]
+        report,summary=app.build_review_report(rows)
+        self.assertTrue(summary["over_limit"])
+        self.assertEqual(summary["attention"],11)
+        self.assertEqual({r["batch_check"] for r in report},{"REVIEW_BATCH_LIMIT"})
+
+    def test_issues_only_csv_exports_only_attention_rows(self):
+        good=self.d/"store-good.png"
+        good.write_bytes(b"\x89PNG\r\n\x1a\n"+struct.pack(">I",13)+
+                         b"IHDR"+struct.pack(">II",1366,768)+b"\x08\x02\x00\x00\x00")
+        rows=[app.inspect_image(good),app.inspect_image(self.png)]
+        before=[p.read_bytes() for p in (good,self.png)]
+        out=self.d/"issues.csv"
+        summary=app.export_review_csv(out,rows,issues_only=True)
+        with out.open(encoding="utf-8",newline="") as f:
+            exported=list(csv.DictReader(f))
+        self.assertEqual(summary["images"],2)
+        self.assertEqual(summary["attention"],1)
+        self.assertEqual(summary["exported_rows"],1)
+        self.assertEqual([r["original_index"] for r in exported],["2"])
+        self.assertEqual([r["needs_review"] for r in exported],["YES"])
+        self.assertEqual(before,[p.read_bytes() for p in (good,self.png)])
+        with self.assertRaises(ValueError):
+            app.export_review_csv(self.d/"invalid.csv",rows,issues_only="yes")
+
+    def test_issues_only_csv_with_no_issues_keeps_header(self):
+        good=self.d/"store-good.png"
+        good.write_bytes(b"\x89PNG\r\n\x1a\n"+struct.pack(">I",13)+
+                         b"IHDR"+struct.pack(">II",1366,768)+b"\x08\x02\x00\x00\x00")
+        out=self.d/"no-issues.csv"
+        summary=app.export_review_csv(out,[app.inspect_image(good)],issues_only=True)
+        with out.open(encoding="utf-8",newline="") as f:
+            reader=csv.DictReader(f)
+            self.assertIn("needs_review",reader.fieldnames)
+            self.assertEqual(list(reader),[])
+        self.assertEqual(summary["exported_rows"],0)
+        self.assertEqual(summary["attention"],0)
+
+    def test_export_rejects_hardlinked_source_and_backup(self):
+        rows=[app.inspect_image(self.png)]
+        original=self.png.read_bytes()
+        aliased=self.d/"aliased.csv"
+        try:os.link(self.png,aliased)
+        except (OSError,NotImplementedError):self.skipTest("hard links unavailable")
+        with self.assertRaises(ValueError):
+            app.export_csv(aliased,rows)
+        self.assertEqual(self.png.read_bytes(),original)
+        output=self.d/"report.csv"
+        output.write_text("previous report",encoding="utf-8")
+        backup=output.with_name(output.name+".bak")
+        os.link(self.png,backup)
+        with self.assertRaises(ValueError):
+            app.export_review_csv(output,rows)
+        self.assertEqual(output.read_text(encoding="utf-8"),"previous report")
+        self.assertEqual(self.png.read_bytes(),original)
+
+    def test_export_replaces_backup_without_mutating_previous_hardlink(self):
+        rows=[app.inspect_image(self.png)]
+        output=self.d/"report.csv"
+        output.write_text("prior report",encoding="utf-8")
+        outside=self.d/"other.txt"
+        outside.write_text("unrelated content",encoding="utf-8")
+        backup=output.with_name(output.name+".bak")
+        try:os.link(outside,backup)
+        except (OSError,NotImplementedError):self.skipTest("hard links unavailable")
+        app.export_csv(output,rows)
+        self.assertEqual(outside.read_text(encoding="utf-8"),"unrelated content")
+        self.assertEqual(backup.read_text(encoding="utf-8"),"prior report")
+        self.assertIn("path,format,width,height,bytes",output.read_text(encoding="utf-8"))
 
     def test_bilingual(self):
         self.assertEqual(set(app.LABELS["ja"]),set(app.LABELS["en"]))
