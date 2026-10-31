@@ -25,3 +25,9 @@ The filter interface is bilingual (English/Japanese) and needs actual 1024x768 W
 ## One-click Store review preset (candidate)
 
 **Review Store issues** / **Store要確認だけ表示** turns on the header-only MSIX check and Issues-only view in one click, clearing stale size and orientation filters first. It does not change, remove, upload, or certify images. A batch with more than ten screenshots still displays the explicit count warning even when all individual headers pass. Both CSV exports and session saves continue to include the entire inventory, not only the filtered rows. Windows GUI validation remains pending.
+
+## Read-only duplicate candidates (candidate; GUI QA pending)
+
+Click **Find duplicates / 重複候補を探す** to hash only files sharing an inventory byte size with another file. Identical SHA-256 digests are grouped as D1, D2, etc., and the view shows candidate duplicates. **Reset / 解除** returns to the full list. Stale orientation, size and Store-issues filters are cleared before duplicate review. The tool never deletes or edits images and does not upload content; the full inventory remains in session saves and CSV exports. Hashes are recomputed on demand, not cached across file additions, removals or session reloads.
+
+The operation checks regular files, symlinks, file sizes and modifications during hashing; missing or changed files are skipped with an error. This is exact-byte duplicate triage, not visual similarity or proof that two different encodings depict the same image. No duplicate is automatically removed. Actual Windows 1024x768 GUI QA and the product's **MARKET_FIT_HOLD 64/100** still block commercial packaging.

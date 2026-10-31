@@ -35,6 +35,13 @@ jobs:
           python-version: "3.12"
       - name: Test APP source and Windows EXE build contracts
         run: python -m unittest discover -s tests -v
+      - name: Run candidate-specific Windows functional tests when present
+        shell: pwsh
+        run: |
+          if (Test-Path .candidate/product/tests/test_smoke.py) {
+            python -m unittest discover -s .candidate/product/tests -v
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          }
       - name: Compile Windows pre-Identity builder
         run: python -m py_compile tools/build_windows_exe.py tools/preidentity_product_select.py
   windows-exe-smoke:
