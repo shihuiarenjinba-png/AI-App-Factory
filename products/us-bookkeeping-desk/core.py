@@ -9,6 +9,26 @@ DEFAULT=[
 ("1000","Cash","asset"),("1100","Bank","asset"),("1200","Accounts Receivable","asset"),("1300","Inventory","asset"),("1500","Fixed Assets","asset"),
 ("2000","Accounts Payable","liability"),("2100","Accrued Liabilities","liability"),("3000","Owner Equity","equity"),("4000","Sales / Service Revenue","revenue"),("4100","Other Income","revenue"),
 ("5000","Cost of Goods Sold","expense"),("5100","Contract Labor","expense"),("5200","Rent Expense","expense"),("5300","Utilities","expense"),("5400","Travel Expense","expense"),("5500","Supplies Expense","expense"),("5600","Depreciation Expense","expense"),("5900","Other Expense","expense")]
+SUGGEST_ENTRY_RULES=[
+ (["rent","lease","office space"],"5200","1100","Rent Expense"),
+ (["utility","utilities","internet","phone","electric","water","gas"],"5300","1100","Utilities"),
+ (["travel","flight","hotel","airfare","lodging"],"5400","1100","Travel Expense"),
+ (["supply","supplies","paper","ink","toner","cable"],"5500","1100","Supplies Expense"),
+ (["contractor","freelancer","subcontractor","contract labor"],"5100","1100","Contract Labor"),
+ (["inventory","goods for resale","cost of goods"],"5000","1100","Cost of Goods Sold"),
+ (["sale","client payment","service revenue","invoice paid","income"],"1100","4000","Sales / Service Revenue"),
+]
+def suggest_entry(text):
+ hay=(text or "").strip().lower()
+ if not hay:return None
+ best=None
+ for words,debit,credit,label in SUGGEST_ENTRY_RULES:
+  hits=[w for w in words if w in hay]
+  if hits:
+   score=min(0.95,0.58+0.12*len(hits))
+   cand={"debit_code":debit,"credit_code":credit,"label":label,"confidence":round(score,2),"matched":hits}
+   if best is None or cand["confidence"]>best["confidence"]:best=cand
+ return best
 class BookError(ValueError):pass
 def pth():
  b=Path(os.environ.get("APPDATA") or (Path.home()/".local"/"share"));p=b/"USBookkeepingDesk";p.mkdir(parents=True,exist_ok=True);return p/"books.sqlite3"
@@ -86,6 +106,9 @@ class Store:
    if r["type"]=="revenue":rev+=r["credit"]-r["debit"]
    if r["type"]=="expense":exp+=r["debit"]-r["credit"]
   return {"revenue":rev,"expense":exp,"net_income":rev-exp}
+ def balance_check(self):
+  rows=self.trial();debits=sum(int(r["debit"]) for r in rows);credits=sum(int(r["credit"]) for r in rows)
+  return {"debits":debits,"credits":credits,"balanced":debits==credits,"difference":debits-credits}
  def bs(self):
   a=l=e=0
   for r in self.trial():
