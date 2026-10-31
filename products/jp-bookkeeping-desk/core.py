@@ -8,6 +8,26 @@ DEFAULT=[
 ("1000","現金","資産"),("1100","普通預金","資産"),("1200","売掛金","資産"),("1300","棚卸資産","資産"),("1500","固定資産","資産"),
 ("2000","買掛金","負債"),("2100","未払金","負債"),("3000","元入金","純資産"),("4000","売上高","収益"),("4100","雑収入","収益"),
 ("5000","仕入高","費用"),("5100","外注工賃","費用"),("5200","地代家賃","費用"),("5300","通信費","費用"),("5400","旅費交通費","費用"),("5500","消耗品費","費用"),("5600","減価償却費","費用"),("5900","雑費","費用")]
+SUGGEST_ENTRY_RULES=[
+ (["家賃","賃料","オフィス"],"5200","1100","地代家賃"),
+ (["通信","携帯","電話","回線","インターネット"],"5300","1100","通信費"),
+ (["電車","バス","タクシー","交通","出張"],"5400","1100","旅費交通費"),
+ (["文具","備品","消耗品","インク","トナー"],"5500","1100","消耗品費"),
+ (["外注","業務委託"],"5100","1100","外注工賃"),
+ (["仕入","商品購入"],"5000","1100","仕入高"),
+ (["売上","入金","報酬","請求"],"1100","4000","売上高"),
+]
+def suggest_entry(text):
+ hay=(text or "").strip().lower()
+ if not hay:return None
+ best=None
+ for words,debit,credit,label in SUGGEST_ENTRY_RULES:
+  hits=[w for w in words if w.lower() in hay]
+  if hits:
+   score=min(0.95,0.58+0.12*len(hits))
+   cand={"debit_code":debit,"credit_code":credit,"label":label,"confidence":round(score,2),"matched":hits}
+   if best is None or cand["confidence"]>best["confidence"]:best=cand
+ return best
 class BookError(ValueError):pass
 def pth():
  b=Path(os.environ.get("APPDATA") or (Path.home()/".local"/"share"));p=b/"JPBookkeepingDesk";p.mkdir(parents=True,exist_ok=True);return p/"books.sqlite3"
@@ -74,6 +94,9 @@ class Store:
    if r["type"]=="収益":rev+=r["credit"]-r["debit"]
    if r["type"]=="費用":exp+=r["debit"]-r["credit"]
   return {"収益":rev,"費用":exp,"利益":rev-exp}
+ def balance_check(self):
+  rows=self.trial();debits=sum(int(r["debit"]) for r in rows);credits=sum(int(r["credit"]) for r in rows)
+  return {"debits":debits,"credits":credits,"balanced":debits==credits,"difference":debits-credits}
  def bs(self):
   a=l=e=0
   for r in self.trial():
