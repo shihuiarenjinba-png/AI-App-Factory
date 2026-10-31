@@ -12,4 +12,10 @@ class T(unittest.TestCase):
  def test_annual_net(self):
   with tempfile.TemporaryDirectory() as d:
    s=m.Store(Path(d)/"x.db");s.add("2026-01-01","income","100.00","Business income");s.add("2026-02-01","expense","25.00","Supplies");self.assertEqual(s.annual_summary(2026)["net"],7500);s.close()
+ def test_review_rules(self):
+  self.assertTrue(m.review_requirements("Meals - review"))
+  self.assertTrue(m.review_requirements("Car and truck expenses - review"))
+  self.assertTrue(m.review_requirements("Business use of home - review"))
+  x=m.suggest_category("business vehicle mileage log","expense")
+  self.assertTrue(x);self.assertTrue(x[0]["requires_review"])
 if __name__=="__main__":unittest.main()
