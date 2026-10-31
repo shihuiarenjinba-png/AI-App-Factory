@@ -10,4 +10,11 @@ class T(unittest.TestCase):
  def test_balance_check(self):
   with tempfile.TemporaryDirectory() as d:
    s=m.Store(Path(d)/"x.db");s.post("2026-10-31","売上",[("1000","10000",""),("4000","","10000")]);self.assertTrue(s.balance_check()["balanced"]);s.close()
+ def test_help_search_and_receipt_queue(self):
+  with tempfile.TemporaryDirectory() as d:
+   s=m.Store(Path(d)/"x.db")
+   x=s.search_help("資産除去債務",include_advanced=True)
+   self.assertTrue(x);self.assertEqual(x[0]["name"],"資産除去債務")
+   self.assertEqual(s.enqueue_receipts([Path(d)/"a.png",Path(d)/"b.pdf"]),2)
+   s.close()
 if __name__=="__main__":unittest.main()
