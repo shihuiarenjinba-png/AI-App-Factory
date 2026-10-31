@@ -1,0 +1,25 @@
+{
+  "product": "Double-Entry Bookkeeping Desk",
+  "date": "2026-10-31",
+  "status": "MARKET_FIT_HOLD",
+  "score": 68,
+  "why_pay": "A smaller bilingual local double-entry workflow with period lock, reports and export, without cloud setup.",
+  "strengths": [
+    "conventional double-entry controls",
+    "Japanese and English account names",
+    "local-only SQLite books",
+    "period lock and audit trail",
+    "trial balance, P&L and balance sheet in one compact desktop app"
+  ],
+  "risks": [
+    "GnuCash is free and mature",
+    "Doric is already local-first",
+    "Yayoi is a strong Japanese desktop competitor",
+    "no customer willingness-to-pay evidence yet"
+  ],
+  "go_conditions_missing": [
+    "direct user validation",
+    "clear paid differentiation against GnuCash/Doric",
+    "real Windows usability evidence"
+  ]
+}
