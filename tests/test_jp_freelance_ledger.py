@@ -12,4 +12,12 @@ class T(unittest.TestCase):
  def test_annual_net(self):
   with tempfile.TemporaryDirectory() as d:
    s=m.Store(Path(d)/"x.db");s.add("2026-01-01","収入","10000","売上高");s.add("2026-02-01","経費","2000","通信費");self.assertEqual(s.annual_summary(2026)["差引"],8000);s.close()
+ def test_help_search_and_receipt_queue(self):
+  with tempfile.TemporaryDirectory() as d:
+   s=m.Store(Path(d)/"x.db")
+   x=s.search_help("パソコン",include_advanced=True)
+   self.assertTrue(any(a["name"] in {"工具器具備品","消耗品費"} for a in x))
+   self.assertEqual(s.enqueue_receipts([Path(d)/"r1.jpg",Path(d)/"r2.jpg"]),2)
+   self.assertEqual(len(s.pending_receipts()),2)
+   s.close()
 if __name__=="__main__":unittest.main()
