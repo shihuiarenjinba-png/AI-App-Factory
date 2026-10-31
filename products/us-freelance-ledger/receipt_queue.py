@@ -80,17 +80,16 @@ def list_receipts(conn: sqlite3.Connection, limit: int = 200) -> list[dict]:
 def link_receipt(conn: sqlite3.Connection, source_path: str, transaction_id: int) -> bool:
     """Link only unchanged, queued content to a user-confirmed transaction."""
     _schema(conn)
-    row = conn.execute(
-        "SELECT id,sha256,status FROM receipt_queue WHERE source_path=? ORDER BY id DESC LIMIT 1",
-        (source_path,),
-    ).fetchone()
-    if row is None or row[2] != "PENDING_MANUAL_REVIEW":
-        return False
     try:
-        _, digest, _ = _fingerprint(source_path)
+        canonical_path, digest, _ = _fingerprint(source_path)
     except (OSError, ValueError):
         return False
-    if digest != row[1]:
+    row = conn.execute(
+        "SELECT id,status FROM receipt_queue "
+        "WHERE source_path=? AND sha256=? ORDER BY id DESC LIMIT 1",
+        (canonical_path, digest),
+    ).fetchone()
+    if row is None or row[1] != "PENDING_MANUAL_REVIEW":
         return False
     with conn:
         updated = conn.execute(
