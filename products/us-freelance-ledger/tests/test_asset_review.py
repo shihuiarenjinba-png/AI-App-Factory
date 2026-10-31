@@ -1,7 +1,15 @@
-import unittest
+import unittest, importlib.util, sys
 from decimal import Decimal
-from asset_review import (manual_sales_tax_review, book_straight_line_schedule,
-                          tax_profile_review, retrospective_book_review)
+from pathlib import Path
+P = Path(__file__).resolve().parents[1] / "asset_review.py"
+S = importlib.util.spec_from_file_location("us_asset_review", P)
+m = importlib.util.module_from_spec(S)
+sys.modules[S.name] = m
+S.loader.exec_module(m)
+manual_sales_tax_review = m.manual_sales_tax_review
+book_straight_line_schedule = m.book_straight_line_schedule
+tax_profile_review = m.tax_profile_review
+retrospective_book_review = m.retrospective_book_review
 
 class AssetReviewTests(unittest.TestCase):
     def test_manual_rate(self):
