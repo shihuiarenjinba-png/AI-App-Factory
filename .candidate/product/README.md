@@ -52,3 +52,13 @@ Newly scanned inventory rows also capture the source modification timestamp in n
 **Export issues CSV / 要確認のみCSV** writes only rows where the current on-demand review finds a screenshot-header issue, exact-byte duplicate, stale/missing source, hash error, or over-limit screenshot batch. It is a separate explicit export from **Export review report**, which still includes every inventory row. A clean inventory produces a header-only issues CSV and a 0-row status, not a false failure. Original row numbers are preserved; no image is edited or deleted. CSV contents are evidence for human review, not proof of Store acceptance.
 
 CSV and session writes now reject both direct output and `.bak` backup paths that hard-link to a protected source image. Backups are staged in a temporary file and replaced atomically, preventing an existing hard-linked backup from being truncated in place. Headless regressions cover both protected aliases, unrelated hard-linked backups, mixed-issue exports, and no-issue exports. Actual Windows 1024x768 layout/interaction QA is **not yet verified**, and MARKET_FIT_HOLD 64/100 remains unchanged.
+
+## Folder-first inventory (candidate; 2026-11-01)
+
+**Add folder / フォルダーを追加** lets a first-time user select a local image directory in one action, optionally checking **Include subfolders / サブフォルダーも対象**. It accepts PNG/JPEG/GIF/BMP filename extensions, inspects each selected file's header, and appends to the existing snapshot without rewriting previous rows. The entire workflow is offline and read-only; it does not resize, edit, move or delete images.
+
+Safety limits: at most 200 inventory items and 10,000 inspected directory entries. A folder that exceeds capacity is rejected **without a partial append**; directory and file symlinks are skipped and never traversed, with errors reported. Re-importing an already inventoried path does not create duplicate rows. Invalid images are reported rather than presented as successful scans. Save/CSV exports still include the full inventory, not just the filtered view.
+
+Regression tests cover shallow and recursive imports, repeat imports, stale original snapshots, symlink traversal refusal, and atomic capacity failure. The additional button has its own row to avoid expanding the already crowded toolbar; actual Windows 1024×768 visual inspection is still required. MARKET_FIT_HOLD 64/100 remains; this does not authorize promotion, signing, packaging, submission or sale.
+
+Store screenshot source rechecked 2026-11-01: https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/screenshots-and-images (PNG, desktop minimum 1366×768, maximum 10 desktop screenshots, 50 MB per screenshot; human review remains necessary).
