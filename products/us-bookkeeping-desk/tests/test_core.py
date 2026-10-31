@@ -7,4 +7,10 @@ class T(unittest.TestCase):
    s=m.Store(Path(d)/"x.db","cash");s.post("2026-10-31","sale",[("1000","100.00",""),("4000","","100.00")]);self.assertEqual(s.pnl()["net_income"],10000)
    with self.assertRaises(m.BookError):s.set_method("accrual")
    s.close()
+ def test_local_suggestion_is_review_only_and_abstains_on_ambiguity(self):
+  self.assertIsNone(m.suggest_entry("Vegas client"))
+  self.assertIsNone(m.suggest_entry("hotel rent"))
+  vehicle=m.suggest_entry("vehicle mileage")
+  self.assertEqual(vehicle["debit_code"],"5350")
+  self.assertTrue(vehicle["review_reasons"])
 if __name__=="__main__":unittest.main()
