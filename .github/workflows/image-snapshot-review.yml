@@ -60,6 +60,27 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check "pyautogui==0.9.54" "psutil==6.1.1"
           python products/offline-image-inventory-desk/tests/gui_smoke_windows.py --mode packaged --exe dist/offline-image-inventory-desk.exe --out packaged-exe-e2e-evidence --calibration gui-smoke-evidence/ui-layout.json --source-sha $env:SOURCE_SHA
+      - name: Build synthetic five-person buyer test kit from exact packaged EXE
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python products/offline-image-inventory-desk/buyer_validation_evidence.py prepare --out buyer-validation-kit --exe dist/offline-image-inventory-desk.exe --source-sha $env:SOURCE_SHA
+          Copy-Item packaged-exe-e2e-evidence -Destination buyer-validation-kit/cloud-packaged-exe-e2e -Recurse
+          python products/offline-image-inventory-desk/buyer_validation_evidence.py verify --out buyer-validation-kit
+          $receipt = Get-Content buyer-validation-kit/manifest.json -Raw | ConvertFrom-Json
+          $actual = (Get-FileHash buyer-validation-kit/offline-image-inventory-desk.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($receipt.exe_sha256 -ne $actual) { throw "BUYER_KIT_EXE_SHA_MISMATCH" }
+          if ($receipt.source_sha -ne $env:SOURCE_SHA) { throw "BUYER_KIT_SOURCE_SHA_MISMATCH" }
+          if ($receipt.human_response_count -ne 0 -or $receipt.why_pay_verified) { throw "FABRICATED_BUYER_EVIDENCE" }
+      - name: Upload synthetic buyer test kit (NO human responses; NOT local QA)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-snapshot-SYNTHETIC-BUYER-TEST-KIT-NO-REAL-RESPONSES
+          path: buyer-validation-kit/
+          if-no-files-found: warn
+          retention-days: 5
       - name: Upload CLOUD_WINDOWS_PACKAGED_EXE_E2E evidence (not local GUI QA)
         if: always()
         uses: actions/upload-artifact@v4
