@@ -31,3 +31,9 @@
 - No bank feed, external API, SaaS, telemetry, OCR, auto-categorization, tax filing, deduction approval or cross-market sale.
 - Existing `products/us-bookkeeping-desk/US_COMPLIANCE_SCOPE.md` remains mandatory at package gate.
 - Status requires independent CI result and Windows UI/EXE review; these are not implied by source changes.
+
+## Real Windows EXE gate result (2026-11-01)
+- GitHub Windows run https://github.com/shihuiarenjinba-png/AI-App-Factory/actions/runs/41275153273: **FAIL / PRE_IDENTITY_EXE_HOLD** at `verify_source` before PyInstaller; exact error: `required committed APP source missing, linked, or oversized`.
+- Confirmed absent on this branch: `proposals/us-bookkeeping-desk.json` and (at that run) `products/us-bookkeeping-desk/tests/test_smoke.py`. Product smoke was subsequently added as a committed test; the proposal is **still absent**.
+- The proposal must be created through the Factory owner/controller lifecycle, not fabricated in a product PR. Current Factory state is `improve / offline-image-inventory-desk`; do not overwrite it to force promotion.
+- Therefore **EXE PASS=false**, **PRE_IDENTITY_READY=false**, **POST_IDENTITY_READY=false**, **Store/package release=false** even when generic MSIX-export workflow or core CI reports success.
