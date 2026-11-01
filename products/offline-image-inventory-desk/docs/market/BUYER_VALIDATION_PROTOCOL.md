@@ -37,3 +37,22 @@ Ask independently: "Would you buy this for your own work today, at ¥500, ¥1,00
 ## Review gate
 
 Re-score all seven weighted rubric dimensions only after verifying five authentic records and independent review SHA. `why_pay_verified=true` requires credible, specific evidence that at least some target buyers choose this over free alternatives and are prepared to pay. No automatic threshold or fabricated demand. **80+ alone is not sufficient**: all GO conditions, independent review, Windows GUI QA, and owner-controlled promotion remain required. Do not start Identity/CAS/MSIX/Store work from this document.
+
+
+## Runnable evidence kit (2026-11-02)
+The Windows image-snapshot workflow now packages the **actual unsigned EXE** with
+synthetic `baseline/` and `delivery/` folders (one each: unchanged, modified,
+removed, added), SHA-256 manifest, empty `participant-responses.csv`, and
+hosted packaged-EXE E2E screenshots/logs. Download the
+`image-snapshot-SYNTHETIC-BUYER-TEST-KIT-NO-REAL-RESPONSES` artifact from the
+exact-head workflow run. It is a **test kit, not five completed interviews**.
+
+For each consenting independent participant, use their own Windows environment
+at 1024x768 and the bundled EXE. The `buyer_validation_evidence.py` CLI
+supports `event --out <kit> --participant P01 --phase product --action start`
+and `event --out <kit> --participant P01 --phase product --action stop --clicks N --errors N`
+to time real sessions. Supported phases: `free`, `product`, `restart`,
+`read_error`. Manually fill the response CSV with **only authentic** answers.
+Run `verify --out <kit>` after each test to detect any fixture image or EXE
+SHA changes. Keep human response sheets and any real client data **off GitHub**.
+No CI step fills responses or promotes the market score.
