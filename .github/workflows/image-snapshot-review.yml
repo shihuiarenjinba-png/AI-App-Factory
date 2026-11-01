@@ -11,6 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -22,6 +25,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -30,13 +34,17 @@ jobs:
       - run: python -m PyInstaller --noconfirm --clean --onefile --windowed --noupx --name offline-image-inventory-desk --paths products/offline-image-inventory-desk --distpath dist --workpath build --specpath build products/offline-image-inventory-desk/main.py
       - name: Verify PE and write exact SHA receipt
         shell: pwsh
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
+          $checked=(git rev-parse HEAD).Trim()
+          if ($checked -ne $env:SOURCE_SHA) { throw "Checkout SHA mismatch: $checked != $env:SOURCE_SHA" }
           $p="dist/offline-image-inventory-desk.exe"
           if (!(Test-Path $p)) { throw "EXE missing" }
           $bytes=[System.IO.File]::ReadAllBytes($p)
           if ($bytes[0] -ne 77 -or $bytes[1] -ne 90) { throw "PE missing MZ" }
           $sha=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()
-          @{ stage="REVIEW_ONLY_UNSIGNED_EXE"; source_sha=$env:GITHUB_SHA; sha256=$sha; bytes=$bytes.Length; market_fit="MARKET_FIT_HOLD"; registration_type="MSIX_OR_PWA_APP"; identity_status="NOT_BOUND" } | ConvertTo-Json | Set-Content "dist/exe-receipt.json"
+          @{ stage="REVIEW_ONLY_UNSIGNED_EXE"; source_sha=$env:SOURCE_SHA; sha256=$sha; bytes=$bytes.Length; market_fit="MARKET_FIT_HOLD"; registration_type="MSIX_OR_PWA_APP"; identity_status="NOT_BOUND" } | ConvertTo-Json | Set-Content "dist/exe-receipt.json"
           Write-Output "EXE SHA256 $sha"
       - uses: actions/upload-artifact@v4
         with:
