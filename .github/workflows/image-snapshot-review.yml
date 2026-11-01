@@ -67,6 +67,7 @@ jobs:
         run: |
           python products/offline-image-inventory-desk/buyer_validation_evidence.py prepare --out buyer-validation-kit --exe dist/offline-image-inventory-desk.exe --source-sha $env:SOURCE_SHA
           Copy-Item products/offline-image-inventory-desk/buyer_validation_evidence.py buyer-validation-kit/buyer_validation_evidence.py
+          Copy-Item products/offline-image-inventory-desk/buyer_validation_audit.py buyer-validation-kit/buyer_validation_audit.py
           Copy-Item packaged-exe-e2e-evidence -Destination buyer-validation-kit/cloud-packaged-exe-e2e -Recurse
           python products/offline-image-inventory-desk/buyer_validation_evidence.py verify --out buyer-validation-kit
           $receipt = Get-Content buyer-validation-kit/manifest.json -Raw | ConvertFrom-Json
