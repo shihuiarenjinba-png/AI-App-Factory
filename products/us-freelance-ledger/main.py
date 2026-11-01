@@ -105,6 +105,62 @@ class App(tk.Tk):
             win.destroy()
         ttk.Button(win,text="Use selected file for this transaction",command=choose).pack(pady=(2,12))
 
+    def _selected_transaction(self):
+        selected=self.tree.selection()
+        if not selected:
+            messagebox.showinfo("Choose a transaction","Select a ledger row first.")
+            return None
+        return int(selected[0])
+
+    def match_bank(self):
+        txn_id=self._selected_transaction()
+        if txn_id is None:return
+        account=simpledialog.askstring("Match to bank statement","Bank account label (e.g. Business Checking):",parent=self)
+        if account is None:return
+        statement_day=simpledialog.askstring("Match to bank statement","Statement ending date (YYYY-MM-DD):",parent=self)
+        if statement_day is None:return
+        if not messagebox.askyesno("Confirm manual match",
+            "Have you checked this transaction against the actual bank statement?\n"
+            "This does not import or verify bank records."):
+            return
+        try:match_transaction(self.store.conn,txn_id,account,statement_day)
+        except BankReviewError as exc:messagebox.showerror("Cannot match",str(exc));return
+        self.refresh()
+
+    def unmatch_bank(self):
+        txn_id=self._selected_transaction()
+        if txn_id is None:return
+        try:unmatch_transaction(self.store.conn,txn_id)
+        except BankReviewError as exc:messagebox.showwarning("Cannot undo",str(exc));return
+        self.refresh()
+
+    def check_bank(self):
+        account=simpledialog.askstring("Check bank statement","Bank account label:",parent=self)
+        if account is None:return
+        statement_day=simpledialog.askstring("Check bank statement","Statement ending date (YYYY-MM-DD):",parent=self)
+        if statement_day is None:return
+        opening=simpledialog.askstring("Check bank statement","Opening balance (USD, e.g. 100.00):",parent=self)
+        if opening is None:return
+        closing=simpledialog.askstring("Check bank statement","Closing balance (USD, e.g. 150.00):",parent=self)
+        if closing is None:return
+        try:report=statement_preview(self.store.conn,account,statement_day,opening,closing)
+        except BankReviewError as exc:messagebox.showerror("Statement check",str(exc));return
+        difference=report["difference_cents"]
+        if difference:
+            messagebox.showwarning("Balance does not match",
+                f'Difference USD {difference/100:,.2f}. Check missing transfers, bank fees, '
+                "cash entries and wrong matches. Nothing was finalized.")
+            return
+        if not messagebox.askyesno("Finalize bank statement",
+            f'{len(report["transaction_ids"])} matched transactions; difference USD 0.00.\n'
+            "Have you checked the actual statement and included all relevant bank movements?\n"
+            "Finalized matches cannot be undone in this version."):
+            return
+        try:finalize_statement(self.store.conn,account,statement_day,opening,closing)
+        except BankReviewError as exc:messagebox.showerror("Statement check",str(exc));return
+        self.refresh()
+        messagebox.showinfo("Statement checked","Matched entries were finalized locally. This is not a tax or bank certification.")
+
     def change_method(self):
         if not messagebox.askyesno(
             "Accounting method",
