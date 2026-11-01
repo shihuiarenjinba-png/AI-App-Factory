@@ -133,4 +133,24 @@ class SnapshotTests(unittest.TestCase):
         self.assertIn('summarybar=ttk.Frame(body)',source)
         self.assertIn('command=self.export_delivery_summary',source)
 
+
+    def test_failed_rescan_clears_previous_exportable_report(self):
+        """A prior successful comparison must never be exportable after read failure."""
+        from unittest.mock import Mock, patch
+        self.image("a.png")
+        baseline=self.capture()
+        fake=Mock()
+        fake.baseline=baseline
+        fake.comparison=snap.compare_snapshots(baseline,baseline)
+        fake.root=object()
+        fake.status=Mock()
+        fake.t=lambda key: app.LABELS["en"][key]
+        fake.error=Mock()
+        with patch.object(app.filedialog,"askdirectory",return_value=str(self.folder)), \
+             patch.object(app,"inspect_image",side_effect=PermissionError("denied")):
+            app.Desk.compare_folder(fake)
+        self.assertIsNone(fake.comparison)
+        fake.error.assert_called_once()
+        fake.status.set.assert_called_with(app.LABELS["en"]["snap_failed"])
+
 if __name__=="__main__":unittest.main()
