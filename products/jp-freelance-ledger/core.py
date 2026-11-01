@@ -1,5 +1,5 @@
 from __future__ import annotations
-import csv, os, sqlite3
+import csv, os, re, sqlite3
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from pathlib import Path
@@ -35,6 +35,13 @@ SUGGEST_RULES = [
     ("売上高", ["売上", "報酬", "請求", "入金", "制作料", "業務報酬", "service fee"]),
 ]
 
+def _keyword_matches(hay, word):
+    key=word.lower()
+    # Latin short tokens such as "ad" must not match "Adobe" or "address".
+    if key.isascii() and key[0].isalnum() and key[-1].isalnum():
+        return re.search(r"(?<![a-z0-9])" + re.escape(key) + r"(?![a-z0-9])", hay) is not None
+    return key in hay
+
 def suggest_category(text, kind="経費", limit=3):
     hay=(text or "").strip().lower()
     if not hay:
@@ -45,7 +52,7 @@ def suggest_category(text, kind="経費", limit=3):
             continue
         if kind=="経費" and category=="売上高":
             continue
-        hits=[w for w in words if w.lower() in hay]
+        hits=[w for w in words if _keyword_matches(hay,w)]
         if hits:
             score=min(0.95, 0.55 + 0.12*len(hits))
             scored.append({"category":category,"confidence":round(score,2),"matched":hits})
