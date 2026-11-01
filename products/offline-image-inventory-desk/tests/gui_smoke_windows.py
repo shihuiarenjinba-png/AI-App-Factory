@@ -331,8 +331,9 @@ def run_packaged(out, exe, source_sha, calibration):
                 choose_path(path)
             log.append("packaged UI " + button + ": " + ", ".join(str(p) for p in paths))
 
-        def capture(label):
-            window.set_focus()
+        def capture(label, focus=True):
+            if focus:
+                window.set_focus()
             time.sleep(0.3)
             rect = window.rectangle()
             image = ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom))
@@ -390,7 +391,7 @@ def run_packaged(out, exe, source_sha, calibration):
             choose_path(delivery)
             dialog = wait_dialog()  # real error messagebox
             error_text = dialog.window_text()
-            capture("06_exe_read_error")
+            capture("06_exe_read_error", focus=False)
             dialog.set_focus()
             pyautogui.press("enter")
             time.sleep(0.5)
