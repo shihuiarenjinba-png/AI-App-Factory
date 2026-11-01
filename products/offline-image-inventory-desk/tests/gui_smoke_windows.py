@@ -334,13 +334,13 @@ def run_packaged(out, exe, source_sha, calibration):
             pyautogui.press("enter")
             time.sleep(1.0)
             # Some native dialogs first navigate into the typed folder.
-            if dialog.exists(timeout=0.3) and dialog.is_visible():
+            if win32gui.IsWindow(dialog.handle) and win32gui.IsWindowVisible(dialog.handle):
                 buttons = [b for b in uia.descendants(control_type="Button")
                            if b.window_text().lower() in ("ok", "select folder", "open", "save", "フォルダーの選択", "保存")]
                 if buttons:
                     buttons[-1].click_input()
                     time.sleep(0.8)
-            if dialog.exists(timeout=0.3) and dialog.is_visible():
+            if win32gui.IsWindow(dialog.handle) and win32gui.IsWindowVisible(dialog.handle):
                 raise AssertionError("Native dialog remained open after selecting " + str(path))
 
         def action(button, *paths):
