@@ -21,5 +21,7 @@ class T(unittest.TestCase):
   m=acc.evaluate(truths,preds)
   self.assertEqual(m["unsafe_auto_post_count"],0)
   self.assertEqual(m["account_top1_pct"],100.0)
-  self.assertTrue(acc.release_gate(m)["pass"])
+  self.assertFalse(acc.release_gate(m)["pass"])
+  self.assertFalse(acc.release_gate(m,benchmark_source="user_owned_local_labeled")["pass"])
+  self.assertEqual(m["high_risk_cases"],1)
 if __name__=="__main__":unittest.main()

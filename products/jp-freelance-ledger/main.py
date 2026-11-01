@@ -31,10 +31,12 @@ class App(tk.Tk):
         ttk.Button(f,text="勘定科目を推測",command=self.suggest).grid(row=11,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="記帳する",command=self.add).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="税率・固定資産",command=self.tax_assets).grid(row=13,column=0,columnspan=2,sticky="ew",pady=4)
-        csv_menu_button=ttk.Menubutton(f,text="CSV 入出力")
+        csv_menu_button=ttk.Menubutton(f,text="帳簿出力・CSV")
         csv_menu=tk.Menu(csv_menu_button,tearoff=False)
         csv_menu.add_command(label="CSVを確認して取り込む",command=self.import_csv)
         csv_menu.add_command(label="CSVに書き出す",command=self.export)
+        csv_menu.add_separator()
+        csv_menu.add_command(label="月末の帳簿パックを作成",command=self.month_end_pack)
         csv_menu_button["menu"]=csv_menu
         csv_menu_button.grid(row=14,column=0,sticky="ew",pady=4)
         ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=15,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
@@ -166,9 +168,11 @@ class App(tk.Tk):
     def month_end_pack(self):
         d=date.today()
         year=simpledialog.askinteger("月末帳簿パック","年",initialvalue=d.year,minvalue=2000)
+        if year is None:return
         month=simpledialog.askinteger("月末帳簿パック","月",initialvalue=d.month,minvalue=1,maxvalue=12)
+        if month is None:return
         out=filedialog.askdirectory(title="月次帳簿パックの保存先")
-        if not out or year is None or month is None:return
+        if not out:return
         try:
             result=export_month_end_package(self.store,year,month,out)
             msg=f'HTML: {result["html"]}\nCSV: {result["csv"]}\nJSON: {result["json"]}'
