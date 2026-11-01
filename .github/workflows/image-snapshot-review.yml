@@ -53,6 +53,21 @@ jobs:
         run: |
           python -m pip install --disable-pip-version-check "pillow==11.3.0" "pywinauto==0.6.9"
           python products/offline-image-inventory-desk/tests/gui_smoke_windows.py --exe dist/offline-image-inventory-desk.exe --out gui-smoke-evidence --source-sha $env:SOURCE_SHA
+      - name: Cloud Windows PACKAGED EXE E2E (external UI, not source Tk)
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python -m pip install --disable-pip-version-check "pyautogui==0.9.54"
+          python products/offline-image-inventory-desk/tests/gui_smoke_windows.py --mode packaged --exe dist/offline-image-inventory-desk.exe --out packaged-exe-e2e-evidence --calibration gui-smoke-evidence/ui-layout.json --source-sha $env:SOURCE_SHA
+      - name: Upload CLOUD_WINDOWS_PACKAGED_EXE_E2E evidence (not local GUI QA)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-snapshot-CLOUD_WINDOWS_PACKAGED_EXE_E2E-NOT-LOCAL-QA
+          path: packaged-exe-e2e-evidence/
+          if-no-files-found: warn
+          retention-days: 5
       - name: Upload CLOUD_WINDOWS_GUI_SMOKE evidence (not local GUI QA)
         if: always()
         uses: actions/upload-artifact@v4
