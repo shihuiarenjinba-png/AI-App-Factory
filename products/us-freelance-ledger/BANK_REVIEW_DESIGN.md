@@ -17,6 +17,7 @@ The account label is a *manual grouping key*, not an online bank connection. Use
 - Each transaction can be matched once. Reconciled matches cannot be undone by the UI; unfinalized matches can be removed with audit evidence.
 - Per-account and per-statement-date isolation, prior closing/opening balance continuity, chronological finalization.
 - Statement sum: opening balance + matched income - matched expense = expected closing balance. Difference must be zero.
+- Reconciliation is **cash-book only**. Accrual books are explicitly blocked until independent receivable/payable settlement events exist; accrual recognition is not equivalent to bank cash movement.
 - Reconciliation never changes the original transaction amount, income/expense report, tax treatment or accounting method.
 - SQLite tables and audit log are included in the existing database backup. Restore and Windows GUI QA remain required.
 - This is not a complete bank reconciliation engine: bank data are not imported, cash/accrual timing is not modeled, and split/multi-currency/transfer accounting is not implemented. No claim of GnuCash, QuickBooks, Xero, SAP or NetSuite parity.
