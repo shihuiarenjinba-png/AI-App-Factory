@@ -42,9 +42,9 @@ def make_png(path, rgb):
     def chunk(kind, payload):
         return (struct.pack(">I", len(payload)) + kind + payload
                 + struct.pack(">I", zlib.crc32(kind + payload) & 0xffffffff))
-    pixels = b"".join(b"\\x00" + bytes(rgb) * width for _ in range(height))
+    pixels = b"".join(b"\x00" + bytes(rgb) * width for _ in range(height))
     Path(path).write_bytes(
-        b"\\x89PNG\\r\\n\\x1a\\n"
+        b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
         + chunk(b"IDAT", zlib.compress(pixels)) + chunk(b"IEND", b""))
 
@@ -92,20 +92,20 @@ def prepare(out, exe, source_sha):
         "market_fit": "MARKET_FIT_HOLD",
         "not_local_gui_pass": True,
     }
-    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\\n", encoding="utf-8")
+    (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     (out / "README.txt").write_text(
-        "Offline Image Inventory Desk - independent buyer test (NOT RUN)\\n"
-        "Use 1024x768 Windows; run packaged EXE, not main.py. Test EN and JA.\\n"
-        "Unprompted task: You received a revised image folder. Produce a client-readable\\n"
-        "change record without altering original images. Compare free tool first.\\n"
-        "Record baseline, compare delivery, export CSV/JSON/TXT, restart, reopen,\\n"
-        "then simulate a read error (use an inaccessible image) and ensure stale\\n"
-        "results cannot be exported. Record click count, elapsed time, errors,\\n"
-        "assistance, free alternative, exact purchase answer, and consent.\\n"
-        "Use event command to time phases. Log real responses in CSV only after test.\\n"
-        "Run verify after every session to check original image SHA-256.\\n"
-        "Never upload client images, identifiable responses or paid-test records to GitHub.\\n"
-        "Hosted Windows CI is NOT LOCAL_GUI_PASS or purchase evidence.\\n",
+        "Offline Image Inventory Desk - independent buyer test (NOT RUN)\n"
+        "Use 1024x768 Windows; run packaged EXE, not main.py. Test EN and JA.\n"
+        "Unprompted task: You received a revised image folder. Produce a client-readable\n"
+        "change record without altering original images. Compare free tool first.\n"
+        "Record baseline, compare delivery, export CSV/JSON/TXT, restart, reopen,\n"
+        "then simulate a read error (use an inaccessible image) and ensure stale\n"
+        "results cannot be exported. Record click count, elapsed time, errors,\n"
+        "assistance, free alternative, exact purchase answer, and consent.\n"
+        "Use event command to time phases. Log real responses in CSV only after test.\n"
+        "Run verify after every session to check original image SHA-256.\n"
+        "Never upload client images, identifiable responses or paid-test records to GitHub.\n"
+        "Hosted Windows CI is NOT LOCAL_GUI_PASS or purchase evidence.\n",
         encoding="utf-8")
     verify(out)
     return manifest
@@ -155,16 +155,19 @@ def record_event(out, participant, phase, action, clicks=None, errors=None, note
     previous = [e for e in events if e["participant"] == participant and e["phase"] == phase]
     if action == "start" and previous and previous[-1]["action"] != "stop":
         raise ValueError("Previous phase not finished")
-    if action == "stop" and (not previous or previous[-1]["action"] != "start"):
-        raise ValueError("No matching phase start")
+    if action == "stop":
+        starts = [e for e in previous if e["action"] == "start"]
+        stops = [e for e in previous if e["action"] == "stop"]
+        if not starts or len(starts) <= len(stops):
+            raise ValueError("No matching phase start")
     now = datetime.now(timezone.utc)
     entry = {"participant": participant, "phase": phase, "action": action,
              "utc": now.isoformat(), "clicks": clicks, "errors": errors, "note": note}
     if action == "stop":
-        started = datetime.fromisoformat(previous[-1]["utc"])
+        started = datetime.fromisoformat(starts[-1]["utc"])
         entry["elapsed_sec"] = round((now - started).total_seconds(), 2)
     with path.open("a", encoding="utf-8") as f:
-        f.write(json.dumps(entry, ensure_ascii=False) + "\\n")
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
     return entry
 
 
