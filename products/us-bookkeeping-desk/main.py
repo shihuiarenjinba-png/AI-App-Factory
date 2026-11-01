@@ -3,10 +3,11 @@ from datetime import date
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import TYPES,METHODS,BookError,Store,suggest_entry,review_requirements_for_codes
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
+from receipt_vault import ReceiptVault,ReceiptError
 
 class App(tk.Tk):
  def __init__(self):
-  super().__init__();self.title("Double-Entry Bookkeeping US");self.geometry("1180x760");self.minsize(980,650);self.s=Store();self.protocol("WM_DELETE_WINDOW",self.close)
+  super().__init__();self.title("Double-Entry Bookkeeping US");self.geometry("1180x760");self.minsize(980,650);self.s=Store();self.vault=ReceiptVault(self.s);self.row_entry_ids=[];self.protocol("WM_DELETE_WINDOW",self.close)
   self.d=tk.StringVar(value=date.today().isoformat());self.desc=tk.StringVar();self.method=tk.StringVar(value=self.s.accounting_method);self.lines=[];self.build();self.refresh_accounts();self.refresh()
 
  def build(self):
@@ -25,8 +26,11 @@ class App(tk.Tk):
   ttk.Button(f,text="Post entry",command=self.post).grid(row=11,column=0,sticky="ew")
   ttk.Button(f,text="Add account",command=self.add_account).grid(row=11,column=1,sticky="ew")
   ttk.Button(f,text="Lock period",command=self.lock).grid(row=11,column=2,sticky="ew")
-  ttk.Button(f,text="Tax / fixed assets",command=self.tax_assets).grid(row=12,column=0,columnspan=3,sticky="ew",pady=3)
-  ttk.Button(f,text="Export journal CSV",command=self.export).grid(row=13,column=0,columnspan=3,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
+  ttk.Button(f,text="Tax / fixed assets",command=self.tax_assets).grid(row=12,column=0,sticky="ew",pady=3)
+  ttk.Button(f,text="Attach receipts",command=self.attach_receipts).grid(row=12,column=1,columnspan=2,sticky="ew",pady=3)
+  ttk.Button(f,text="Export journal CSV",command=self.export).grid(row=13,column=0,sticky="ew",pady=4)
+  ttk.Button(f,text="Review receipts",command=self.review_receipts).grid(row=13,column=1,columnspan=2,sticky="ew",pady=4)
+  f.columnconfigure(0,weight=2)
   nb=ttk.Notebook(p);p.add(nb,weight=3);j=ttk.Frame(nb,padding=8);r=ttk.Frame(nb,padding=8);nb.add(j,text="Journal");nb.add(r,text="Reports")
   self.tree=ttk.Treeview(j,columns=("d","x","a","db","cr"),show="headings")
   for c,t in zip(("d","x","a","db","cr"),("Date","Description","Account","Debit","Credit")):self.tree.heading(c,text=t)
@@ -88,7 +92,8 @@ class App(tk.Tk):
 
  def refresh(self):
   for i in self.tree.get_children():self.tree.delete(i)
-  for i,r in enumerate(self.s.journal()):
+  rows=self.s.journal();self.row_entry_ids=[int(r["id"]) for r in rows]
+  for i,r in enumerate(rows):
    self.tree.insert("","end",iid=str(i),values=(r["entry_date"],r["description"],f'{r["code"]} {r["name"]}',f'USD {r["debit_cents"]/100:,.2f}' if r["debit_cents"] else "",f'USD {r["credit_cents"]/100:,.2f}' if r["credit_cents"] else ""))
   p=self.s.pnl();b=self.s.bs();chk=self.s.balance_check();t=["TRIAL BALANCE","="*64]
   for x in self.s.trial():
@@ -100,6 +105,54 @@ class App(tk.Tk):
       f'Equity USD {b["equity"]/100:,.2f}',f'Current bookkeeping income USD {b["current_income"]/100:,.2f}',"",
       f'Accounting method: {self.s.accounting_method}']
   self.report.configure(state="normal");self.report.delete("1.0","end");self.report.insert("1.0","\n".join(t));self.report.configure(state="disabled")
+
+ def selected_entry(self):
+  selected=self.tree.selection()
+  if not selected:
+   messagebox.showinfo("Select a transaction","Select a row in the Journal list first. All rows of one transaction share its entry number.")
+   return None
+  try:return self.row_entry_ids[int(selected[0])]
+  except (IndexError,ValueError):return None
+
+ def attach_receipts(self):
+  entry_id=self.selected_entry()
+  if entry_id is None:return
+  paths=filedialog.askopenfilenames(title="Choose receipts for this journal entry",filetypes=[("Receipt images and PDFs","*.pdf *.png *.jpg *.jpeg *.webp")])
+  if not paths:return
+  results=self.vault.attach_many(entry_id,paths)
+  added=sum(r["status"]=="attached" for r in results)
+  duplicate=sum(r["status"]=="duplicate" for r in results)
+  rejected=[r for r in results if r["status"]=="rejected"]
+  details="\\n".join(f'{r["file"]}: {r["reason"]}' for r in rejected[:5])
+  messagebox.showinfo("Receipt import",f"Attached: {added}\\nAlready attached: {duplicate}\\nCould not attach: {len(rejected)}"+
+                      ("\\n\\n"+details if details else "")+
+                      "\\n\\nFiles are stored on this device. No text was automatically read or categorized.")
+
+ def review_receipts(self):
+  entry_id=self.selected_entry()
+  if entry_id is None:return
+  rows=self.vault.for_entry(entry_id)
+  if not rows:
+   messagebox.showinfo("Receipts","No receipts for this transaction. Use Attach receipts to add PDF or image evidence.")
+   return
+  win=tk.Toplevel(self);win.title("Receipts for selected transaction");win.geometry("570x330");win.minsize(420,250)
+  ttk.Label(win,text=f"Transaction #{entry_id}: saved local evidence",font=("Segoe UI",12,"bold")).pack(anchor="w",padx=12,pady=(12,3))
+  ttk.Label(win,text="Select a file to save a verified copy. No OCR or tax decision is performed.").pack(anchor="w",padx=12)
+  listing=tk.Listbox(win,exportselection=False)
+  for row in rows:listing.insert("end",f'{row["original_name"]}  ({row["size_bytes"]:,} bytes)  SHA256 {row["sha256"][:12]}')
+  listing.pack(fill="both",expand=True,padx=12,pady=8)
+  def save_selected():
+   selected=listing.curselection()
+   if not selected:
+    messagebox.showinfo("Choose a receipt","Select one receipt first.",parent=win);return
+   row=rows[selected[0]]
+   target=filedialog.asksaveasfilename(parent=win,title="Save verified receipt copy",initialfile=row["original_name"])
+   if not target:return
+   try:self.vault.save_copy(entry_id,row["id"],target)
+   except (ReceiptError,OSError) as exc:messagebox.showerror("Cannot save receipt",str(exc),parent=win);return
+   messagebox.showinfo("Receipt saved","A SHA-256-verified copy was saved.",parent=win)
+  ttk.Button(win,text="Save selected copy",command=save_selected).pack(side="left",padx=12,pady=8)
+  ttk.Button(win,text="Close",command=win.destroy).pack(side="right",padx=12,pady=8)
 
  def tax_assets(self):
   mode=simpledialog.askstring("Tax / fixed assets","Enter sales tax, book depreciation, or tax depreciation")
