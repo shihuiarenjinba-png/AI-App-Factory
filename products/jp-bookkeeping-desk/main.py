@@ -35,9 +35,11 @@ class App(tk.Tk):
   if not q:return
   accounts=self.s.search_help(q,limit=7,include_advanced=True);books=self.s.search_book_help(q,limit=4);lines=[]
   if accounts:
-   lines.append("【勘定科目候補】")
+   lines.append("【勘定科目・参考情報】")
+   active_codes={item["code"] for item in self.s.accounts()}
    for a in accounts:
     level="上級・要確認" if a["audience"]=="advanced" else a["audience"]
+    if a["code"] not in active_codes:level+=" / 参考のみ・記帳科目未登録"
     lines.append(f'・{a["code"]} {a["name"]} ({a["type"]} / {level})\n  使う場面: {a["use_text"]}\n  帳簿: {a["books"]}\n  例: {a["example"]}')
   if books:
    lines.append("\n【帳簿候補】")
