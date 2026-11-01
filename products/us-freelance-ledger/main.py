@@ -5,6 +5,7 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,METHODS,LedgerError,Store,suggest_category,review_requirements
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
 from receipt_queue import enqueue_receipts, list_receipts, link_receipt
+from bank_reconcile import BankReviewError, match_transaction, unmatch_transaction, match_statuses, statement_preview, finalize_statement
 
 class App(tk.Tk):
     def __init__(self):
@@ -44,9 +45,14 @@ class App(tk.Tk):
         ttk.Button(receipt_actions,text="Add receipts / PDFs",command=self.add_receipts).pack(side="left",padx=(0,6))
         ttk.Button(receipt_actions,text="Review receipt queue",command=self.review_receipts).pack(side="left",padx=(0,6))
         ttk.Label(r,textvariable=self.receipt_summary).pack(anchor="w")
-        cols=("date","kind","amount","category","party","memo");self.tree=ttk.Treeview(r,columns=cols,show="headings")
-        for c,t in zip(cols,["Date","Type","Amount","Category","Payer / payee","Memo"]):
-            self.tree.heading(c,text=t);self.tree.column(c,width=120)
+        ttk.Label(r,text="Bank check: 1. Select a transaction  2. Match to statement  3. Check opening/closing balances. Manual review only.",wraplength=650).pack(anchor="w",pady=(5,1))
+        bank_actions=ttk.Frame(r);bank_actions.pack(fill="x",pady=3)
+        ttk.Button(bank_actions,text="Match selected",command=self.match_bank).pack(side="left",padx=(0,5))
+        ttk.Button(bank_actions,text="Undo match",command=self.unmatch_bank).pack(side="left",padx=(0,5))
+        ttk.Button(bank_actions,text="Check statement",command=self.check_bank).pack(side="left")
+        cols=("date","kind","amount","category","party","memo","bank");self.tree=ttk.Treeview(r,columns=cols,show="headings")
+        for c,t in zip(cols,["Date","Type","Amount","Category","Payer / payee","Memo","Bank check"]):
+            self.tree.heading(c,text=t);self.tree.column(c,width=90 if c in ("date","kind","amount","bank") else 110)
         self.tree.pack(fill="both",expand=True,pady=(8,0))
 
     def refresh_receipts(self):
