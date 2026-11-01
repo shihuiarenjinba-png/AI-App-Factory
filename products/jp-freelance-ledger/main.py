@@ -5,6 +5,7 @@ from core import CATEGORIES,DOCUMENT_TYPES,LedgerError,Store,suggest_category
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
 from csv_review import CSVReviewError, review_csv, apply_csv_import
 from reconciliation import ReconciliationError, preview as balance_preview, confirm as balance_confirm, status as balance_status
+from budget_ui import open_budget_window
 
 class App(tk.Tk):
     def __init__(self):
@@ -35,6 +36,7 @@ class App(tk.Tk):
         csv_menu.add_command(label="CSVを確認して取り込む",command=self.import_csv)
         csv_menu.add_command(label="CSVに書き出す",command=self.export)
         csv_menu.add_command(label="月次残高チェック",command=self.reconcile_month)
+        csv_menu.add_command(label="月次予算と実績",command=lambda:open_budget_window(self,self.store))
         csv_menu_button["menu"]=csv_menu
         csv_menu_button.grid(row=14,column=0,sticky="ew",pady=4)
         ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=14,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
