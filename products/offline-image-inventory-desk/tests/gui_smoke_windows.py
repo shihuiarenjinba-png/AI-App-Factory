@@ -140,6 +140,12 @@ def run(out, exe, source_sha):
             assert desk.comparison is not None
             screenshots["05_restarted"] = screenshot(root, out / "05_restarted.png")
             logs.append("restart, open baseline and recompare PASS")
+            # Close the comparison overlay before capturing the main-window error state.
+            for child in root.winfo_children():
+                if isinstance(child, tk.Toplevel):
+                    child.destroy()
+            root.lift()
+            root.focus_force()
             errors = []
             with patch.object(app, "inspect_image", side_effect=PermissionError("simulated read denied")), \
                  patch.object(app.messagebox, "showerror", side_effect=lambda *a, **kw: errors.append(str(a))):
@@ -147,6 +153,12 @@ def run(out, exe, source_sha):
             assert errors and desk.comparison is None, "Read error did not invalidate old evidence"
             assert desk.status.get() == desk.t("snap_failed"), "Error not visible to user"
             screenshots["06_read_error"] = screenshot(root, out / "06_read_error.png")
+            if screenshots["06_read_error"]["sha256"] == screenshots["05_restarted"]["sha256"]:
+                raise AssertionError("Read-error screenshot indistinguishable from prior state")
+            with patch.object(app.filedialog, "asksaveasfilename",
+                              side_effect=AssertionError("stale evidence dialog opened")):
+                desk.summary_button.invoke()
+            assert desk.comparison is None, "Stale summary export re-enabled"
             logs.append("read error visible; stale comparison invalidated; no false export")
         finally:
             for child in root.winfo_children():
