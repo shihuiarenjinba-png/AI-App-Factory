@@ -1,0 +1,46 @@
+name: Image snapshot QA and unsigned Windows EXE
+on:
+  pull_request:
+    branches:
+      - codex/app-image-msix-preflight-candidate-20261031
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s products/offline-image-inventory-desk/tests -v
+  windows:
+    runs-on: windows-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m unittest discover -s products/offline-image-inventory-desk/tests -v
+      - run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - run: python -m PyInstaller --noconfirm --clean --onefile --windowed --noupx --name offline-image-inventory-desk --paths products/offline-image-inventory-desk --distpath dist --workpath build --specpath build products/offline-image-inventory-desk/main.py
+      - name: Verify PE and write exact SHA receipt
+        shell: pwsh
+        run: |
+          $p="dist/offline-image-inventory-desk.exe"
+          if (!(Test-Path $p)) { throw "EXE missing" }
+          $bytes=[System.IO.File]::ReadAllBytes($p)
+          if ($bytes[0] -ne 77 -or $bytes[1] -ne 90) { throw "PE missing MZ" }
+          $sha=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()
+          @{ stage="REVIEW_ONLY_UNSIGNED_EXE"; source_sha=$env:GITHUB_SHA; sha256=$sha; bytes=$bytes.Length; market_fit="MARKET_FIT_HOLD"; registration_type="MSIX_OR_PWA_APP"; identity_status="NOT_BOUND" } | ConvertTo-Json | Set-Content "dist/exe-receipt.json"
+          Write-Output "EXE SHA256 $sha"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: image-snapshot-unsigned-review-exe-NOT-MSIX
+          path: dist/
+          if-no-files-found: error
+          retention-days: 5

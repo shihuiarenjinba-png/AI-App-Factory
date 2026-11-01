@@ -15,3 +15,12 @@ Enable **MSIX screenshot check** after adding images; optionally select **Issues
 Based on [Microsoft's MSIX screenshot guidance](https://learn.microsoft.com/en-us/windows/apps/publish/publish-your-app/msix/screenshots-and-images), rechecked 2026-10-31: PNG, desktop 1366 x 768 or larger, portrait/landscape allowed, max 10 desktop screenshots and a documented 50 MB per-image limit. Landscape below 1366 x 768 and non-PNG images are flagged; portrait screenshots that meet rotated bounds require manual review because exact threshold semantics are not explicit. Files near 50 MB require manual review because byte interpretation is not specified; >50 MiB is flagged as over either common interpretation. A "BASIC_CANDIDATE" is never Store-ready: this header scanner cannot verify image pixels, content, overlay text, localization, listing completeness or actual Partner Center acceptance. A list with over 10 files is shown as a batch warning, not silently dropped.
 
 The CSV includes per-image status, actionable explanation, rule URL, checked date, batch count and limit. All source images remain unchanged. **MARKET_FIT_HOLD 64/100** remains in force; no paid-release or commercial MSIX permission follows from this prototype. This feature must pass real Windows GUI 1024x768 review and market validation before Store packaging.
+
+
+## Read-only image delivery snapshot comparison (review-only revision)
+
+For small production studios: 1. Save folder snapshot as JSON outside the image folder; 2. Open baseline later and Compare folder; 3. Export changes to CSV/JSON outside both image folders. The comparison window lists ADDED, REMOVED, MODIFIED and UNCHANGED relative paths. Full-file SHA-256, dimensions and byte counts support same-name content-change review. Renames are added+removed, not inferred. Repeated scans are deterministic.
+
+This is not backup, legal proof, cryptographic signing, pixel validation or synchronization. Only PNG/JPEG/GIF/BMP; max 200 image entries and 64 MiB each. Symlinks, read failures and files changing mid-scan fail closed instead of falsely reporting deletion. Never writes, repairs, moves or deletes source images. A baseline/report must be saved outside scanned image folders.
+
+The why-pay hypothesis is a three-step, non-destructive delivery evidence report, not duplicate detection. Free tools already compare content and detect duplicates. See the market research JSON under docs/market. MARKET_FIT_HOLD remains 64/100; Windows GUI and commercial MSIX remain unverified.

@@ -42,6 +42,25 @@ LABELS={
 "en":{"title":"Offline Image Inventory Desk","help":"Choose PNG/JPEG/GIF/BMP files. Inspect dimensions locally; no uploads or edits.","add":"Add images","remove":"Remove selected","clear":"Clear","save":"Save session","open":"Open session","export":"Export CSV","lang":"日本語","path":"File","format":"Format","dimensions":"Dimensions","bytes":"Bytes","ready":"Select images to begin.","empty":"Add images first.","saved":"Session saved.","loaded":"Session loaded.","exported":"CSV exported.","error":"Operation failed","recover":"Session invalid. Open backup?","replace":"Overwrite existing file? A backup is kept.","result":"Images: {n}; rejected: {bad}","preflight":"MSIX screenshot check","issues":"Issues only","check_export":"Export check CSV","check":"Check","notice":"Header-only check, not Store approval. Portrait and 50 MB limits need review.","summary":"MSIX check: {issues} need attention / {n} images. Desktop listing max: 10."},
 "ja":{"title":"オフライン画像一覧デスク","help":"PNG/JPEG/GIF/BMPの画像寸法を端末内で確認します。送信や編集はしません。","add":"画像を追加","remove":"選択行を削除","clear":"消去","save":"作業を保存","open":"作業を開く","export":"CSVを書き出す","lang":"English","path":"ファイル","format":"形式","dimensions":"寸法","bytes":"バイト","ready":"画像を選んでください。","empty":"画像を追加してください。","saved":"保存しました。","loaded":"読み込みました。","exported":"CSVを書き出しました。","error":"操作に失敗しました","recover":"作業ファイルが無効です。バックアップを開きますか？","replace":"上書きしますか？バックアップを残します。","result":"画像：{n}件、拒否：{bad}件","preflight":"MSIX画像チェック","issues":"要確認のみ","check_export":"検査CSVを出力","check":"検査結果","notice":"ヘッダーのみの検査です。Store承認ではありません。縦長と50 MB境界は要確認。","summary":"MSIX検査：{n}件中{issues}件が要確認。デスクトップ画像は最大10枚。"}}
 
+
+import snapshot_compare as snapshots
+LABELS["en"].update({"snap_new":"1. Save folder snapshot","snap_open":"Open snapshot",
+ "snap_compare":"2. Compare folder","snap_export":"3. Export evidence",
+ "snap_intro":"Read-only delivery audit: save a baseline, compare later, export changes.",
+ "snap_saved":"Snapshot saved outside the image folder.","snap_loaded":"Baseline loaded. Compare a folder.",
+ "snap_none":"Save or open a baseline first.",
+ "snap_result":"Added {ADDED} · Removed {REMOVED} · Changed {MODIFIED} · Same {UNCHANGED}",
+ "snap_failed":"Some images could not be read. Comparison stopped to prevent false results.",
+ "snap_report":"Image delivery changes (read-only)"})
+LABELS["ja"].update({"snap_new":"1. フォルダを記録","snap_open":"記録を開く",
+ "snap_compare":"2. フォルダを比較","snap_export":"3. 証跡を保存",
+ "snap_intro":"画像納品の変更確認：最初の状態を記録し、後から比較します。画像は変更しません。",
+ "snap_saved":"画像フォルダの外に記録を保存しました。","snap_loaded":"記録を読み込みました。比較するフォルダを選んでください。",
+ "snap_none":"先にフォルダを記録するか、記録を開いてください。",
+ "snap_result":"追加 {ADDED} · 削除 {REMOVED} · 変更 {MODIFIED} · 同じ {UNCHANGED}",
+ "snap_failed":"読み取れない画像があります。誤った比較結果を防ぐため中止しました。",
+ "snap_report":"納品画像の変更結果（読み取り専用）"})
+
 def jpeg_dimensions(data):
     if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
     i=2
@@ -178,7 +197,7 @@ def export_msix_csv(path,rows):
 
 class Desk:
     def __init__(self,root):
-        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False)
+        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None
         root.geometry("1024x768");root.minsize(850,600)
         body=ttk.Frame(root,padding=12);body.pack(fill="both",expand=True)
         self.heading=ttk.Label(body,font=("Segoe UI",18,"bold"));self.heading.pack(anchor="w")
@@ -188,6 +207,14 @@ class Desk:
         for key,fn in (("add",self.add),("remove",self.remove),("clear",self.clear),("save",self.save),("open",self.open),("export",self.export)):
             b=ttk.Button(bar,command=fn);b.pack(side="left",padx=(0,5));self.buttons[key]=b
         self.lang=ttk.Button(bar,command=self.toggle);self.lang.pack(side="right")
+        snapshotbar=ttk.Frame(body);snapshotbar.pack(fill="x",pady=(2,3))
+        self.snapshot_buttons={}
+        for key,fn in (("snap_new",self.new_snapshot),("snap_open",self.open_snapshot),
+                       ("snap_compare",self.compare_folder),("snap_export",self.export_evidence)):
+            button=ttk.Button(snapshotbar,command=fn)
+            button.pack(side="left",padx=(0,6));self.snapshot_buttons[key]=button
+        self.snapshot_intro=ttk.Label(body,wraplength=950)
+        self.snapshot_intro.pack(anchor="w",pady=(0,3))
         checkbar=ttk.Frame(body);checkbar.pack(fill="x",pady=(2,4))
         self.preflight_box=ttk.Checkbutton(checkbar,variable=self.preflight,command=self.toggle_preflight)
         self.preflight_box.pack(side="left",padx=(0,12))
@@ -210,6 +237,8 @@ class Desk:
         self.root.title(self.t("title"));self.heading.configure(text=self.t("title"))
         self.intro.configure(text=self.t("help"));self.lang.configure(text=self.t("lang"))
         for k,b in self.buttons.items():b.configure(text=self.t(k))
+        for k,b in self.snapshot_buttons.items():b.configure(text=self.t(k))
+        self.snapshot_intro.configure(text=self.t("snap_intro"))
         self.preflight_box.configure(text=self.t("preflight"))
         self.issues_box.configure(text=self.t("issues"))
         self.check_export_button.configure(text=self.t("check_export"))
@@ -280,6 +309,73 @@ class Desk:
         if not path or not self.confirm(path):return
         try:export_csv(path,self.rows);self.status.set(self.t("exported"))
         except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
+
+
+    def new_snapshot(self):
+        folder=filedialog.askdirectory(parent=self.root,title=self.t("snap_new"))
+        if not folder:return
+        try:
+            baseline=snapshots.capture_folder(folder,inspect_image)
+            if baseline["errors"]:
+                self.error(self.t("snap_failed")+" "+str(baseline["errors"][:5]));return
+            path=filedialog.asksaveasfilename(parent=self.root,defaultextension=".json",
+                filetypes=[("JSON","*.json")],title=self.t("snap_new"))
+            if not path or not self.confirm(path):return
+            snapshots.write_snapshot(path,baseline,atomic_write)
+            self.baseline=baseline;self.comparison=None;self.status.set(self.t("snap_saved"))
+        except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
+
+    def open_snapshot(self):
+        path=filedialog.askopenfilename(parent=self.root,filetypes=[("JSON","*.json")],title=self.t("snap_open"))
+        if not path:return
+        try:
+            baseline=snapshots.load_snapshot(path)
+            if baseline["errors"]:
+                self.error(self.t("snap_failed"));return
+            self.baseline=baseline;self.comparison=None;self.status.set(self.t("snap_loaded"))
+        except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
+
+    def compare_folder(self):
+        if self.baseline is None:self.status.set(self.t("snap_none"));return
+        folder=filedialog.askdirectory(parent=self.root,title=self.t("snap_compare"))
+        if not folder:return
+        try:
+            current=snapshots.capture_folder(folder,inspect_image)
+            if current["errors"]:
+                self.error(self.t("snap_failed")+" "+str(current["errors"][:5]));return
+            report=snapshots.compare_snapshots(self.baseline,current)
+            self.comparison=report
+            self.status.set(self.t("snap_result").format(**report["summary"]))
+            self.show_comparison(report)
+        except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
+
+    def show_comparison(self,report):
+        window=tk.Toplevel(self.root);window.title(self.t("snap_report"))
+        window.geometry("880x500");window.minsize(650,350)
+        frame=ttk.Frame(window,padding=12);frame.pack(fill="both",expand=True)
+        ttk.Label(frame,text=self.t("snap_result").format(**report["summary"]),
+                  font=("Segoe UI",12,"bold")).pack(anchor="w",pady=(0,8))
+        table=ttk.Treeview(frame,columns=("file","change","before","after"),show="headings")
+        for key,label,width in (("file",self.t("path"),300),("change","Change / 変更",110),
+                                ("before","Before SHA-256",200),("after","After SHA-256",200)):
+            table.heading(key,text=label);table.column(key,width=width,stretch=key=="file")
+        for row in report["changes"]:
+            table.insert("","end",values=(row["relative_path"],row["status"],
+                          row["old_sha256"][:16],row["new_sha256"][:16]))
+        scroll=ttk.Scrollbar(frame,orient="vertical",command=table.yview)
+        table.configure(yscrollcommand=scroll.set)
+        table.pack(side="left",fill="both",expand=True);scroll.pack(side="right",fill="y")
+
+    def export_evidence(self):
+        if self.comparison is None:self.status.set(self.t("snap_none"));return
+        path=filedialog.asksaveasfilename(parent=self.root,defaultextension=".csv",
+                filetypes=[("CSV","*.csv"),("JSON","*.json")],title=self.t("snap_export"))
+        if not path or not self.confirm(path):return
+        try:
+            snapshots.write_comparison(path,self.comparison,atomic_write)
+            self.status.set(self.t("exported"))
+        except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
+
 
 def main():
     root=tk.Tk();Desk(root);root.mainloop()
