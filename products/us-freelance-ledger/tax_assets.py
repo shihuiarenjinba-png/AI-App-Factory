@@ -41,13 +41,29 @@ def straight_line_book_schedule(cost, first_use_date, useful_life_years, salvage
     return rows
 
 def custom_tax_depreciation_schedule(cost, percentages_by_year, business_use_percent=100):
+    """Manual, review-only percentages; not an IRS-approved MACRS calculator."""
     cost=Decimal(str(cost)); use=Decimal(str(business_use_percent))/Decimal("100")
-    if cost <= 0: raise ValueError("Cost must be positive")
+    if not cost.is_finite() or cost <= 0:
+        raise ValueError("Cost must be positive and finite")
+    if not use.is_finite() or not Decimal("0") <= use <= Decimal("1"):
+        raise ValueError("Business-use percentage must be between 0 and 100")
+    if not percentages_by_year:
+        raise ValueError("Enter a year-specific reviewed depreciation schedule")
+    normalized={}
+    for key, value in percentages_by_year.items():
+        year=int(key)
+        if year in normalized:
+            raise ValueError("Duplicate year in schedule")
+        pct=Decimal(str(value))
+        if not pct.is_finite() or not Decimal("0") <= pct <= Decimal("100"):
+            raise ValueError("Each annual percentage must be between 0 and 100")
+        normalized[year]=pct
     rows=[]; accumulated=Decimal("0")
-    for year in sorted(int(y) for y in percentages_by_year):
-        pct=Decimal(str(percentages_by_year[year]))
-        if pct < 0: raise ValueError("Percentage must be non-negative")
+    for year in sorted(normalized):
+        pct=normalized[year]
         amount=(cost*pct/Decimal("100")).quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
+        if accumulated + amount > cost:
+            raise ValueError("Depreciation cannot exceed original cost; review rates and years")
         business=(amount*use).quantize(Decimal("0.01"),rounding=ROUND_HALF_UP)
         accumulated+=amount
         rows.append({"year":year,"percentage":pct,"tax_depreciation":amount,"business_depreciation":business})
