@@ -105,3 +105,63 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 5
+
+  exact-artifact-replay:
+    name: Replay pinned uploaded EXE (not local GUI or buyer evidence)
+    needs: windows
+    runs-on: windows-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify pinned GitHub artifact provenance before download
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $a = gh api repos/$env:GITHUB_REPOSITORY/actions/artifacts/13101545092 | ConvertFrom-Json
+          if ($a.id -ne 13101545092 -or $a.name -ne "image-snapshot-unsigned-review-exe-NOT-MSIX" -or $a.expired -or $a.workflow_run.id -ne 41349965924) {
+            throw "PINNED_ARTIFACT_METADATA_MISMATCH"
+          }
+          $gui = gh api repos/$env:GITHUB_REPOSITORY/actions/artifacts/13101520115 | ConvertFrom-Json
+          if ($gui.name -ne "image-snapshot-CLOUD_WINDOWS_GUI_SMOKE-NOT-LOCAL-QA" -or $gui.expired -or $gui.workflow_run.id -ne 41349965924) {
+            throw "PINNED_CALIBRATION_METADATA_MISMATCH"
+          }
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-snapshot-unsigned-review-exe-NOT-MSIX
+          run-id: 41349965924
+          github-token: ${{ github.token }}
+          path: exact-exe
+      - uses: actions/download-artifact@v4
+        with:
+          name: image-snapshot-CLOUD_WINDOWS_GUI_SMOKE-NOT-LOCAL-QA
+          run-id: 41349965924
+          github-token: ${{ github.token }}
+          path: exact-calibration
+      - name: Install black-box Windows GUI driver (no EXE rebuild)
+        run: python -m pip install --disable-pip-version-check "pillow==11.3.0" "pywinauto==0.6.9" "pyautogui==0.9.54" "psutil==6.1.1"
+      - name: Run pinned artifact through real cloud Windows buyer tasks and read-denied fixture
+        shell: pwsh
+        run: |
+          python products/offline-image-inventory-desk/tests/gui_smoke_windows.py --mode packaged --exe exact-exe/offline-image-inventory-desk.exe --out exact-replay-evidence --calibration exact-calibration/ui-layout.json --source-sha 70ed475c1621a9955dafe5cc39562915c6cfd424
+      - name: Validate machine receipt, source hashes, negative evidence and MARKET_FIT_HOLD
+        shell: pwsh
+        run: |
+          python products/offline-image-inventory-desk/tests/verify_exact_replay.py --exe exact-exe/offline-image-inventory-desk.exe --exe-receipt exact-exe/exe-receipt.json --evidence exact-replay-evidence --source-sha 70ed475c1621a9955dafe5cc39562915c6cfd424 --artifact-id 13101545092 --run-id 41349965924 --out exact-replay-evidence/pinned-artifact-receipt.json
+      - name: Upload exact-artifact replay evidence (NOT human buyers, NOT local GUI)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: PINNED-EXE-CLOUD-BUYER-TASK-QA-NOT-LOCAL-NOT-HUMAN
+          path: exact-replay-evidence/
+          if-no-files-found: warn
+          retention-days: 5
