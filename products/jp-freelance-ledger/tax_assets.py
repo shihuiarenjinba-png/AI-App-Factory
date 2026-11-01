@@ -75,6 +75,12 @@ def jp_depreciation_schedule(
     if method not in {"定額法","定率法"}: raise ValueError("償却方法は定額法または定率法")
     if method=="定率法" and (dr is None or rr is None or gr is None):
         raise ValueError("定率法は償却率・改定償却率・保証率を設定してください")
+    # Only user-entered/source-verified rates are allowed; never infer tax rates.
+    rates = [sl] if method=="定額法" else [dr,rr,gr]
+    if any(rate is None or not rate.is_finite() or rate<=0 or rate>1 for rate in rates):
+        raise ValueError("償却率・改定償却率・保証率は0超〜1以下の正式率を入力してください")
+    if through_year < first.year:
+        raise ValueError("終了年は供用開始年以降を指定してください")
     rows=[]; accumulated=0; revised_base=None
     for year in range(first.year,through_year+1):
         opening=cost-accumulated
