@@ -93,6 +93,15 @@ class BankReviewTests(unittest.TestCase):
         self.assertEqual(bank.match_statuses(self.store.conn)[second], "RECONCILED")
         self.assertEqual(self.store.annual_summary(2026)["net"], 800)
 
+    def test_accrual_books_cannot_masquerade_as_cash_statement(self):
+        self.store.close()
+        self.store = core.Store(Path(self.tmp.name) / "accrual.sqlite3", "accrual")
+        txn = self.add("income", "100")
+        with self.assertRaises(bank.BankReviewError):
+            bank.match_transaction(self.store.conn, txn, "Bank", "2026-10-31")
+        with self.assertRaises(bank.BankReviewError):
+            bank.statement_preview(self.store.conn, "Bank", "2026-10-31", "0", "100")
+
     def test_invalid_inputs_and_backdated_statement(self):
         transaction = self.add("income", "10", "2026-10-15")
         for account, day in [("", "2026-10-31"), ("A", "2026-02-30"),
