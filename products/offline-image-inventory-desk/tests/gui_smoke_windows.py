@@ -94,6 +94,13 @@ def run(out, exe, source_sha):
             desk = app.Desk(root)
             screenshots["01_initial_en"] = screenshot(root, out / "01_initial_en.png")
             record_ui_layout(root, desk, out)
+            desk.demo_button.invoke()
+            assert desk.demo_mode and desk.comparison["summary"] == {"ADDED":1,"REMOVED":1,"MODIFIED":1,"UNCHANGED":1}
+            screenshots["01b_demo_en"] = screenshot(root, out / "01b_demo_en.png")
+            desk.lang.invoke()
+            assert "見本" in desk.status.get()
+            screenshots["01c_demo_ja"] = screenshot(root, out / "01c_demo_ja.png")
+            logs.append("in-app 3-step synthetic sample demonstrated in EN/JA without editing photos")
         finally:
             root.destroy()
         # Drive baseline/compare/export in a fresh real Tk session.
@@ -216,7 +223,7 @@ def record_ui_layout(root, desk, out):
     root.update_idletasks()
     root.update()
     widgets = dict(desk.snapshot_buttons)
-    widgets.update({"summary": desk.summary_button, "lang": desk.lang})
+    widgets.update({"summary": desk.summary_button, "demo": desk.demo_button, "lang": desk.lang})
     coords = {}
     for name, widget in widgets.items():
         if not widget.winfo_viewable():
@@ -390,6 +397,10 @@ def run_packaged(out, exe, source_sha, calibration):
         try:
             start()
             capture("01_exe_initial_en")
+            click("demo")
+            close_comparison()
+            capture("01b_exe_demo_en")
+            log.append("packaged EXE in-app synthetic sample displayed before real folder workflow")
             action("snap_new", baseline, snapshot)
             if not snapshot.is_file():
                 raise AssertionError("Packaged EXE did not save baseline")

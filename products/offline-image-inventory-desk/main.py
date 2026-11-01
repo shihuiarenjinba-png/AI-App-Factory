@@ -44,6 +44,7 @@ LABELS={
 
 
 import snapshot_compare as snapshots
+import demo_samples
 LABELS["en"].update({"snap_new":"1. Save folder snapshot","snap_open":"Open snapshot",
  "snap_compare":"2. Compare folder","snap_export":"3. Export evidence",
  "snap_intro":"Read-only delivery audit: save a baseline, compare later, export changes.",
@@ -62,6 +63,19 @@ LABELS["ja"].update({"snap_new":"1. フォルダを記録","snap_open":"記録�
  "snap_failed":"読み取れない画像があります。誤った比較結果を防ぐため中止しました。",
  "snap_report":"納品画像の変更結果（読み取り専用）",
  "snap_summary":"納品用サマリーTXTを保存","snap_summary_done":"サマリーを保存しました。画像は変更していません。"})
+
+LABELS["en"].update({
+ "snap_demo":"Try a sample (4 changes)",
+ "snap_demo_done":"SAMPLE ONLY: 1 added, 1 removed, 1 changed, 1 unchanged. Review the table, then export CSV/JSON or TXT. To use your own photos, start at step 1.",
+ "snap_intro":"1. Save a BEFORE folder snapshot. 2. Compare the AFTER folder. 3. Export a client-readable CSV/JSON/TXT. Try the synthetic example first; no photos are uploaded or edited.",
+ "snap_demo_title":"SAMPLE — image delivery changes (not your files)"
+})
+LABELS["ja"].update({
+ "snap_demo":"見本で試す（4件の変更）",
+ "snap_demo_done":"見本データです：追加1・削除1・変更1・同一1。表を確認し、CSV/JSON/TXTを保存できます。実際の画像は手順1から始めてください。",
+ "snap_intro":"1. 変更前フォルダを記録 → 2. 変更後フォルダを比較 → 3. CSV/JSON/TXTの証跡を保存。見本から試せます。画像の送信・編集はしません。",
+ "snap_demo_title":"見本 — 画像の変更結果（お客様の画像ではありません）"
+})
 
 def jpeg_dimensions(data):
     if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
@@ -199,7 +213,7 @@ def export_msix_csv(path,rows):
 
 class Desk:
     def __init__(self,root):
-        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None
+        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False
         root.geometry("1024x768");root.minsize(850,600)
         body=ttk.Frame(root,padding=12);body.pack(fill="both",expand=True)
         self.heading=ttk.Label(body,font=("Segoe UI",18,"bold"));self.heading.pack(anchor="w")
@@ -218,6 +232,8 @@ class Desk:
         summarybar=ttk.Frame(body);summarybar.pack(fill="x",pady=(0,3))
         self.summary_button=ttk.Button(summarybar,command=self.export_delivery_summary)
         self.summary_button.pack(side="left")
+        self.demo_button=ttk.Button(summarybar,command=self.try_demo)
+        self.demo_button.pack(side="left",padx=(12,0))
         self.snapshot_intro=ttk.Label(body,wraplength=950)
         self.snapshot_intro.pack(anchor="w",pady=(0,3))
         checkbar=ttk.Frame(body);checkbar.pack(fill="x",pady=(2,4))
@@ -237,6 +253,7 @@ class Desk:
         self.tree.pack(side="left",fill="both",expand=True);scroll.pack(side="right",fill="y")
         ttk.Label(body,textvariable=self.status,wraplength=950).pack(anchor="w",pady=4)
         self.localize();self.status.set(self.t("ready"))
+        root.bind("<Destroy>",self._cleanup_demo,add="+")
     def t(self,key):return LABELS[self.language][key]
     def localize(self):
         self.root.title(self.t("title"));self.heading.configure(text=self.t("title"))
@@ -245,6 +262,7 @@ class Desk:
         for k,b in self.snapshot_buttons.items():b.configure(text=self.t(k))
         self.snapshot_intro.configure(text=self.t("snap_intro"))
         self.summary_button.configure(text=self.t("snap_summary"))
+        self.demo_button.configure(text=self.t("snap_demo"))
         self.preflight_box.configure(text=self.t("preflight"))
         self.issues_box.configure(text=self.t("issues"))
         self.check_export_button.configure(text=self.t("check_export"))
@@ -252,6 +270,7 @@ class Desk:
         for k in ("path","format","dimensions","bytes","check"):self.tree.heading(k,text=self.t(k))
     def toggle(self):
         self.language="ja" if self.language=="en" else "en";self.localize()
+        if self.demo_mode:self.status.set(self.t("snap_demo_done"))
     def toggle_preflight(self):
         if not self.preflight.get():self.issues.set(False)
         self.localize();self.refresh()
@@ -317,6 +336,40 @@ class Desk:
         except (OSError,ValueError,UnicodeError) as exc:self.error(exc)
 
 
+    def _cleanup_demo(self,event):
+        if event.widget is self.root and self.demo_temp is not None:
+            self.demo_temp.cleanup()
+            self.demo_temp=None
+
+    def try_demo(self):
+        """Demonstrate the exact three-step flow with synthetic temporary files."""
+        self.comparison=None  # Never allow export of a stale real comparison.
+        temp=tempfile.TemporaryDirectory(prefix="offline-image-demo-")
+        try:
+            before,after=demo_samples.populate_demo(Path(temp.name))
+            original=(demo_samples.hashes(before),demo_samples.hashes(after))
+            baseline=snapshots.capture_folder(before,inspect_image)
+            current=snapshots.capture_folder(after,inspect_image)
+            if baseline["errors"] or current["errors"]:
+                raise ValueError(self.t("snap_failed"))
+            report=snapshots.compare_snapshots(baseline,current)
+            if report["summary"]!={"ADDED":1,"REMOVED":1,"MODIFIED":1,"UNCHANGED":1}:
+                raise ValueError("Sample comparison mismatch")
+            if original!=(demo_samples.hashes(before),demo_samples.hashes(after)):
+                raise ValueError("Sample image SHA-256 changed")
+        except (OSError,ValueError,UnicodeError,TypeError) as exc:
+            temp.cleanup()
+            self.error(exc)
+            return
+        if self.demo_temp is not None:
+            self.demo_temp.cleanup()
+        self.demo_temp=temp
+        self.demo_mode=True
+        self.baseline=baseline
+        self.comparison=report
+        self.status.set(self.t("snap_demo_done"))
+        self.show_comparison(report)
+
     def new_snapshot(self):
         folder=filedialog.askdirectory(parent=self.root,title=self.t("snap_new"))
         if not folder:return
@@ -328,7 +381,7 @@ class Desk:
                 filetypes=[("JSON","*.json")],title=self.t("snap_new"))
             if not path or not self.confirm(path):return
             snapshots.write_snapshot(path,baseline,atomic_write)
-            self.baseline=baseline;self.comparison=None;self.status.set(self.t("snap_saved"))
+            self.baseline=baseline;self.comparison=None;self.demo_mode=False;self.status.set(self.t("snap_saved"))
         except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
 
     def open_snapshot(self):
@@ -338,7 +391,7 @@ class Desk:
             baseline=snapshots.load_snapshot(path)
             if baseline["errors"]:
                 self.error(self.t("snap_failed"));return
-            self.baseline=baseline;self.comparison=None;self.status.set(self.t("snap_loaded"))
+            self.baseline=baseline;self.comparison=None;self.demo_mode=False;self.status.set(self.t("snap_loaded"))
         except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
 
     def compare_folder(self):
@@ -359,7 +412,7 @@ class Desk:
         except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
 
     def show_comparison(self,report):
-        window=tk.Toplevel(self.root);window.title(self.t("snap_report"))
+        window=tk.Toplevel(self.root);window.title(self.t("snap_demo_title") if self.demo_mode else self.t("snap_report"))
         window.geometry("880x500");window.minsize(650,350)
         frame=ttk.Frame(window,padding=12);frame.pack(fill="both",expand=True)
         ttk.Label(frame,text=self.t("snap_result").format(**report["summary"]),
