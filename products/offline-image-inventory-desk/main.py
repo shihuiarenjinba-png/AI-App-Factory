@@ -323,7 +323,7 @@ class Desk:
         try:
             baseline=snapshots.capture_folder(folder,inspect_image)
             if baseline["errors"]:
-                self.error(self.t("snap_failed")+" "+str(baseline["errors"][:5]));return
+                self.error(self.t("snap_failed")+"\n"+snapshots.describe_scan_errors(baseline["errors"],self.language));return
             path=filedialog.asksaveasfilename(parent=self.root,defaultextension=".json",
                 filetypes=[("JSON","*.json")],title=self.t("snap_new"))
             if not path or not self.confirm(path):return
@@ -351,7 +351,7 @@ class Desk:
             current=snapshots.capture_folder(folder,inspect_image)
             if current["errors"]:
                 self.status.set(self.t("snap_failed"))
-                self.error(self.t("snap_failed")+" "+str(current["errors"][:5]));return
+                self.error(self.t("snap_failed")+"\n"+snapshots.describe_scan_errors(current["errors"],self.language));return
             report=snapshots.compare_snapshots(self.baseline,current)
             self.comparison=report
             self.status.set(self.t("snap_result").format(**report["summary"]))
