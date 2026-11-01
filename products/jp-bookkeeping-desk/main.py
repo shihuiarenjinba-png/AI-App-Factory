@@ -4,6 +4,7 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import TYPES,BookError,Store,suggest_entry
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
 from budget_ui import open_budget_window
+from receipt_ingest import ingest_receipts,list_receipts
 class App(tk.Tk):
  def __init__(self):
   super().__init__();self.title("複式簿記デスク 日本版");self.geometry("1180x760");self.minsize(980,650);self.s=Store();self.protocol("WM_DELETE_WINDOW",self.close)
@@ -16,7 +17,8 @@ class App(tk.Tk):
   for i in range(6):
    a,b,c=tk.StringVar(),tk.StringVar(),tk.StringVar();box=ttk.Combobox(f,textvariable=a,state="readonly");box.grid(row=3+i,column=0,sticky="ew");ttk.Entry(f,textvariable=b).grid(row=3+i,column=1);ttk.Entry(f,textvariable=c).grid(row=3+i,column=2);self.lines.append((a,b,c,box))
   ttk.Button(f,text="科目・帳簿を調べる",command=self.lookup_help).grid(row=9,column=0,columnspan=3,sticky="ew",pady=3)
-  ttk.Button(f,text="複数レシートを取り込む",command=self.import_receipts).grid(row=10,column=0,columnspan=3,sticky="ew",pady=3)
+  ttk.Button(f,text="複数レシートを取り込む",command=self.import_receipts).grid(row=10,column=0,columnspan=2,sticky="ew",pady=3)
+  ttk.Button(f,text="証憑一覧",command=self.show_receipts).grid(row=10,column=2,sticky="ew",pady=3)
   ttk.Button(f,text="仕訳候補を推測",command=self.suggest).grid(row=11,column=0,columnspan=3,sticky="ew",pady=3)
   ttk.Button(f,text="記帳",command=self.post).grid(row=12,column=0,sticky="ew");ttk.Button(f,text="科目追加",command=self.add_account).grid(row=12,column=1,sticky="ew");ttk.Button(f,text="期間を締める",command=self.lock).grid(row=12,column=2,sticky="ew")
   ttk.Button(f,text="税率・固定資産計算",command=self.tax_assets).grid(row=13,column=0,columnspan=3,sticky="ew",pady=3)
@@ -49,8 +51,22 @@ class App(tk.Tk):
  def import_receipts(self):
   paths=filedialog.askopenfilenames(title="複数のレシート・請求書画像/PDFを選択")
   if not paths:return
-  added=self.s.enqueue_receipts(paths)
-  messagebox.showinfo("証憑取り込み",f"{added}件をローカル待ち行列に追加しました。\n\n次段階はOCR→日付/金額/店名→科目候補→仕訳候補→確認です。現時点では画像だけで自動確定しません。")
+  result=ingest_receipts(self.s,paths)
+  errors=[f'{item["file"]}: {item["reason"]}' for item in result["items"] if item["status"]=="rejected"]
+  summary=f'追加 {result["added"]}件 / 重複 {result["duplicates"]}件 / 読込不可 {result["rejected"]}件'
+  if errors:summary+="\n\n確認事項:\n"+"\n".join(errors[:4])
+  messagebox.showinfo("証憑取り込み",summary+"\n\n元のファイルは移動・コピーされません。OCRや自動記帳はしていません。原本を保管してください。")
+ def show_receipts(self):
+  items=list_receipts(self.s)
+  if not items:
+   messagebox.showinfo("証憑一覧","まだ証憑がありません。先に画像またはPDFを選んでください。");return
+  window=tk.Toplevel(self);window.title("取り込んだ証憑（未読取）");window.geometry("740x400")
+  ttk.Label(window,text="元のファイルへの参照一覧です。日付・金額は未読取。記帳は確認後に行ってください。",wraplength=700).pack(anchor="w",padx=12,pady=10)
+  tree=ttk.Treeview(window,columns=("name","status","added"),show="headings")
+  for key,title,width in (("name","ファイル",350),("status","状態",110),("added","追加日時",170)):
+   tree.heading(key,text=title);tree.column(key,width=width,anchor="w")
+  for item in items:tree.insert("","end",values=(item["name"],"確認待ち" if item["status"]=="PENDING" else item["status"],item["created_at"]))
+  tree.pack(fill="both",expand=True,padx=12,pady=(0,12))
  def suggest(self):
   cand=suggest_entry(self.desc.get())
   if not cand:
