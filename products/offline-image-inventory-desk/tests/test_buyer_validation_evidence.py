@@ -36,12 +36,21 @@ class BuyerEvidenceTests(unittest.TestCase):
         with (self.out / "participant-responses.csv").open(newline="", encoding="utf-8") as f:
             self.assertEqual(list(csv.DictReader(f)), [])
         self.assertEqual((self.out / "events.jsonl").read_text(), "")
+        self.assertEqual((self.out / "read-error" / "invalid.png").read_bytes(),
+                         b"NOT_A_PNG_TEST_FIXTURE")
 
     def test_tamper_detected_and_never_overwrite(self):
         self.make()
         with self.assertRaises(ValueError):
             self.make()
         (self.out / "delivery" / "added.png").write_bytes(b"corrupt")
+        with self.assertRaisesRegex(AssertionError, "SOURCE_IMAGES_MODIFIED"):
+            kit.verify(self.out)
+
+    def test_read_error_fixture_is_separate_and_protected(self):
+        self.make()
+        self.assertFalse((self.out / "delivery" / "invalid.png").exists())
+        (self.out / "read-error" / "invalid.png").write_bytes(b"changed")
         with self.assertRaisesRegex(AssertionError, "SOURCE_IMAGES_MODIFIED"):
             kit.verify(self.out)
 
