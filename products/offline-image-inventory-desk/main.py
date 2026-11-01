@@ -51,7 +51,8 @@ LABELS["en"].update({"snap_new":"1. Save folder snapshot","snap_open":"Open snap
  "snap_none":"Save or open a baseline first.",
  "snap_result":"Added {ADDED} · Removed {REMOVED} · Changed {MODIFIED} · Same {UNCHANGED}",
  "snap_failed":"Some images could not be read. Comparison stopped to prevent false results.",
- "snap_report":"Image delivery changes (read-only)"})
+ "snap_report":"Image delivery changes (read-only)",
+ "snap_summary":"Export delivery summary TXT","snap_summary_done":"Summary saved; images unchanged."})
 LABELS["ja"].update({"snap_new":"1. フォルダを記録","snap_open":"記録を開く",
  "snap_compare":"2. フォルダを比較","snap_export":"3. 証跡を保存",
  "snap_intro":"画像納品の変更確認：最初の状態を記録し、後から比較します。画像は変更しません。",
@@ -59,7 +60,8 @@ LABELS["ja"].update({"snap_new":"1. フォルダを記録","snap_open":"記録�
  "snap_none":"先にフォルダを記録するか、記録を開いてください。",
  "snap_result":"追加 {ADDED} · 削除 {REMOVED} · 変更 {MODIFIED} · 同じ {UNCHANGED}",
  "snap_failed":"読み取れない画像があります。誤った比較結果を防ぐため中止しました。",
- "snap_report":"納品画像の変更結果（読み取り専用）"})
+ "snap_report":"納品画像の変更結果（読み取り専用）",
+ "snap_summary":"納品用サマリーTXTを保存","snap_summary_done":"サマリーを保存しました。画像は変更していません。"})
 
 def jpeg_dimensions(data):
     if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
@@ -213,6 +215,9 @@ class Desk:
                        ("snap_compare",self.compare_folder),("snap_export",self.export_evidence)):
             button=ttk.Button(snapshotbar,command=fn)
             button.pack(side="left",padx=(0,6));self.snapshot_buttons[key]=button
+        summarybar=ttk.Frame(body);summarybar.pack(fill="x",pady=(0,3))
+        self.summary_button=ttk.Button(summarybar,command=self.export_delivery_summary)
+        self.summary_button.pack(side="left")
         self.snapshot_intro=ttk.Label(body,wraplength=950)
         self.snapshot_intro.pack(anchor="w",pady=(0,3))
         checkbar=ttk.Frame(body);checkbar.pack(fill="x",pady=(2,4))
@@ -239,6 +244,7 @@ class Desk:
         for k,b in self.buttons.items():b.configure(text=self.t(k))
         for k,b in self.snapshot_buttons.items():b.configure(text=self.t(k))
         self.snapshot_intro.configure(text=self.t("snap_intro"))
+        self.summary_button.configure(text=self.t("snap_summary"))
         self.preflight_box.configure(text=self.t("preflight"))
         self.issues_box.configure(text=self.t("issues"))
         self.check_export_button.configure(text=self.t("check_export"))
@@ -365,6 +371,16 @@ class Desk:
         scroll=ttk.Scrollbar(frame,orient="vertical",command=table.yview)
         table.configure(yscrollcommand=scroll.set)
         table.pack(side="left",fill="both",expand=True);scroll.pack(side="right",fill="y")
+
+    def export_delivery_summary(self):
+        if self.comparison is None:self.status.set(self.t("snap_none"));return
+        path=filedialog.asksaveasfilename(parent=self.root,defaultextension=".txt",
+                filetypes=[("Text","*.txt")],title=self.t("snap_summary"))
+        if not path or not self.confirm(path):return
+        try:
+            snapshots.write_delivery_summary(path,self.comparison,atomic_write,self.language)
+            self.status.set(self.t("snap_summary_done"))
+        except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
 
     def export_evidence(self):
         if self.comparison is None:self.status.set(self.t("snap_none"));return
