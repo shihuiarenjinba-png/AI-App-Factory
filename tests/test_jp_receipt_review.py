@@ -57,6 +57,7 @@ class ReceiptReviewTests(unittest.TestCase):
         self.assertEqual(len(receipt.review_receipts([other], self.store)["duplicates"]), 1)
         self.store.close()
         self.store = core.Store(self.db)
+        self.addCleanup(self.store.close)
         self.assertEqual(len(receipt.review_receipts([other], self.store)["duplicates"]), 1)
 
     def test_changed_file_rejected_without_partial_write(self):
