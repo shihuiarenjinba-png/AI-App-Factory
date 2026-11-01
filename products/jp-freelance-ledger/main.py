@@ -4,6 +4,7 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,LedgerError,Store,suggest_category
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
 from csv_review import CSVReviewError, review_csv, apply_csv_import
+from reconciliation import ReconciliationError, preview as balance_preview, confirm as balance_confirm, status as balance_status
 
 class App(tk.Tk):
     def __init__(self):
@@ -29,10 +30,11 @@ class App(tk.Tk):
         ttk.Button(f,text="勘定科目を推測",command=self.suggest).grid(row=11,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="記帳する",command=self.add).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="税率・固定資産",command=self.tax_assets).grid(row=13,column=0,columnspan=2,sticky="ew",pady=4)
-        csv_menu_button=ttk.Menubutton(f,text="CSV 入出力")
+        csv_menu_button=ttk.Menubutton(f,text="帳簿の確認・入出力")
         csv_menu=tk.Menu(csv_menu_button,tearoff=False)
         csv_menu.add_command(label="CSVを確認して取り込む",command=self.import_csv)
         csv_menu.add_command(label="CSVに書き出す",command=self.export)
+        csv_menu.add_command(label="月次残高チェック",command=self.reconcile_month)
         csv_menu_button["menu"]=csv_menu
         csv_menu_button.grid(row=14,column=0,sticky="ew",pady=4)
         ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=14,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
@@ -70,8 +72,13 @@ class App(tk.Tk):
         if not result:
             messagebox.showinfo("勘定科目候補","候補を絞れませんでした。内容を確認して手動で選択してください。")
             return
-        best=result[0]; self.v["category"].set(best["category"])
-        messagebox.showinfo("勘定科目候補",f'候補: {best["category"]}\n確信度: {best["confidence"]:.0%}\n一致語: {", ".join(best["matched"])}\n\n最終判断は内容を確認してください。')
+        best=result[0]
+        prompt=(f'候補: {best["category"]}\n'
+                f'確信度: {best["confidence"]:.0%}\n'
+                f'一致語: {", ".join(best["matched"])}\n\n'
+                '候補を入力欄に反映しますか？（記帳はまだ行いません）')
+        if messagebox.askyesno("勘定科目候補",prompt):
+            self.v["category"].set(best["category"])
     def add(self):
         try:self.store.add(self.v["date"].get(),self.v["kind"].get(),self.v["amount"].get(),self.v["category"].get(),self.v["counterparty"].get(),self.v["doctype"].get(),self.v["docpath"].get(),self.v["memo"].get())
         except LedgerError as e: messagebox.showerror("入力エラー",str(e)); return
@@ -114,6 +121,33 @@ class App(tk.Tk):
                 text="\n".join(f'{r["year"]}: {r["business_depreciation"]:,}円 ({r["method_note"]})' for r in rows[:12])
                 messagebox.showinfo("減価償却",text+"\n\n過年度差額は自動再計算できますが、申告訂正は自動確定しません。")
         except Exception as e:messagebox.showerror("計算エラー",str(e))
+    def reconcile_month(self):
+        """Confirm a whole-cashbook monthly balance; never infer a bank balance."""
+        d=date.today()
+        month=simpledialog.askstring("月次残高チェック","対象月（YYYY-MM）",initialvalue=f"{d.year:04d}-{d.month:02d}")
+        if month is None:return
+        opening=simpledialog.askstring("月次残高チェック","月初残高（円・整数）。口座別ではなく帳簿全体です。")
+        if opening is None:return
+        closing=simpledialog.askstring("月次残高チェック","手元で確認した月末残高（円・整数）")
+        if closing is None:return
+        try:
+            previous=balance_status(self.store.conn,month)
+            result=balance_preview(self.store.conn,month,opening,closing)
+            summary=(f'対象月: {month}（前回: {previous}）\n'
+                     f'対象取引: {result["transaction_count"]}件\n'
+                     f'収入: {result["income_yen"]:,}円 / 経費: {result["expense_yen"]:,}円\n'
+                     f'帳簿計算残高: {result["calculated_yen"]:,}円\n'
+                     f'入力した月末残高: {result["closing_yen"]:,}円\n'
+                     f'差額: {result["difference_yen"]:,}円')
+            if result["difference_yen"]:
+                messagebox.showwarning("残高に差があります",summary+"\n\n取引や月初残高を確認してください。照合済みにはしません。")
+                return
+            if not messagebox.askyesno("月次残高チェック",summary+"\n\n差額ゼロを記録しますか？（銀行別の照合・税務判定ではありません）"):
+                return
+            saved=balance_confirm(self.store.conn,month,opening,closing,result["source_sha256"])
+            messagebox.showinfo("月次残高チェック","照合を記録しました。" if saved["recorded"] else "同じ内容はすでに照合済みです。")
+        except (ReconciliationError,ValueError) as exc:
+            messagebox.showerror("入力を確認してください",str(exc))
     def import_csv(self):
         path=filedialog.askopenfilename(title="CSVを確認して取り込む",filetypes=[("CSV","*.csv")])
         if not path:return

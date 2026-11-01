@@ -1,0 +1,21 @@
+{
+  "slug": "jp-freelance-ledger",
+  "title": "個人事業帳簿ローカル",
+  "customer_problem": "日本の個人事業者が領収書・取引先・収支をクラウド登録なしで整理し、月次残高を自分で照合して税理士へCSVで引き渡したい。",
+  "audience": "日本国内の個人事業者・小規模フリーランス（JPY、日本語）。",
+  "differentiation": "オフラインSQLite帳簿、証憑参照、レビュー付きCSV取込、監査履歴、明示確認する月次残高チェック。税務申告・自動控除判定は対象外。",
+  "scope": [
+    "日本語/円建ての収入・経費記帳とローカルSQLite保存",
+    "摘要からの科目候補（人間確認必須）と勘定科目ヘルプ",
+    "レビュー付きCSV取込・重複防止・CSV書出し",
+    "月次・年次集計と月次残高チェック",
+    "証憑参照とバックアップ、国別市場制限 JPのみ",
+    "Windows EXEでの1024x768 GUI QA、税務計算と申告判定は別ゲート"
+  ],
+  "evidence_urls": [
+    "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2080.htm",
+    "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6303.htm",
+    "https://www.gnucash.org/features.phtml"
+  ],
+  "research_note": "2026-11-01 JP legal basis reviewed. Draft PR #59 stacked QA source; product market-fit not yet approved. Proposal is a source contract, not owner-controlled Factory promotion."
+}

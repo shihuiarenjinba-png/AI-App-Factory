@@ -200,7 +200,8 @@ def main(argv=None) -> int:
     try:
         result = build_exe(args.root, args.slug, args.expected_sha, args.output,
                            request_id=args.request_id, source_branch=args.source_branch)
-        print(json.dumps(result, ensure_ascii=False, sort_keys=True))
+        # Windows GitHub runners may use cp1252 stdout; preserve UTF-8 receipt on disk.
+        print(json.dumps(result, ensure_ascii=True, sort_keys=True))
         return 0
     except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError,
             subprocess.CalledProcessError, subprocess.TimeoutExpired) as exc:
