@@ -77,6 +77,29 @@ def export_month_end_package(store,year,month,out_dir):
                    "difference":month_debits-month_credits}
     pending_receipts=int(store.conn.execute(
         "SELECT COUNT(*) FROM receipt_queue WHERE status!='POSTED'").fetchone()[0])
+    # Every displayed account balance is traceable to its dated journal lines.
+    # Do not treat all-time Store.trial() or future-dated entries as month-end evidence.
+    account_drilldown=[]
+    for account in trial:
+        code=account["code"]
+        sources=[r for r in as_of if r["code"]==code]
+        month_sources=[r for r in journal if r["code"]==code]
+        ytd_sources=[r for r in ytd if r["code"]==code]
+        if (sum(int(r["debit_yen"]) for r in sources)!=account["debit"] or
+            sum(int(r["credit_yen"]) for r in sources)!=account["credit"]):
+            raise ValueError("試算表と元仕訳が一致しません。出力を中止しました")
+        account_drilldown.append({
+            "code":code,"name":account["name"],"type":account["type"],
+            "month_debit":sum(int(r["debit_yen"]) for r in month_sources),
+            "month_credit":sum(int(r["credit_yen"]) for r in month_sources),
+            "ytd_debit":sum(int(r["debit_yen"]) for r in ytd_sources),
+            "ytd_credit":sum(int(r["credit_yen"]) for r in ytd_sources),
+            "as_of_debit":account["debit"],"as_of_credit":account["credit"],
+            "source_lines":[{"entry_id":r["id"],"date":r["entry_date"],
+                             "description":r["description"],"debit":int(r["debit_yen"]),
+                             "credit":int(r["credit_yen"])} for r in sorted(
+                                 sources,key=lambda r:(r["entry_date"],r["id"]))],
+        })
     out=Path(out_dir);out.mkdir(parents=True,exist_ok=True)
     csv_path=out/f"{stem}_仕訳明細.csv"
     with csv_path.open("w",encoding="utf-8-sig",newline="") as f:
@@ -87,6 +110,7 @@ def export_month_end_package(store,year,month,out_dir):
           "journal_lines":len(journal),"trial_balance_as_of":trial,
           "pnl":pnl,"pnl_year_to_date":pnl,"pnl_month":pnl_month,
           "balance_sheet":bs,"balance_check":balance,"month_balance_check":month_balance,
+          "account_drilldown":account_drilldown,
           "unprocessed_receipts":pending_receipts,
           "unprocessed_receipts_scope":"CURRENT_QUEUE_ALL_DATES_NOT_HISTORICAL_AS_OF",
           "unprocessed_receipts_as_of_month_end":None,
@@ -96,7 +120,41 @@ def export_month_end_package(store,year,month,out_dir):
         f"<tr><td>{html.escape(str(r['entry_date']))}</td><td>{html.escape(str(r['description']))}</td><td>{html.escape(str(r['code']))} {html.escape(str(r['name']))}</td><td class='num'>{int(r['debit_yen']):,}</td><td class='num'>{int(r['credit_yen']):,}</td></tr>"
         for r in sorted(journal,key=lambda x:(x["entry_date"],x["id"]))
     ) or "<tr><td colspan='5'>仕訳なし</td></tr>"
-    trows="".join(f"<tr><td>{html.escape(str(r['code']))}</td><td>{html.escape(str(r['name']))}</td><td class='num'>{int(r['debit']):,}</td><td class='num'>{int(r['credit']):,}</td></tr>" for r in trial if r["debit"] or r["credit"])
+    trows=""
+    source_sections=[]
+    pnl_account_rows=""
+    for index,account in enumerate(account_drilldown):
+        if not account["source_lines"]:
+            continue
+        anchor=f"account-{index}"
+        name=html.escape(str(account["name"]))
+        code=html.escape(str(account["code"]))
+        link=f'<a href="#{anchor}">{code} {name} — この数字の根拠を見る</a>'
+        trows+=(f"<tr><td>{link}</td><td>{name}</td>"
+                f"<td class='num'>{account['as_of_debit']:,}</td>"
+                f"<td class='num'>{account['as_of_credit']:,}</td></tr>")
+        if account["type"] in ("収益","費用"):
+            sign=-1 if account["type"]=="収益" else 1
+            month_net=sign*(account["month_debit"]-account["month_credit"])
+            ytd_net=sign*(account["ytd_debit"]-account["ytd_credit"])
+            pnl_account_rows+=(f"<tr><td>{link}</td><td>{account['type']}</td>"
+                               f"<td class='num'>{month_net:,}</td>"
+                               f"<td class='num'>{ytd_net:,}</td></tr>")
+        details="".join(
+            f"<tr><td>{html.escape(str(line['date']))}</td>"
+            f"<td>{html.escape(str(line['description']))}</td>"
+            f"<td>{int(line['entry_id'])}</td>"
+            f"<td class='num'>{line['debit']:,}</td>"
+            f"<td class='num'>{line['credit']:,}</td></tr>"
+            for line in account["source_lines"])
+        source_sections.append(
+            f'<section id="{anchor}"><h3>{code} {name}</h3>'
+            f"<p>対象月の借方/貸方 {account['month_debit']:,} / {account['month_credit']:,} 円、"
+            f"当年累計 {account['ytd_debit']:,} / {account['ytd_credit']:,} 円、"
+            f"月末までの全期間 {account['as_of_debit']:,} / {account['as_of_credit']:,} 円</p>"
+            f"<table><tr><th>日付</th><th>摘要</th><th>仕訳ID</th><th>借方</th><th>貸方</th></tr>"
+            f"{details}</table></section>")
+    source_html="".join(source_sections)
     doc=f"""<!doctype html><html lang="ja"><head><meta charset="utf-8"><title>{stem} 月次締め</title>
 <style>@page{{size:A4;margin:12mm}}body{{font-family:"Yu Gothic","Meiryo",sans-serif;font-size:10pt}}table{{width:100%;border-collapse:collapse;margin:8px 0 18px}}th,td{{border:1px solid #999;padding:5px}}th{{background:#eee}}.num{{text-align:right}}.ok{{font-weight:bold}}</style></head><body>
 <h1>{year}年{month}月 月次締めパック</h1>
@@ -107,7 +165,7 @@ def export_month_end_package(store,year,month,out_dir):
 <h2>当年1月から対象月末までの累計損益</h2><p>収益 {pnl['収益']:,}円 / 費用 {pnl['費用']:,}円 / 利益 {pnl['利益']:,}円</p>
 <h2>対象月末の貸借対照</h2><p>資産 {bs['資産']:,}円 / 負債 {bs['負債']:,}円 / 純資産 {bs['純資産']:,}円 / 当期利益 {bs['当期利益']:,}円 / 前期以前の未振替損益 {bs['前期以前の未振替損益']:,}円</p>
 <h2>月末の確認事項</h2><p>現在の未処理証憑 {pending_receipts}件（全期間の現時点のキュー。対象月末時点の履歴件数ではありません）。証憑原本・事業用途・私用按分・固定資産判定は人が確認してください。帳票は税務申告や控除可否を自動確定しません。</p>
-<h2>月末時点の試算表</h2><table><tr><th>コード</th><th>科目</th><th>借方</th><th>貸方</th></tr>{trows}</table>
+<h2>この数字の根拠を見る</h2><p>下の科目リンクから元仕訳を確認できます。損益の当月・当年累計と、貸借の月末累計は対象期間が異なります。これは会計確認用で税務上の必要経費を認定しません。</p>\n<h2>損益科目の内訳</h2><table><tr><th>科目と元仕訳</th><th>区分</th><th>当月</th><th>当年累計</th></tr>{pnl_account_rows}</table>\n<h2>月末時点の試算表</h2><table><tr><th>コードと元仕訳</th><th>科目</th><th>借方</th><th>貸方</th></tr>{trows}</table>\n<h2>勘定科目ごとの元仕訳</h2>{source_html}
 <h2>当月仕訳</h2><table><tr><th>日付</th><th>摘要</th><th>科目</th><th>借方</th><th>貸方</th></tr>{jrows}</table>
 <p>電子取引で受領した証憑は元データも保存してください。この帳票は確認・共有用です。</p>
 </body></html>"""
