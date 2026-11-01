@@ -235,6 +235,7 @@ def run_packaged(out, exe, source_sha, calibration):
     """
     import pyautogui
     import win32gui
+    import psutil
     pyautogui.FAILSAFE = True
     pyautogui.PAUSE = 0.2
     out.mkdir(parents=True, exist_ok=True)
@@ -266,8 +267,25 @@ def run_packaged(out, exe, source_sha, calibration):
         def start():
             nonlocal process, window
             process = subprocess.Popen([str(exe)], cwd=str(folder))
-            window = Desktop(backend="win32").window(title="Offline Image Inventory Desk", process=process.pid)
-            window.wait("visible", timeout=45)
+            # PyInstaller onefile uses a parent bootloader and child GUI PID.
+            deadline = time.monotonic() + 45
+            match = None
+            while time.monotonic() < deadline:
+                try:
+                    allowed = {process.pid} | {child.pid for child in psutil.Process(process.pid).children(recursive=True)}
+                except psutil.Error:
+                    allowed = {process.pid}
+                candidates = Desktop(backend="win32").windows(
+                    title="Offline Image Inventory Desk", visible_only=True)
+                match = next((candidate for candidate in candidates
+                              if candidate.process_id() in allowed), None)
+                if match:
+                    break
+                time.sleep(0.35)
+            if match is None:
+                raise AssertionError("Packaged GUI window not found in EXE process tree")
+            window = Desktop(backend="win32").window(handle=match.handle)
+            window.wait("visible", timeout=5)
             time.sleep(1.2)
             window.set_focus()
             rect = window.rectangle()
@@ -278,12 +296,12 @@ def run_packaged(out, exe, source_sha, calibration):
         def stop():
             nonlocal process, window
             if process is not None:
-                process.terminate()
+                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                               capture_output=True, text=True, check=False, timeout=15)
                 try:
-                    process.wait(timeout=12)
+                    process.wait(timeout=10)
                 except subprocess.TimeoutExpired:
                     process.kill()
-                    process.wait(timeout=10)
             process, window = None, None
 
         def click(name):
@@ -297,7 +315,7 @@ def run_packaged(out, exe, source_sha, calibration):
             deadline = time.monotonic() + 20
             while time.monotonic() < deadline:
                 dialogs = Desktop(backend="win32").windows(
-                    class_name="#32770", process=process.pid, visible_only=True)
+                    class_name="#32770", process=window.process_id(), visible_only=True)
                 if dialogs:
                     return dialogs[-1]
                 time.sleep(0.25)
@@ -345,7 +363,7 @@ def run_packaged(out, exe, source_sha, calibration):
 
         def close_comparison():
             # The comparison table is a distinct Tk Toplevel, not a file dialog.
-            for w in Desktop(backend="win32").windows(process=process.pid, visible_only=True):
+            for w in Desktop(backend="win32").windows(process=window.process_id(), visible_only=True):
                 if w.handle != window.handle and "delivery changes" in w.window_text().lower():
                     w.close()
                     time.sleep(0.5)
@@ -398,7 +416,7 @@ def run_packaged(out, exe, source_sha, calibration):
             # A stale successful comparison must not open an export Save dialog.
             click("summary")
             if Desktop(backend="win32").windows(class_name="#32770",
-                                                process=process.pid, visible_only=True):
+                                                process=window.process_id(), visible_only=True):
                 raise AssertionError("Packaged EXE allowed stale summary export")
             log.append("packaged read error blocked stale summary export: " + error_text)
             if expected_files != {"baseline": hashes(baseline), "delivery": hashes(delivery)}:
