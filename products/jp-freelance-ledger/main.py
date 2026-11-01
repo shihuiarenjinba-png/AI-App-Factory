@@ -4,6 +4,7 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,LedgerError,Store,suggest_category
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
 from csv_review import CSVReviewError, review_csv, apply_csv_import
+from receipt_review import ReceiptReviewError, review_receipts, apply_receipt_review
 
 class App(tk.Tk):
     def __init__(self):
@@ -44,10 +45,24 @@ class App(tk.Tk):
         x=filedialog.askopenfilename(title="領収書・請求書などを選択")
         if x:self.v["docpath"].set(x)
     def import_receipts(self):
-        paths=filedialog.askopenfilenames(title="複数のレシート・請求書画像/PDFを選択")
+        paths=filedialog.askopenfilenames(title="レシート・請求書画像/PDFをまとめて選択")
         if not paths:return
-        added=self.store.enqueue_receipts(paths)
-        messagebox.showinfo("証憑取り込み",f"{added}件をローカル待ち行列に追加しました。\n\n現段階では画像から自動確定はしません。今後、OCR→候補抽出→ユーザー確認→仕訳候補の順で処理します。")
+        try:
+            preview=review_receipts(paths,self.store)
+            problems="\n".join(f'・{item["path"]}: {item["reason"]}' for item in preview["errors"][:3])
+            summary=(f'追加候補 {len(preview["valid"])}件 / 重複 {len(preview["duplicates"])}件 / 読込不可 {len(preview["errors"])}件'
+                     + (f'\n\n確認が必要なファイル:\n{problems}' if problems else "")
+                     + "\n\n元の画像・PDFは移動・削除されません。自動読取・税務判定は行いません。")
+            if not preview["valid"]:
+                messagebox.showinfo("証憑の確認",summary+"\n\n新しく追加できるファイルはありません。")
+                return
+            if not messagebox.askyesno("証憑の確認",summary+"\n\n追加候補だけを保存しますか？"):return
+            result=apply_receipt_review(self.store,preview)
+            messagebox.showinfo("証憑の追加結果",f'追加 {result["imported"]}件 / 重複 {result["duplicates"]}件 / 読込不可 {result["errors"]}件。\n証憑を参照登録しただけで、仕訳は確定していません。')
+        except (ReceiptReviewError,OSError) as exc:
+            messagebox.showerror("証憑を確認できません",str(exc))
+        except Exception as exc:
+            messagebox.showerror("証憑を追加できません",f"保存できませんでした。データは一括で取り消されます。\n{exc}")
     def lookup_help(self):
         q=simpledialog.askstring("科目・帳簿検索","例: 家賃 / パソコン / 個人カード / 売掛 / 固定資産 / 資産除去債務")
         if not q:return
