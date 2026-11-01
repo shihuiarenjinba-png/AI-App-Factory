@@ -52,6 +52,25 @@ class T(unittest.TestCase):
     with self.assertRaises(ValueError):
      close.export_month_end_package(s,2026,13,Path(td)/"bad")
    finally:s.close()
+ def test_future_receipt_is_current_queue_not_historical_month_end(self):
+  import json
+  with tempfile.TemporaryDirectory() as td:
+   s=core.Store(Path(td)/"receipts.db")
+   try:
+    s.post("2026-01-15","一月売上",[("1100","1000",""),("4000","","1000")])
+    self.assertEqual(s.enqueue_receipts(["future-receipt.png"]),1)
+    s.conn.execute("UPDATE receipt_queue SET created_at='2026-12-01 09:00:00' WHERE file_path='future-receipt.png'")
+    s.conn.commit()
+    result=close.export_month_end_package(s,2026,1,Path(td)/"jan")
+    data=json.loads(Path(result["json"]).read_text(encoding="utf-8"))
+    self.assertEqual(data["unprocessed_receipts"],1)
+    self.assertEqual(data["unprocessed_receipts_scope"],"CURRENT_QUEUE_ALL_DATES_NOT_HISTORICAL_AS_OF")
+    self.assertIsNone(data["unprocessed_receipts_as_of_month_end"])
+    html=Path(result["html"]).read_text(encoding="utf-8")
+    self.assertIn("現在の未処理証憑 1件",html)
+    self.assertIn("対象月末時点の履歴件数ではありません",html)
+    self.assertTrue(data["balance_check"]["balanced"])
+   finally:s.close()
  def test_unsafe_autopost_fails(self):
   truths=[acc.ReceiptTruth("1","2026-11-01","店A","5000",None,None,True)]
   preds=[acc.ReceiptPrediction("1","2026-11-01","店A","5000",None,(),False,True)]
