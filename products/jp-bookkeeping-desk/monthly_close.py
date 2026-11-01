@@ -87,7 +87,10 @@ def export_month_end_package(store,year,month,out_dir):
           "journal_lines":len(journal),"trial_balance_as_of":trial,
           "pnl":pnl,"pnl_year_to_date":pnl,"pnl_month":pnl_month,
           "balance_sheet":bs,"balance_check":balance,"month_balance_check":month_balance,
-          "unprocessed_receipts":pending_receipts,"tax_filing_or_deduction_approved":False}
+          "unprocessed_receipts":pending_receipts,
+          "unprocessed_receipts_scope":"CURRENT_QUEUE_ALL_DATES_NOT_HISTORICAL_AS_OF",
+          "unprocessed_receipts_as_of_month_end":None,
+          "tax_filing_or_deduction_approved":False}
     json_path=out/f"{stem}_月次締め.json";json_path.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
     jrows="".join(
         f"<tr><td>{html.escape(str(r['entry_date']))}</td><td>{html.escape(str(r['description']))}</td><td>{html.escape(str(r['code']))} {html.escape(str(r['name']))}</td><td class='num'>{int(r['debit_yen']):,}</td><td class='num'>{int(r['credit_yen']):,}</td></tr>"
@@ -103,7 +106,7 @@ def export_month_end_package(store,year,month,out_dir):
 <h2>当月損益</h2><p>収益 {pnl_month['収益']:,}円 / 費用 {pnl_month['費用']:,}円 / 利益 {pnl_month['利益']:,}円</p>
 <h2>当年1月から対象月末までの累計損益</h2><p>収益 {pnl['収益']:,}円 / 費用 {pnl['費用']:,}円 / 利益 {pnl['利益']:,}円</p>
 <h2>対象月末の貸借対照</h2><p>資産 {bs['資産']:,}円 / 負債 {bs['負債']:,}円 / 純資産 {bs['純資産']:,}円 / 当期利益 {bs['当期利益']:,}円 / 前期以前の未振替損益 {bs['前期以前の未振替損益']:,}円</p>
-<h2>月末の確認事項</h2><p>未処理証憑 {pending_receipts}件。証憑原本・事業用途・私用按分・固定資産判定は人が確認してください。帳票は税務申告や控除可否を自動確定しません。</p>
+<h2>月末の確認事項</h2><p>現在の未処理証憑 {pending_receipts}件（全期間の現時点のキュー。対象月末時点の履歴件数ではありません）。証憑原本・事業用途・私用按分・固定資産判定は人が確認してください。帳票は税務申告や控除可否を自動確定しません。</p>
 <h2>月末時点の試算表</h2><table><tr><th>コード</th><th>科目</th><th>借方</th><th>貸方</th></tr>{trows}</table>
 <h2>当月仕訳</h2><table><tr><th>日付</th><th>摘要</th><th>科目</th><th>借方</th><th>貸方</th></tr>{jrows}</table>
 <p>電子取引で受領した証憑は元データも保存してください。この帳票は確認・共有用です。</p>
