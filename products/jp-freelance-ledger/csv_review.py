@@ -38,7 +38,10 @@ def _normalize(raw):
         raise CSVReviewError("種別は収入または経費を選択してください")
     if not re.fullmatch(r"[0-9]+", fields[2]) or int(fields[2]) < 1:
         raise CSVReviewError("金額は1円以上の整数で入力してください")
-    fields[2] = str(int(fields[2]))
+    amount_text = fields[2].lstrip("0") or "0"
+    if len(amount_text) > 19 or int(amount_text) > 9223372036854775807:
+        raise CSVReviewError("金額が保存可能な範囲を超えています")
+    fields[2] = amount_text
     if fields[3] not in CATEGORIES:
         raise CSVReviewError("勘定科目が一覧にありません。手動で確認してください")
     if fields[5] and fields[5] not in DOCUMENT_TYPES:
