@@ -327,7 +327,14 @@ def run_packaged(out, exe, source_sha, calibration):
             edits = uia.descendants(control_type="Edit")
             if not edits:
                 raise AssertionError("Native dialog has no editable folder/file path field")
-            field = edits[-1]
+            # SearchEditBox is often the LAST edit: typing there searches Documents.
+            # Select the native Folder/File name field instead.
+            candidates = [e for e in edits
+                          if e.element_info.automation_id not in
+                          ("SearchEditBox", "SearchBox", "SearchTextBox")]
+            folder_fields = [e for e in candidates
+                             if e.element_info.automation_id == "1152"]
+            field = (folder_fields or candidates)[-1]
             field.click_input()
             pyautogui.hotkey("ctrl", "a")
             pyautogui.write(str(path), interval=0.002)
