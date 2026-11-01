@@ -2,24 +2,28 @@ import tkinter as tk
 from datetime import date
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import TYPES,BookError,Store,suggest_entry
+from receipt_import import import_receipts_verified,list_receipts_verified
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
 class App(tk.Tk):
  def __init__(self):
-  super().__init__();self.title("複式簿記デスク 日本版");self.geometry("1180x760");self.minsize(980,650);self.s=Store();self.protocol("WM_DELETE_WINDOW",self.close)
+  super().__init__();self.title("複式簿記デスク 日本版");self.geometry("1024x768");self.minsize(980,650);self.s=Store();self.protocol("WM_DELETE_WINDOW",self.close)
   self.d=tk.StringVar(value=date.today().isoformat());self.desc=tk.StringVar();self.lines=[];self.build();self.refresh_accounts();self.refresh()
  def build(self):
-  ttk.Label(self,text="複式簿記デスク 日本版",font=("Yu Gothic UI",18,"bold")).pack(anchor="w",padx=14,pady=(14,2));ttk.Label(self,text="日本国内向け・円建て。仕訳帳→総勘定元帳→試算表→貸借対照表・損益計算書の流れをローカルで管理します。").pack(anchor="w",padx=14)
+  ttk.Label(self,text="複式簿記デスク 日本版",font=("Yu Gothic UI",18,"bold")).pack(anchor="w",padx=14,pady=(14,2));ttk.Label(self,text="日本国内向け・円建て。仕訳帳→総勘定元帳→試算表→貸借対照表・損益計算書の流れをローカルで管理します。",wraplength=940).pack(anchor="w",padx=14)
   p=ttk.Panedwindow(self,orient="horizontal");p.pack(fill="both",expand=True,padx=14,pady=10);f=ttk.Labelframe(p,text="仕訳入力",padding=10);p.add(f,weight=2)
   ttk.Label(f,text="日付").grid(row=0,column=0);ttk.Entry(f,textvariable=self.d).grid(row=0,column=1,sticky="ew");ttk.Label(f,text="摘要").grid(row=1,column=0);ttk.Entry(f,textvariable=self.desc).grid(row=1,column=1,columnspan=2,sticky="ew")
   ttk.Label(f,text="勘定科目").grid(row=2,column=0);ttk.Label(f,text="借方").grid(row=2,column=1);ttk.Label(f,text="貸方").grid(row=2,column=2)
   for i in range(6):
-   a,b,c=tk.StringVar(),tk.StringVar(),tk.StringVar();box=ttk.Combobox(f,textvariable=a,state="readonly");box.grid(row=3+i,column=0,sticky="ew");ttk.Entry(f,textvariable=b).grid(row=3+i,column=1);ttk.Entry(f,textvariable=c).grid(row=3+i,column=2);self.lines.append((a,b,c,box))
+   a,b,c=tk.StringVar(),tk.StringVar(),tk.StringVar();box=ttk.Combobox(f,textvariable=a,state="readonly",width=17);box.grid(row=3+i,column=0,sticky="ew");ttk.Entry(f,textvariable=b,width=11).grid(row=3+i,column=1,sticky="ew");ttk.Entry(f,textvariable=c,width=11).grid(row=3+i,column=2,sticky="ew");self.lines.append((a,b,c,box))
   ttk.Button(f,text="科目・帳簿を調べる",command=self.lookup_help).grid(row=9,column=0,columnspan=3,sticky="ew",pady=3)
-  ttk.Button(f,text="複数レシートを取り込む",command=self.import_receipts).grid(row=10,column=0,columnspan=3,sticky="ew",pady=3)
+  ttk.Button(f,text="証憑を追加",command=self.import_receipts).grid(row=10,column=0,columnspan=2,sticky="ew",pady=3)
+  ttk.Button(f,text="取り込み一覧",command=self.view_receipts).grid(row=10,column=2,sticky="ew",pady=3)
   ttk.Button(f,text="仕訳候補を推測",command=self.suggest).grid(row=11,column=0,columnspan=3,sticky="ew",pady=3)
   ttk.Button(f,text="記帳",command=self.post).grid(row=12,column=0,sticky="ew");ttk.Button(f,text="科目追加",command=self.add_account).grid(row=12,column=1,sticky="ew");ttk.Button(f,text="期間を締める",command=self.lock).grid(row=12,column=2,sticky="ew")
   ttk.Button(f,text="税率・固定資産計算",command=self.tax_assets).grid(row=13,column=0,columnspan=3,sticky="ew",pady=3)
-  ttk.Button(f,text="CSV出力",command=self.export).grid(row=14,column=0,columnspan=3,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
+  ttk.Button(f,text="CSV出力",command=self.export).grid(row=14,column=0,columnspan=3,sticky="ew",pady=4)
+  ttk.Label(f,text="証憑を追加 → 科目と金額を確認 → 記帳。画像の自動読取や自動記帳は行いません。",wraplength=355).grid(row=15,column=0,columnspan=3,sticky="w",pady=5)
+  f.columnconfigure(0,weight=2);f.columnconfigure(1,weight=1);f.columnconfigure(2,weight=1)
   nb=ttk.Notebook(p);p.add(nb,weight=3);j=ttk.Frame(nb,padding=8);r=ttk.Frame(nb,padding=8);nb.add(j,text="仕訳帳");nb.add(r,text="帳票")
   self.tree=ttk.Treeview(j,columns=("d","x","a","db","cr"),show="headings")
   for c,t in zip(("d","x","a","db","cr"),("日付","摘要","勘定科目","借方","貸方")):self.tree.heading(c,text=t)
@@ -43,10 +47,21 @@ class App(tk.Tk):
   if not lines:lines=["候補が見つかりませんでした。用途・取引内容を別の言葉で検索してください。"]
   messagebox.showinfo("科目・帳簿検索","\n".join(lines[:20]))
  def import_receipts(self):
-  paths=filedialog.askopenfilenames(title="複数のレシート・請求書画像/PDFを選択")
+  paths=filedialog.askopenfilenames(title="証憑を選択（PNG/JPEG/PDF/WebP・各20MBまで）")
   if not paths:return
-  added=self.s.enqueue_receipts(paths)
-  messagebox.showinfo("証憑取り込み",f"{added}件をローカル待ち行列に追加しました。\n\n次段階はOCR→日付/金額/店名→科目候補→仕訳候補→確認です。現時点では画像だけで自動確定しません。")
+  try:result=import_receipts_verified(self.s.conn,paths)
+  except (ValueError,Exception) as e:
+   messagebox.showerror("証憑の追加",str(e));return
+  summary=f'追加 {result["added"]}件 / 重複 {result["duplicates"]}件 / 読み込めない {result["errors"]}件'
+  if result["details"]:summary+="\n"+"\n".join(result["details"])
+  messagebox.showinfo("証憑の追加",summary+"\n\n原本は移動・コピーされません。自動読取や自動記帳は行いません。")
+ def view_receipts(self):
+  try:items=list_receipts_verified(self.s.conn)
+  except Exception as e:messagebox.showerror("取り込み一覧",str(e));return
+  if not items:
+   messagebox.showinfo("取り込み一覧","まだ証憑がありません。先に画像やPDFを追加してください。");return
+  lines=[f'・{x["name"]}（未読取・未記帳 / {x["size_bytes"]:,} bytes）' for x in items]
+  messagebox.showinfo("取り込み一覧","\n".join(lines[:20])+"\n\n元のファイルは移動しないでください。記帳するには内容と金額を手動確認してください。")
  def suggest(self):
   cand=suggest_entry(self.desc.get())
   if not cand:
