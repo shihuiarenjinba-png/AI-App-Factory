@@ -2,6 +2,7 @@ import tkinter as tk
 from datetime import date
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,LedgerError,Store,suggest_category
+from monthly_close import export_month_end_package
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
 from csv_review import CSVReviewError, review_csv, apply_csv_import
 from receipt_review import ReceiptReviewError, review_receipts, apply_receipt_review
@@ -36,7 +37,7 @@ class App(tk.Tk):
         csv_menu.add_command(label="CSVに書き出す",command=self.export)
         csv_menu_button["menu"]=csv_menu
         csv_menu_button.grid(row=14,column=0,sticky="ew",pady=4)
-        ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=14,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
+        ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=15,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
         r=ttk.Labelframe(p,text="帳簿",padding=10); p.add(r,weight=3); ttk.Label(r,textvariable=self.summary,font=("Yu Gothic UI",11,"bold")).pack(anchor="w")
         cols=("date","kind","amount","category","counterparty","memo"); self.tree=ttk.Treeview(r,columns=cols,show="headings")
         for c,t in zip(cols,["日付","種別","金額","勘定科目","取引先","摘要"]): self.tree.heading(c,text=t); self.tree.column(c,width=120)
@@ -162,6 +163,18 @@ class App(tk.Tk):
             messagebox.showerror("CSV取り込みエラー",str(exc))
         except Exception as exc:
             messagebox.showerror("CSV取り込みエラー",f"安全のため登録を取り消しました。\n{exc}")
+    def month_end_pack(self):
+        d=date.today()
+        year=simpledialog.askinteger("月末帳簿パック","年",initialvalue=d.year,minvalue=2000)
+        month=simpledialog.askinteger("月末帳簿パック","月",initialvalue=d.month,minvalue=1,maxvalue=12)
+        out=filedialog.askdirectory(title="月次帳簿パックの保存先")
+        if not out or year is None or month is None:return
+        try:
+            result=export_month_end_package(self.store,year,month,out)
+            msg=f'HTML: {result["html"]}\nCSV: {result["csv"]}\nJSON: {result["json"]}'
+            msg+=f'\nPDF: {result["pdf"]}' if result["pdf_generated"] else "\nPDF: この環境では生成できませんでした（HTMLは保存済み）"
+            messagebox.showinfo("月末帳簿パック",msg)
+        except Exception as e:messagebox.showerror("月末帳簿パック",str(e))
     def export(self):
         x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
         if x:self.store.export_csv(x); messagebox.showinfo("CSV","出力しました")
