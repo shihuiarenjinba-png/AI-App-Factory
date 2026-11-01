@@ -91,10 +91,10 @@ class Store:
  def search_help(self,q,limit=8,include_advanced=True):
   q=(q or "").strip()
   if not q:return []
-  like=f"%{q}%";sql="SELECT h.code,h.name,h.type,h.audience,h.use_text,h.books,h.keywords,h.example FROM account_help h JOIN accounts a ON a.code=h.code AND a.active=1 WHERE (h.name LIKE ? OR h.use_text LIKE ? OR h.keywords LIKE ? OR h.example LIKE ? OR h.books LIKE ?)"
+  like=f"%{q}%";sql="SELECT code,name,type,audience,use_text,books,keywords,example FROM account_help WHERE (name LIKE ? OR use_text LIKE ? OR keywords LIKE ? OR example LIKE ? OR books LIKE ?)"
   args=[like]*5
-  if not include_advanced:sql+=" AND h.audience!='advanced'"
-  sql+=" ORDER BY CASE WHEN h.name=? THEN 0 WHEN h.name LIKE ? THEN 1 ELSE 2 END, h.code LIMIT ?";args.extend([q,like,max(1,min(int(limit),30))])
+  if not include_advanced:sql+=" AND audience!='advanced'"
+  sql+=" ORDER BY CASE WHEN name=? THEN 0 WHEN name LIKE ? THEN 1 ELSE 2 END, code LIMIT ?";args.extend([q,like,max(1,min(int(limit),30))])
   return [dict(r) for r in self.conn.execute(sql,args)]
  def search_book_help(self,q,limit=5):
   q=(q or "").strip()
