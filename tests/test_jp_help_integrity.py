@@ -20,9 +20,10 @@ class HelpIntegrityTests(unittest.TestCase):
                 for query in ("家賃", "パソコン", "原状回復", "減価償却", "資産除去債務", "個人カード"):
                     with self.subTest(query=query):
                         results = store.search_help(query, limit=30, include_advanced=True)
-                        self.assertTrue(all(item["code"] in valid for item in results))
+                        self.assertTrue(all(item["code"] in valid or item["audience"] == "advanced" for item in results))
                 self.assertIn("5200", [r["code"] for r in store.search_help("家賃")])
-                self.assertNotIn("2150", [r["code"] for r in store.search_help("資産除去債務")])
+                self.assertIn("2150", [r["code"] for r in store.search_help("資産除去債務")])
+                self.assertNotIn("2150", valid)  # reference-only, never an automatic journal candidate
                 self.assertIn("1590", [r["code"] for r in store.search_help("減価償却累計額", include_advanced=True)])
                 self.assertNotIn("1590", [r["code"] for r in store.search_help("減価償却累計額", include_advanced=False)])
                 for sample in ("家賃", "電車", "売上", "仕入"):
