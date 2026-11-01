@@ -15,19 +15,37 @@ def _edge_path():
     return None
 
 def _rows_for_month(store,year,month):
-    prefix=f"{int(year):04d}-{int(month):02d}-"
-    return [r for r in store.rows(10000) if str(r["txn_date"]).startswith(prefix)]
+    """Read the complete selected month, never a UI-limited 10,000-row preview."""
+    prefix=f"{int(year):04d}-{int(month):02d}-%"
+    return [dict(row) for row in store.conn.execute(
+        """SELECT id,txn_date,kind,amount_yen,category,counterparty,
+                  document_type,document_path,memo
+           FROM transactions WHERE txn_date LIKE ? ORDER BY txn_date,id""",
+        (prefix,)
+    )]
 
 def export_month_end_package(store,year,month,out_dir):
     year,month=int(year),int(month)
+    if not (1900 <= year <= 9999 and 1 <= month <= 12):
+        raise ValueError("年または月が正しくありません")
     out=Path(out_dir);out.mkdir(parents=True,exist_ok=True)
     stem=f"{year:04d}-{month:02d}"
     rows=_rows_for_month(store,year,month)
     summary=store.monthly(year,month)
+    # Do not mix revenue and expenses in a single category total.
     categories={}
     for r in rows:
-        categories[r["category"]]=categories.get(r["category"],0)+int(r["amount_yen"])
-    pending=store.pending_receipts(1000) if hasattr(store,"pending_receipts") else []
+        key=f'{r["kind"]} / {r["category"]}'
+        categories[key]=categories.get(key,0)+int(r["amount_yen"])
+    for kind in ("収入","経費"):
+        detail_total=sum(int(r["amount_yen"]) for r in rows if r["kind"]==kind)
+        if detail_total != summary[kind]:
+            raise ValueError("月次合計と取引明細が一致しません。出力を中止しました")
+    # A 1,000-item UI preview must not silently truncate a legal review pack.
+    pending=[dict(r) for r in store.conn.execute(
+        """SELECT id,file_path,status,suggested_category,note,created_at
+           FROM receipt_queue WHERE status='PENDING' ORDER BY id"""
+    )]
 
     csv_path=out/f"{stem}_取引明細.csv"
     with csv_path.open("w",encoding="utf-8-sig",newline="") as f:
@@ -41,6 +59,7 @@ def export_month_end_package(store,year,month,out_dir):
         "categories":dict(sorted(categories.items())),
         "transaction_count":len(rows),
         "pending_receipts":pending,
+        "pending_receipt_count":len(pending),
     }
     json_path=out/f"{stem}_月次総括.json"
     json_path.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
@@ -60,7 +79,7 @@ def export_month_end_package(store,year,month,out_dir):
 <p>収入 {summary['収入']:,}円 / 経費 {summary['経費']:,}円 / 差引 {summary['差引']:,}円 / 取引 {len(rows)}件</p>
 <h2>科目別集計</h2><table><tr><th>勘定科目</th><th>金額</th></tr>{cats}</table>
 <h2>取引明細</h2><table><tr><th>日付</th><th>種別</th><th>金額</th><th>科目</th><th>取引先</th><th>摘要</th></tr>{trs}</table>
-<h2>未処理証憑</h2><ul>{pend}</ul>
+<h2>未処理証憑（{len(pending)}件）</h2><ul>{pend}</ul>
 <p class="note">このPDFは月次確認用です。電子取引で受領した元の請求書・領収書データは別途保存してください。税務上の必要経費該当性は未確認項目を含む場合があります。</p>
 </body></html>"""
     html_path=out/f"{stem}_月次帳簿.html";html_path.write_text(doc,encoding="utf-8")
