@@ -58,7 +58,7 @@ jobs:
         env:
           SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
-          python -m pip install --disable-pip-version-check "pyautogui==0.9.54"
+          python -m pip install --disable-pip-version-check "pyautogui==0.9.54" "psutil==6.1.1"
           python products/offline-image-inventory-desk/tests/gui_smoke_windows.py --mode packaged --exe dist/offline-image-inventory-desk.exe --out packaged-exe-e2e-evidence --calibration gui-smoke-evidence/ui-layout.json --source-sha $env:SOURCE_SHA
       - name: Upload CLOUD_WINDOWS_PACKAGED_EXE_E2E evidence (not local GUI QA)
         if: always()
