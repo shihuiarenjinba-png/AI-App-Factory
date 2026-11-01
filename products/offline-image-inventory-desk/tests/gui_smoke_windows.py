@@ -153,6 +153,7 @@ def run(out, exe, source_sha):
                  patch.object(app.messagebox, "showerror", side_effect=lambda *a, **kw: errors.append(str(a))):
                 invoke_with_dialog(desk.snapshot_buttons["snap_compare"], "askdirectory", delivery)
             assert errors and desk.comparison is None, "Read error did not invalidate old evidence"
+            assert "No comparison was created" in errors[0], "Actionable read-error guidance missing"
             assert desk.status.get() == desk.t("snap_failed"), "Error not visible to user"
             screenshots["06_read_error"] = screenshot(root, out / "06_read_error.png")
             if screenshots["06_read_error"]["sha256"] == screenshots["05_restarted"]["sha256"]:
@@ -429,6 +430,10 @@ def run_packaged(out, exe, source_sha, calibration):
             choose_path(delivery)
             dialog = wait_dialog()  # real error messagebox
             error_text = dialog.window_text()
+            detail_text = " ".join(control.window_text() for control in
+                                   Desktop(backend="uia").window(handle=dialog.handle).descendants(control_type="Text"))
+            if "No comparison was created" not in detail_text or "unreadable.png" not in detail_text:
+                raise AssertionError("Packaged read-error explanation missing: " + detail_text)
             capture("06_exe_read_error", focus=False)
             dialog.set_focus()
             pyautogui.press("enter")
