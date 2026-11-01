@@ -123,10 +123,10 @@ class App(tk.Tk):
   added=sum(r["status"]=="attached" for r in results)
   duplicate=sum(r["status"]=="duplicate" for r in results)
   rejected=[r for r in results if r["status"]=="rejected"]
-  details="\\n".join(f'{r["file"]}: {r["reason"]}' for r in rejected[:5])
-  messagebox.showinfo("Receipt import",f"Attached: {added}\\nAlready attached: {duplicate}\\nCould not attach: {len(rejected)}"+
-                      ("\\n\\n"+details if details else "")+
-                      "\\n\\nFiles are stored on this device. No text was automatically read or categorized.")
+  details="\n".join(f'{r["file"]}: {r["reason"]}' for r in rejected[:5])
+  messagebox.showinfo("Receipt import",f"Attached: {added}\nAlready attached: {duplicate}\nCould not attach: {len(rejected)}"+
+                      ("\n\n"+details if details else "")+
+                      "\n\nFiles are stored on this device. No text was automatically read or categorized.")
 
  def review_receipts(self):
   entry_id=self.selected_entry()
