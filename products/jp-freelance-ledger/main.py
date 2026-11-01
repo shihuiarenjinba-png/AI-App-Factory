@@ -58,7 +58,7 @@ class App(tk.Tk):
                 return
             if not messagebox.askyesno("証憑の確認",summary+"\n\n追加候補だけを保存しますか？"):return
             result=apply_receipt_review(self.store,preview)
-            messagebox.showinfo("証憑の追加結果",f'追加 {result["imported"]}件 / 重複 {result["duplicates"]}件 / 読込不可 {result["errors"]}件。\n証憑を参照登録しただけで、仕訳は確定していません。')
+            messagebox.showinfo("証憑の追加結果",f'追加 {result["imported"]}件 / 重複 {len(preview["duplicates"]) + result["duplicates"]}件 / 読込不可 {result["errors"]}件。\n証憑を参照登録しただけで、仕訳は確定していません。')
         except (ReceiptReviewError,OSError) as exc:
             messagebox.showerror("証憑を確認できません",str(exc))
         except Exception as exc:
