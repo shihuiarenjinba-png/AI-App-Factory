@@ -14,7 +14,10 @@ from core import BookError, cents
 def valid_month(month):
     if not isinstance(month, str) or not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
         raise BookError("Month must use YYYY-MM")
-    date.fromisoformat(month + "-01")
+    try:
+        date.fromisoformat(month + "-01")
+    except ValueError as exc:
+        raise BookError("Month must use YYYY-MM") from exc
     return month
 
 
@@ -41,6 +44,8 @@ class MonthlyBudgets:
         ).fetchone()
         if row is None:
             raise BookError("Choose an active expense account")
+        if amount in ("", None):
+            raise BookError("Enter a spending target in USD")
         amount_cents = cents(amount)
         with self.conn:
             self.conn.execute("""
