@@ -93,11 +93,9 @@ def run(out, exe, source_sha):
         try:
             desk = app.Desk(root)
             screenshots["01_initial_en"] = screenshot(root, out / "01_initial_en.png")
-            invoke_with_dialog(desk.snapshot_buttons["snap_new"], "askdirectory", baseline)
-            # Save dialog is a separate interaction; patch both for the same button.
         finally:
             root.destroy()
-        # Reopen to ensure the full UI sequence is driven with both dialogs.
+        # Drive baseline/compare/export in a fresh real Tk session.
         root = tk.Tk()
         try:
             desk = app.Desk(root)
