@@ -455,6 +455,50 @@ def run_packaged(out, exe, source_sha, calibration):
                                                 process=window.process_id(), visible_only=True):
                 raise AssertionError("Packaged EXE allowed stale summary export")
             log.append("packaged read error blocked stale summary export: " + error_text)
+            # A real Windows sharing denial, not a malformed-header simulation:
+            # lock an existing valid image without modifying its bytes or ACLs.
+            (delivery / "unreadable.png").unlink()
+            import ctypes
+            from ctypes import wintypes
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            kernel.CreateFileW.argtypes = [wintypes.LPCWSTR, wintypes.DWORD,
+                wintypes.DWORD, wintypes.LPVOID, wintypes.DWORD,
+                wintypes.DWORD, wintypes.HANDLE]
+            kernel.CreateFileW.restype = wintypes.HANDLE
+            kernel.CloseHandle.argtypes = [wintypes.HANDLE]
+            kernel.CloseHandle.restype = wintypes.BOOL
+            locked_file = delivery / "modified.png"
+            handle = kernel.CreateFileW(str(locked_file), 0x80000000, 0,
+                                        None, 3, 0x80, None)
+            if handle in (None, ctypes.c_void_p(-1).value):
+                raise AssertionError("Unable to acquire exclusive read-denial fixture")
+            try:
+                try:
+                    locked_file.read_bytes()
+                except PermissionError:
+                    pass
+                else:
+                    raise AssertionError("Read-denial fixture did not deny reads")
+                click("snap_compare")
+                choose_path(delivery)
+                denied_dialog = wait_dialog()
+                denied_text = " ".join(control.window_text() for control in
+                    Desktop(backend="uia").window(handle=denied_dialog.handle).descendants(control_type="Text"))
+                if "No comparison was created" not in denied_text or "modified.png" not in denied_text:
+                    raise AssertionError("Real read-denial not fail-closed: " + denied_text)
+                capture("07_exe_read_denied", focus=False)
+                denied_dialog.set_focus()
+                pyautogui.press("enter")
+                time.sleep(0.5)
+                click("summary")
+                if Desktop(backend="win32").windows(class_name="#32770",
+                                                    process=window.process_id(), visible_only=True):
+                    raise AssertionError("Stale evidence export after real read denial")
+                log.append("real Windows exclusive-file read denial fail-closed; stale export blocked")
+            finally:
+                kernel.CloseHandle(handle)
+            if originals != {"baseline": hashes(baseline), "delivery": hashes(delivery)}:
+                raise AssertionError("SOURCE_IMAGES_MODIFIED_AFTER_READ_DENIAL")
             if expected_files != {"baseline": hashes(baseline), "delivery": hashes(delivery)}:
                 raise AssertionError("SOURCE_IMAGES_MODIFIED")
             if originals["baseline"] != hashes(baseline):
@@ -470,6 +514,7 @@ def run_packaged(out, exe, source_sha, calibration):
             "exe_sha256": sha(exe),
             "exe_bytes": exe.stat().st_size,
             "source_images_untouched": True,
+            "read_denied_fail_closed": True,
             "fixture_sha256_before": originals,
             "fixture_sha256_after": {"baseline": hashes(baseline), "delivery": hashes(delivery)},
             "screenshots": shots,
