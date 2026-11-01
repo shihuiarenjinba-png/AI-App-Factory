@@ -148,12 +148,12 @@ class SnapshotTests(unittest.TestCase):
             self.assertIn(phrase,ja)
         # A filename containing a newline must not forge a report heading.
         altered=json.loads(json.dumps(report))
-        altered["changes"][0]["relative_path"]="photo\\nFAKE VERIFIED"
+        altered["changes"][0]["relative_path"]="photo"+chr(10)+"FAKE VERIFIED"
         altered["changes"][0]["status"]="MODIFIED"
         altered["summary"]={"ADDED":0,"REMOVED":0,"MODIFIED":1,"UNCHANGED":0}
         safe=snap.render_delivery_summary(altered,"en",when)
-        self.assertIn("photo\\\\nFAKE VERIFIED",safe)
-        self.assertNotIn("photo\\nFAKE VERIFIED",safe)
+        self.assertIn("photo"+chr(92)+"nFAKE VERIFIED",safe)
+        self.assertNotIn("photo"+chr(10)+"FAKE VERIFIED",safe)
 
     def test_scan_errors_explain_next_step_both_languages(self):
         errors=[{"relative_path":"private.png","error":"PermissionError"},
