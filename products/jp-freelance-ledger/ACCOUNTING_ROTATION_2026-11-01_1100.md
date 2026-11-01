@@ -27,7 +27,7 @@ Replaced the single `CSV出力` action with `CSV 入出力` menu, exposing `CSV�
 - Local isolated fixture: 6/6 tests passed 2026-11-01, covering preview-only, idempotent re-import, existing manual duplicates, file mutation rejection, malformed data, audit, monthly/annual rollup, and atomic rollback. Isolated fixture used a schema-compatible test stub; GitHub core CI is authoritative for the actual product.
 - Root `tests/test_jp_freelance_csv_review.py` invokes the six product tests on Linux/Windows CI. Do not report CI PASS until the current commit run finishes.
 - `market-scope.json`: JP, ja-JP, JPY, cross_market_sale=false; no US tax/accounting mode.
-- `tax_assets.py`: rates are user-supplied for depreciation; do not silently infer official declining/revised/guarantee rates. Retrospective differences remain review-only; no automatic amended returns.
+- `tax_assets.py`: rates are user-supplied for depreciation; this rotation added rejection of negative, zero, greater-than-1, non-finite rates and reversed year ranges, with root CI fixtures. Do not silently infer official declining/revised/guarantee rates. Retrospective differences remain review-only; no automatic amended returns.
 - Still missing for the pre-Identity EXE build contract: `proposals/jp-freelance-ledger.json` and `products/jp-freelance-ledger/tests/test_smoke.py`, which `tools/build_windows_exe.py` currently requires. Do not fabricate owner-controlled Factory promotion or claim EXE PASS.
 - Product market-fit score, Windows GUI/install QA, signed MSIX, and final Store readiness are not established.
 
