@@ -110,15 +110,15 @@ class App(tk.Tk):
         ok = sum(r["status"] == "OK" for r in results)
         issues = [r for r in results if r["status"] != "OK"]
         summary = (
-            f"{ok} file(s) match the saved reference; {len(issues)} need attention.\\n"
-            "Files are not stored inside the ledger backup. Keep your originals safely.\\n"
+            f"{ok} file(s) match the saved reference; {len(issues)} need attention.\n"
+            "Files are not stored inside the ledger backup. Keep your originals safely.\n"
             "This check does not decide tax deductibility or recordkeeping compliance."
         )
         if issues:
-            details = "\\n".join(
+            details = "\n".join(
                 f"- {Path(r['path']).name}: {r['reason']}" for r in issues[:8]
             )
-            messagebox.showwarning("Receipt files to review", summary + "\\n\\n" + details)
+            messagebox.showwarning("Receipt files to review", summary + "\n\n" + details)
         else:
             messagebox.showinfo("Receipt file check", summary)
 
