@@ -25,12 +25,13 @@ class App(tk.Tk):
   ttk.Button(f,text="CSV出力",command=self.export).grid(row=14,column=0,sticky="ew",pady=4)
   ttk.Button(f,text="月の予算と実績",command=self.open_budget).grid(row=14,column=1,sticky="ew",pady=4)
   ttk.Button(f,text="お金の出入りを確認",command=self.open_cash_movement).grid(row=14,column=2,sticky="ew",pady=4)
-  ttk.Button(f,text="月末の数字と元仕訳を見る（HTML・CSV・JSON）",command=self.month_end_pack).grid(row=15,column=0,columnspan=3,sticky="ew",pady=4)
   f.columnconfigure(0,weight=2)
   nb=ttk.Notebook(p);p.add(nb,weight=3);j=ttk.Frame(nb,padding=8);r=ttk.Frame(nb,padding=8);nb.add(j,text="仕訳帳");nb.add(r,text="帳票")
   self.tree=ttk.Treeview(j,columns=("d","x","a","db","cr"),show="headings")
   for c,t in zip(("d","x","a","db","cr"),("日付","摘要","勘定科目","借方","貸方")):self.tree.heading(c,text=t)
-  self.tree.pack(fill="both",expand=True);self.report=tk.Text(r,font=("Consolas",10),state="disabled");self.report.pack(fill="both",expand=True)
+  self.tree.pack(fill="both",expand=True)
+  ttk.Button(r,text="この数字の根拠を見る：月末レポートを保存（HTML・CSV・JSON）",command=self.month_end_pack).pack(anchor="w",pady=(0,6))
+  self.report=tk.Text(r,font=("Consolas",10),state="disabled");self.report.pack(fill="both",expand=True)
  def refresh_accounts(self):
   vals=[f'{a["code"]} {a["name"]}' for a in self.s.accounts()]
   for _,_,_,b in self.lines:b["values"]=vals
