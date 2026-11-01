@@ -458,6 +458,7 @@ def run_packaged(out, exe, source_sha, calibration):
             # A real Windows sharing denial, not a malformed-header simulation:
             # lock an existing valid image without modifying its bytes or ACLs.
             (delivery / "unreadable.png").unlink()
+            expected_files = {"baseline": hashes(baseline), "delivery": hashes(delivery)}
             import ctypes
             from ctypes import wintypes
             kernel = ctypes.WinDLL("kernel32", use_last_error=True)
