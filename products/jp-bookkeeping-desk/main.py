@@ -3,7 +3,7 @@ from datetime import date
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import TYPES,BookError,Store,suggest_entry
 from receipt_import import import_receipts_verified,list_receipts_verified
-from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
+from tax_assets import consumption_tax_review,jp_depreciation_schedule
 class App(tk.Tk):
  def __init__(self):
   super().__init__();self.title("複式簿記デスク 日本版");self.geometry("1024x768");self.minsize(980,650);self.s=Store();self.protocol("WM_DELETE_WINDOW",self.close)
@@ -101,14 +101,15 @@ class App(tk.Tk):
    if "消費" in mode:
     amount=simpledialog.askinteger("消費税","税抜金額（円）",minvalue=0)
     if amount is None:return
-    rate_name=simpledialog.askstring("消費税","標準税率10% / 軽減税率8% / 非課税・対象外0%",initialvalue="標準税率10%")
-    rate=JP_CONSUMPTION_TAX_PRESETS.get(rate_name or "",None)
-    if rate is None:
-     custom=simpledialog.askfloat("消費税","税率を小数で入力（例 0.10）",minvalue=0)
-     if custom is None:return
-     rate=str(custom)
-    x=consumption_tax_from_net(amount,rate)
-    messagebox.showinfo("消費税計算",f'税抜 {x["net"]:,}円\n税額 {x["tax"]:,}円\n税込 {x["gross"]:,}円')
+    when=simpledialog.askstring("消費税","取引日 YYYY-MM-DD",initialvalue=self.d.get())
+    if not when:return
+    category=simpledialog.askstring("消費税","区分を選んでください:\n標準課税 / 飲食料品（酒類・外食を除く） / 定期購読新聞 / 要確認",initialvalue="要確認")
+    if not category:return
+    x=consumption_tax_review(amount,when,category)
+    if x["review_required"]:
+     messagebox.showwarning("税率・課税区分の確認",x["reason"]+"\n\n税額は計算・記帳していません。国税庁の最新資料を確認してください。")
+     return
+    messagebox.showinfo("消費税の参考計算",f'取引日 {x["transaction_date"]}\n区分 {x["category"]}\n税抜 {x["net"]:,}円\n税額 {x["tax"]:,}円\n税込 {x["gross"]:,}円\n\n選択区分での参考値です。自動記帳・申告は行いません。')
    else:
     cost=simpledialog.askinteger("減価償却","取得価額（円）",minvalue=2)
     first=simpledialog.askstring("減価償却","事業供用開始日 YYYY-MM-DD",initialvalue=date.today().isoformat())

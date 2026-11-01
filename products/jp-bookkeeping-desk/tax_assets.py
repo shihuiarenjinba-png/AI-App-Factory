@@ -161,3 +161,58 @@ def retrospective_adjustment(schedule, posted_by_year: dict[int,int]):
         "review_required":True,
         "message":"再計算差額です。過年度申告の訂正可否は自動判定せず、調整仕訳候補として確認してください。",
     }
+
+
+# Reviewed 2026-11-01 against NTA No.6303/6102. This is a cautious
+# calculator gate, not a taxability or deduction determination.
+JP_TAX_RATE_SOURCE = "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6303.htm"
+JP_TAX_REVIEWED_ON = "2026-11-01"
+JP_TAX_AUTOCALC_UNTIL = date(2027, 3, 31)
+JP_TAX_CATEGORIES = {
+    "標準課税": Decimal("0.10"),
+    "飲食料品（酒類・外食を除く）": Decimal("0.08"),
+    "定期購読新聞": Decimal("0.08"),
+}
+
+
+def assess_jp_consumption_tax(transaction_date: str, category: str) -> dict:
+    """Rate hint only for explicitly user-selected category in verified period.
+
+    NTA announces a food-rate change starting 2027-04-01. No numeric rate is
+    inferred for that period or for dates beyond our reviewed rate window.
+    """
+    try:
+        when = date.fromisoformat(transaction_date)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("取引日はYYYY-MM-DD形式で入力してください") from exc
+    if category not in (*JP_TAX_CATEGORIES, "要確認"):
+        raise ValueError("課税区分を選び直してください")
+    result = {
+        "transaction_date": when.isoformat(), "category": category,
+        "review_required": True, "rate": None,
+        "source_url": JP_TAX_RATE_SOURCE, "reviewed_on": JP_TAX_REVIEWED_ON,
+    }
+    if when < date(2019, 10, 1):
+        result["reason"] = "旧税率・経過措置の可能性があるため、過去の取引は個別確認してください。"
+    elif when > JP_TAX_AUTOCALC_UNTIL:
+        result["reason"] = "2027年4月から飲食料品の税率変更が告知されています。新しい公式税率と適用時期を確認してください。"
+    elif category == "要確認":
+        result["reason"] = "非課税・免税・対象外かどうかは自動判定しません。取引内容を確認してください。"
+    else:
+        result["review_required"] = False
+        result["rate"] = str(JP_TAX_CATEGORIES[category])
+        result["reason"] = "選択した区分での参考計算です。課税区分と端数処理を確認してください。"
+    return result
+
+
+def consumption_tax_review(net_yen, transaction_date: str, category: str, rounding="切捨て") -> dict:
+    """Return no tax amount when a date/category requires manual review."""
+    net = int(_yen_amount(net_yen, "税抜金額"))
+    _rounding(rounding)
+    result = assess_jp_consumption_tax(transaction_date, category)
+    result["net"] = net
+    result["tax"] = None
+    result["gross"] = None
+    if not result["review_required"]:
+        result.update(consumption_tax_from_net(net, result["rate"], rounding))
+    return result
