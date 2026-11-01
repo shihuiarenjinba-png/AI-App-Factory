@@ -72,8 +72,13 @@ class App(tk.Tk):
         if not result:
             messagebox.showinfo("勘定科目候補","候補を絞れませんでした。内容を確認して手動で選択してください。")
             return
-        best=result[0]; self.v["category"].set(best["category"])
-        messagebox.showinfo("勘定科目候補",f'候補: {best["category"]}\n確信度: {best["confidence"]:.0%}\n一致語: {", ".join(best["matched"])}\n\n最終判断は内容を確認してください。')
+        best=result[0]
+        prompt=(f'候補: {best["category"]}\n'
+                f'確信度: {best["confidence"]:.0%}\n'
+                f'一致語: {", ".join(best["matched"])}\n\n'
+                '候補を入力欄に反映しますか？（記帳はまだ行いません）')
+        if messagebox.askyesno("勘定科目候補",prompt):
+            self.v["category"].set(best["category"])
     def add(self):
         try:self.store.add(self.v["date"].get(),self.v["kind"].get(),self.v["amount"].get(),self.v["category"].get(),self.v["counterparty"].get(),self.v["doctype"].get(),self.v["docpath"].get(),self.v["memo"].get())
         except LedgerError as e: messagebox.showerror("入力エラー",str(e)); return
