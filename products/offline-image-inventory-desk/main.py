@@ -345,9 +345,12 @@ class Desk:
         if self.baseline is None:self.status.set(self.t("snap_none"));return
         folder=filedialog.askdirectory(parent=self.root,title=self.t("snap_compare"))
         if not folder:return
+        # Never allow export of a previous success after a later comparison fails.
+        self.comparison=None
         try:
             current=snapshots.capture_folder(folder,inspect_image)
             if current["errors"]:
+                self.status.set(self.t("snap_failed"))
                 self.error(self.t("snap_failed")+" "+str(current["errors"][:5]));return
             report=snapshots.compare_snapshots(self.baseline,current)
             self.comparison=report
