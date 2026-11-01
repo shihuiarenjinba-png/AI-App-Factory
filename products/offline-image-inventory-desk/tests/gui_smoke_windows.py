@@ -93,6 +93,7 @@ def run(out, exe, source_sha):
         try:
             desk = app.Desk(root)
             screenshots["01_initial_en"] = screenshot(root, out / "01_initial_en.png")
+            record_ui_layout(root, desk, out)
         finally:
             root.destroy()
         # Drive baseline/compare/export in a fresh real Tk session.
@@ -207,12 +208,240 @@ def run(out, exe, source_sha):
         print(json.dumps(receipt, ensure_ascii=False, indent=2))
 
 
+
+def record_ui_layout(root, desk, out):
+    """Calibrate real Tk button centres for separate black-box packaged-EXE clicks."""
+    root.update_idletasks()
+    root.update()
+    widgets = dict(desk.snapshot_buttons)
+    widgets.update({"summary": desk.summary_button, "lang": desk.lang})
+    coords = {}
+    for name, widget in widgets.items():
+        if not widget.winfo_viewable():
+            raise AssertionError("Unmapped button: " + name)
+        coords[name] = [
+            widget.winfo_rootx() - root.winfo_rootx() + widget.winfo_width() // 2,
+            widget.winfo_rooty() - root.winfo_rooty() + widget.winfo_height() // 2,
+        ]
+    (out / "ui-layout.json").write_text(json.dumps(coords, indent=2), encoding="utf-8")
+    return coords
+
+
+def run_packaged(out, exe, source_sha, calibration):
+    """Black-box automation: all user operations go through the built PE process.
+
+    No import or monkeypatch of the application in this path. Native Windows file
+    dialogs and screen clicks are controlled from a separate Python process.
+    """
+    import pyautogui
+    import win32gui
+    pyautogui.FAILSAFE = True
+    pyautogui.PAUSE = 0.2
+    out.mkdir(parents=True, exist_ok=True)
+    controls = json.loads(calibration.read_text(encoding="utf-8"))
+    expected = {"ADDED": 1, "REMOVED": 1, "MODIFIED": 1, "UNCHANGED": 1}
+    log = []
+    shots = {}
+    with tempfile.TemporaryDirectory(prefix="packaged-image-e2e-") as tmp:
+        folder = Path(tmp)
+        baseline, delivery = folder / "baseline", folder / "delivery"
+        baseline.mkdir()
+        delivery.mkdir()
+        for name, rgb in (("same.png", (5, 10, 15)),
+                          ("modified.png", (20, 40, 60)),
+                          ("removed.png", (80, 100, 120))):
+            png(baseline / name, rgb)
+            shutil.copyfile(baseline / name, delivery / name)
+        png(delivery / "modified.png", (200, 10, 20))
+        (delivery / "removed.png").unlink()
+        png(delivery / "added.png", (10, 210, 30))
+        originals = {"baseline": hashes(baseline), "delivery": hashes(delivery)}
+        snapshot = folder / "baseline.json"
+        csv_path = out / "packaged-changes.csv"
+        json_path = out / "packaged-changes.json"
+        txt_path = out / "packaged-summary-ja.txt"
+        process = None
+        window = None
+
+        def start():
+            nonlocal process, window
+            process = subprocess.Popen([str(exe)], cwd=str(folder))
+            window = Desktop(backend="win32").window(title="Offline Image Inventory Desk", process=process.pid)
+            window.wait("visible", timeout=45)
+            time.sleep(1.2)
+            window.set_focus()
+            rect = window.rectangle()
+            if rect.width() < 1000 or rect.height() < 700:
+                raise AssertionError("Packaged EXE window too small: " + str(rect))
+            log.append("packaged EXE process started PID=" + str(process.pid))
+
+        def stop():
+            nonlocal process, window
+            if process is not None:
+                process.terminate()
+                try:
+                    process.wait(timeout=12)
+                except subprocess.TimeoutExpired:
+                    process.kill()
+                    process.wait(timeout=10)
+            process, window = None, None
+
+        def click(name):
+            window.set_focus()
+            x0, y0 = win32gui.ClientToScreen(window.handle, (0, 0))
+            dx, dy = controls[name]
+            pyautogui.click(x0 + dx, y0 + dy)
+            time.sleep(0.65)
+
+        def wait_dialog():
+            deadline = time.monotonic() + 20
+            while time.monotonic() < deadline:
+                dialogs = Desktop(backend="win32").windows(
+                    class_name="#32770", process=process.pid, visible_only=True)
+                if dialogs:
+                    return dialogs[-1]
+                time.sleep(0.25)
+            raise AssertionError("Native Windows file/folder dialog did not appear")
+
+        def choose_path(path):
+            dialog = wait_dialog()
+            uia = Desktop(backend="uia").window(handle=dialog.handle)
+            edits = uia.descendants(control_type="Edit")
+            if not edits:
+                raise AssertionError("Native dialog has no editable folder/file path field")
+            field = edits[-1]
+            field.set_edit_text(str(path))
+            time.sleep(0.35)
+            dialog.set_focus()
+            pyautogui.press("enter")
+            time.sleep(1.0)
+            # Some native dialogs first navigate into the typed folder.
+            if dialog.exists(timeout=0.3) and dialog.is_visible():
+                buttons = [b for b in uia.descendants(control_type="Button")
+                           if b.window_text().lower() in ("ok", "select folder", "open", "save", "フォルダーの選択", "保存")]
+                if buttons:
+                    buttons[-1].click_input()
+                    time.sleep(0.8)
+            if dialog.exists(timeout=0.3) and dialog.is_visible():
+                raise AssertionError("Native dialog remained open after selecting " + str(path))
+
+        def action(button, *paths):
+            click(button)
+            for path in paths:
+                choose_path(path)
+            log.append("packaged UI " + button + ": " + ", ".join(str(p) for p in paths))
+
+        def capture(label):
+            window.set_focus()
+            time.sleep(0.3)
+            rect = window.rectangle()
+            image = ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom))
+            if image.width < 1000 or image.height < 700:
+                raise AssertionError("Packaged GUI capture clipped")
+            path = out / (label + ".png")
+            image.save(path)
+            shots[label] = {"sha256": sha(path), "width": image.width, "height": image.height}
+
+        def close_comparison():
+            # The comparison table is a distinct Tk Toplevel, not a file dialog.
+            for w in Desktop(backend="win32").windows(process=process.pid, visible_only=True):
+                if w.handle != window.handle and "delivery changes" in w.window_text().lower():
+                    w.close()
+                    time.sleep(0.5)
+
+        try:
+            start()
+            capture("01_exe_initial_en")
+            action("snap_new", baseline, snapshot)
+            if not snapshot.is_file():
+                raise AssertionError("Packaged EXE did not save baseline")
+            capture("02_exe_baseline")
+            action("snap_compare", delivery)
+            close_comparison()
+            capture("03_exe_comparison")
+            action("snap_export", csv_path)
+            action("snap_export", json_path)
+            click("lang")
+            if "オフライン" not in win32gui.GetWindowText(window.handle):
+                raise AssertionError("Packaged EXE did not switch to Japanese")
+            capture("04_exe_japanese")
+            action("summary", txt_path)
+            if not all(p.is_file() for p in (csv_path, json_path, txt_path)):
+                raise AssertionError("Packaged EXE exports missing")
+            report = json.loads(json_path.read_text(encoding="utf-8"))
+            if report["summary"] != expected:
+                raise AssertionError("Wrong packaged comparison counts: " + str(report["summary"]))
+            with csv_path.open(encoding="utf-8", newline="") as stream:
+                if len(list(csv.DictReader(stream))) != 4:
+                    raise AssertionError("Packaged CSV has incorrect rows")
+            if "日時の限界" not in txt_path.read_text(encoding="utf-8"):
+                raise AssertionError("Packaged Japanese TXT disclaimer missing")
+            log.append("packaged CSV/JSON/TXT contents validated")
+            stop()
+            start()
+            action("snap_open", snapshot)
+            action("snap_compare", delivery)
+            close_comparison()
+            capture("05_exe_restarted")
+            # Malformed image forces a real parser read error without admin symlink rights.
+            (delivery / "unreadable.png").write_bytes(b"malformed image fixture")
+            expected_files = {"baseline": hashes(baseline), "delivery": hashes(delivery)}
+            click("snap_compare")
+            choose_path(delivery)
+            dialog = wait_dialog()  # real error messagebox
+            error_text = dialog.window_text()
+            capture("06_exe_read_error")
+            dialog.set_focus()
+            pyautogui.press("enter")
+            time.sleep(0.5)
+            # A stale successful comparison must not open an export Save dialog.
+            click("summary")
+            if Desktop(backend="win32").windows(class_name="#32770",
+                                                process=process.pid, visible_only=True):
+                raise AssertionError("Packaged EXE allowed stale summary export")
+            log.append("packaged read error blocked stale summary export: " + error_text)
+            if expected_files != {"baseline": hashes(baseline), "delivery": hashes(delivery)}:
+                raise AssertionError("SOURCE_IMAGES_MODIFIED")
+            if originals["baseline"] != hashes(baseline):
+                raise AssertionError("BASELINE_IMAGES_MODIFIED")
+            log.append("all source images untouched")
+        finally:
+            stop()
+        receipt = {
+            "classification": "CLOUD_WINDOWS_PACKAGED_EXE_E2E",
+            "not_source_tk_smoke": True,
+            "not_local_gui_pass": True,
+            "source_sha": source_sha,
+            "exe_sha256": sha(exe),
+            "exe_bytes": exe.stat().st_size,
+            "source_images_untouched": True,
+            "fixture_sha256_before": originals,
+            "fixture_sha256_after": {"baseline": hashes(baseline), "delivery": hashes(delivery)},
+            "screenshots": shots,
+            "checks": log,
+            "market_fit": "MARKET_FIT_HOLD",
+            "market_score": 64,
+            "why_pay_verified": False,
+        }
+        (out / "packaged-exe-e2e-receipt.json").write_text(
+            json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+        (out / "packaged-exe-e2e.log").write_text("\n".join(log) + "\n", encoding="utf-8")
+        print(json.dumps(receipt, ensure_ascii=False, indent=2))
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--exe", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--source-sha", required=True)
+    parser.add_argument("--mode", choices=("source", "packaged"), default="source")
+    parser.add_argument("--calibration", type=Path)
     args = parser.parse_args()
     if os.name != "nt":
         raise SystemExit("Windows GUI runner required")
-    run(args.out.resolve(), args.exe.resolve(), args.source_sha)
+    if args.mode == "packaged":
+        if args.calibration is None:
+            parser.error("--calibration required for packaged mode")
+        run_packaged(args.out.resolve(), args.exe.resolve(), args.source_sha, args.calibration.resolve())
+    else:
+        run(args.out.resolve(), args.exe.resolve(), args.source_sha)
