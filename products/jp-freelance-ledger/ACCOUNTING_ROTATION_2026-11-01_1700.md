@@ -25,3 +25,7 @@ The existing `複数レシートを取り込む` action now shows three counts (
 `tests/test_jp_receipt_review.py` adds real SQLite fixtures for preview-only behavior, mixed-good/bad batch, same-content duplicate, repeat/restart idempotency, changed-file rejection, rollback on database failure, and limits. Root Factory CI is the authoritative run; **do not mark CI PASS until the current SHA's workflow completes**. No actual Windows 1024x768 GUI observation was performed, so GUI PASS remains unverified.
 
 Country contract: JP-only, JPY, Japanese UI, cross_market_sale=false. No Identity/Partner Center actions, signed MSIX, or Store submission. MARKET_FIT, EXE, GUI, PRE_IDENTITY and commercial gates remain independently evaluated. No new APP product generated.
+
+## Additional suggestion safety and UX correction
+
+The short Latin keyword `ad` previously matched unrelated words such as `Adobe` or `address`, causing an advertising-expense false positive. The matcher now requires token boundaries for ASCII keywords. If multiple categories have equal top confidence, the UI abstains and shows alternatives. Otherwise it displays the reason, approximate confidence, relevant book and example, and asks the user before setting the field. Nothing is automatically posted. Regression fixtures cover false positives and syntax. Actual Windows GUI observation remains pending.
