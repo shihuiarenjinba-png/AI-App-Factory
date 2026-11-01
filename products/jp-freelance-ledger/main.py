@@ -1,0 +1,185 @@
+import tkinter as tk
+from datetime import date
+from tkinter import filedialog,messagebox,simpledialog,ttk
+from core import CATEGORIES,DOCUMENT_TYPES,LedgerError,Store,suggest_category
+from monthly_close import export_month_end_package
+from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
+from csv_review import CSVReviewError, review_csv, apply_csv_import
+from receipt_review import ReceiptReviewError, review_receipts, apply_receipt_review
+
+class App(tk.Tk):
+    def __init__(self):
+        super().__init__(); self.title("個人事業帳簿ローカル"); self.geometry("1100x720"); self.minsize(900,620)
+        self.store=Store(); self.protocol("WM_DELETE_WINDOW",self.close)
+        self.v={k:tk.StringVar() for k in ["date","kind","amount","category","counterparty","doctype","docpath","memo"]}
+        self.v["date"].set(date.today().isoformat()); self.v["kind"].set("収入"); self.v["category"].set(CATEGORIES[0]); self.v["doctype"].set(DOCUMENT_TYPES[0])
+        self.summary=tk.StringVar(); self.build(); self.refresh()
+    def build(self):
+        ttk.Label(self,text="個人事業帳簿ローカル",font=("Yu Gothic UI",18,"bold")).pack(anchor="w",padx=14,pady=(14,2))
+        ttk.Label(self,text="日本国内向け・円建て・完全ローカル保存。税額計算や申告可否の判定は行いません。").pack(anchor="w",padx=14)
+        p=ttk.Panedwindow(self,orient="horizontal"); p.pack(fill="both",expand=True,padx=14,pady=10)
+        f=ttk.Labelframe(p,text="取引入力",padding=10); p.add(f,weight=1)
+        fields=[("取引日","date"),("金額（円）","amount"),("取引先","counterparty"),("摘要","memo"),("証憑参照","docpath")]
+        ttk.Label(f,text="種別").grid(row=0,column=0,sticky="w"); ttk.Combobox(f,textvariable=self.v["kind"],values=["収入","経費"],state="readonly").grid(row=0,column=1,sticky="ew",pady=3)
+        ttk.Label(f,text="勘定科目").grid(row=1,column=0,sticky="w"); ttk.Combobox(f,textvariable=self.v["category"],values=CATEGORIES,state="readonly").grid(row=1,column=1,sticky="ew",pady=3)
+        ttk.Label(f,text="証憑種別").grid(row=2,column=0,sticky="w"); ttk.Combobox(f,textvariable=self.v["doctype"],values=DOCUMENT_TYPES,state="readonly").grid(row=2,column=1,sticky="ew",pady=3)
+        for i,(label,key) in enumerate(fields,start=3):
+            ttk.Label(f,text=label).grid(row=i,column=0,sticky="w"); ttk.Entry(f,textvariable=self.v[key]).grid(row=i,column=1,sticky="ew",pady=3)
+        ttk.Button(f,text="証憑ファイルを参照",command=self.pick).grid(row=8,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="科目・帳簿を調べる",command=self.lookup_help).grid(row=9,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="複数レシートを取り込む",command=self.import_receipts).grid(row=10,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="勘定科目を推測",command=self.suggest).grid(row=11,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="記帳する",command=self.add).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="税率・固定資産",command=self.tax_assets).grid(row=13,column=0,columnspan=2,sticky="ew",pady=4)
+        csv_menu_button=ttk.Menubutton(f,text="CSV 入出力")
+        csv_menu=tk.Menu(csv_menu_button,tearoff=False)
+        csv_menu.add_command(label="CSVを確認して取り込む",command=self.import_csv)
+        csv_menu.add_command(label="CSVに書き出す",command=self.export)
+        csv_menu_button["menu"]=csv_menu
+        csv_menu_button.grid(row=14,column=0,sticky="ew",pady=4)
+        ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=15,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
+        r=ttk.Labelframe(p,text="帳簿",padding=10); p.add(r,weight=3); ttk.Label(r,textvariable=self.summary,font=("Yu Gothic UI",11,"bold")).pack(anchor="w")
+        cols=("date","kind","amount","category","counterparty","memo"); self.tree=ttk.Treeview(r,columns=cols,show="headings")
+        for c,t in zip(cols,["日付","種別","金額","勘定科目","取引先","摘要"]): self.tree.heading(c,text=t); self.tree.column(c,width=120)
+        self.tree.pack(fill="both",expand=True,pady=(8,0))
+    def pick(self):
+        x=filedialog.askopenfilename(title="領収書・請求書などを選択")
+        if x:self.v["docpath"].set(x)
+    def import_receipts(self):
+        paths=filedialog.askopenfilenames(title="レシート・請求書画像/PDFをまとめて選択")
+        if not paths:return
+        try:
+            preview=review_receipts(paths,self.store)
+            problems="\n".join(f'・{item["path"]}: {item["reason"]}' for item in preview["errors"][:3])
+            summary=(f'追加候補 {len(preview["valid"])}件 / 重複 {len(preview["duplicates"])}件 / 読込不可 {len(preview["errors"])}件'
+                     + (f'\n\n確認が必要なファイル:\n{problems}' if problems else "")
+                     + "\n\n元の画像・PDFは移動・削除されません。自動読取・税務判定は行いません。")
+            if not preview["valid"]:
+                messagebox.showinfo("証憑の確認",summary+"\n\n新しく追加できるファイルはありません。")
+                return
+            if not messagebox.askyesno("証憑の確認",summary+"\n\n追加候補だけを保存しますか？"):return
+            result=apply_receipt_review(self.store,preview)
+            messagebox.showinfo("証憑の追加結果",f'追加 {result["imported"]}件 / 重複 {len(preview["duplicates"]) + result["duplicates"]}件 / 読込不可 {result["errors"]}件。\n証憑を参照登録しただけで、仕訳は確定していません。')
+        except (ReceiptReviewError,OSError) as exc:
+            messagebox.showerror("証憑を確認できません",str(exc))
+        except Exception as exc:
+            messagebox.showerror("証憑を追加できません",f"保存できませんでした。データは一括で取り消されます。\n{exc}")
+    def lookup_help(self):
+        q=simpledialog.askstring("科目・帳簿検索","例: 家賃 / パソコン / 個人カード / 売掛 / 固定資産 / 資産除去債務")
+        if not q:return
+        accounts=self.store.search_help(q,limit=6,include_advanced=True)
+        books=self.store.search_book_help(q,limit=4)
+        lines=[]
+        if accounts:
+            lines.append("【勘定科目候補】")
+            for a in accounts:
+                level="上級・要確認" if a["audience"]=="advanced" else a["audience"]
+                lines.append(f'・{a["name"]} ({a["type"]} / {level})\n  使う場面: {a["use_text"]}\n  帳簿: {a["books"]}\n  例: {a["example"]}')
+        if books:
+            lines.append("\n【帳簿候補】")
+            for b in books:lines.append(f'・{b["book"]}: {b["purpose"]}')
+        if not lines:lines=["該当候補が見つかりませんでした。摘要や用途を別の言葉で検索してください。"]
+        messagebox.showinfo("科目・帳簿検索","\n".join(lines[:18]))
+    def suggest(self):
+        text=" ".join([self.v["counterparty"].get(),self.v["memo"].get(),self.v["doctype"].get()])
+        result=suggest_category(text,self.v["kind"].get())
+        if not result:
+            messagebox.showinfo("勘定科目候補","候補を絞れませんでした。摘要や用途を追加し、手動で科目を選択してください。")
+            return
+        if len(result)>1 and result[0]["confidence"]==result[1]["confidence"]:
+            choices="\n".join(f'・{r["category"]}（根拠: {", ".join(r["matched"])}）' for r in result)
+            messagebox.showinfo("候補が複数あります","同程度の候補があります。自動選択はしません。\n"+choices+"\n\n「科目・帳簿を調べる」から用途を確認してください。")
+            return
+        best=result[0]
+        details=self.store.search_help(best["category"],limit=5,include_advanced=True)
+        help_row=next((a for a in details if a["name"]==best["category"]),None)
+        books=f'\n記録先の帳簿: {help_row["books"]}' if help_row else ""
+        example=f'\n典型例: {help_row["example"]}' if help_row else ""
+        message=(f'候補: {best["category"]}\n確信度（目安）: {best["confidence"]:.0%}'
+                 f'\n根拠語: {", ".join(best["matched"])}{books}{example}'
+                 "\n\nこれは税務上の必要経費・控除可否の判定ではありません。"
+                 "\n確認して入力欄に設定しますか？")
+        if messagebox.askyesno("勘定科目候補の確認",message):
+            self.v["category"].set(best["category"])
+    def add(self):
+        try:self.store.add(self.v["date"].get(),self.v["kind"].get(),self.v["amount"].get(),self.v["category"].get(),self.v["counterparty"].get(),self.v["doctype"].get(),self.v["docpath"].get(),self.v["memo"].get())
+        except LedgerError as e: messagebox.showerror("入力エラー",str(e)); return
+        for k in ["amount","counterparty","docpath","memo"]: self.v[k].set("")
+        self.refresh()
+    def refresh(self):
+        for i in self.tree.get_children():self.tree.delete(i)
+        for r in self.store.rows(): self.tree.insert("","end",values=(r["txn_date"],r["kind"],f'{r["amount_yen"]:,}',r["category"],r["counterparty"],r["memo"]))
+        d=date.today(); s=self.store.monthly(d.year,d.month); y=self.store.annual_summary(d.year); self.summary.set(f"{d.year}年{d.month}月 差引 {s['差引']:,}円　|　{d.year}年累計 収入 {y['収入']:,}円 経費 {y['経費']:,}円 利益 {y['差引']:,}円")
+    def tax_assets(self):
+        mode=simpledialog.askstring("税率・固定資産","消費税 または 減価償却 と入力してください")
+        if not mode:return
+        try:
+            if "消費" in mode:
+                amount=simpledialog.askinteger("消費税","税抜金額（円）",minvalue=0)
+                if amount is None:return
+                name=simpledialog.askstring("消費税","標準税率10% / 軽減税率8% / 非課税・対象外0%",initialvalue="標準税率10%")
+                rate=JP_CONSUMPTION_TAX_PRESETS.get(name or "",None)
+                if rate is None:
+                    custom=simpledialog.askfloat("消費税","税率を小数で入力（例 0.10）",minvalue=0)
+                    if custom is None:return
+                    rate=str(custom)
+                x=consumption_tax_from_net(amount,rate)
+                messagebox.showinfo("消費税",f'税抜 {x["net"]:,}円\n税額 {x["tax"]:,}円\n税込 {x["gross"]:,}円')
+            else:
+                cost=simpledialog.askinteger("減価償却","取得価額（円）",minvalue=2)
+                first=simpledialog.askstring("減価償却","事業供用開始日 YYYY-MM-DD",initialvalue=date.today().isoformat())
+                life=simpledialog.askinteger("減価償却","耐用年数",minvalue=1)
+                asset_class=simpledialog.askstring("減価償却","資産種類（例: 建物 / 建物附属設備 / 構築物 / 器具備品 / 車両運搬具）",initialvalue="器具備品")
+                method=simpledialog.askstring("減価償却","定額法 または 定率法",initialvalue="定額法")
+                use=simpledialog.askfloat("減価償却","事業使用割合（%）",initialvalue=100,minvalue=0,maxvalue=100)
+                kwargs={"asset_class":asset_class or "その他"}
+                if method=="定額法":
+                    kwargs["straight_line_rate"]=simpledialog.askfloat("定額法","国税庁の耐用年数別表の償却率（例 4年なら0.250）",minvalue=0)
+                if method=="定率法":
+                    kwargs["declining_rate"]=simpledialog.askfloat("定率法","償却率",minvalue=0)
+                    kwargs["revised_rate"]=simpledialog.askfloat("定率法","改定償却率",minvalue=0)
+                    kwargs["guarantee_rate"]=simpledialog.askfloat("定率法","保証率",minvalue=0)
+                rows=jp_depreciation_schedule(cost,first,life,method=method,business_use_percent=use,through_year=date.today().year+life,**kwargs)
+                text="\n".join(f'{r["year"]}: {r["business_depreciation"]:,}円 ({r["method_note"]})' for r in rows[:12])
+                messagebox.showinfo("減価償却",text+"\n\n過年度差額は自動再計算できますが、申告訂正は自動確定しません。")
+        except Exception as e:messagebox.showerror("計算エラー",str(e))
+    def import_csv(self):
+        path=filedialog.askopenfilename(title="CSVを確認して取り込む",filetypes=[("CSV","*.csv")])
+        if not path:return
+        try:
+            preview=review_csv(path,self.store)
+            problems="\n".join(f'行{r["line"]}: {r["reason"]}' for r in preview["errors"][:5])
+            summary=(f'新規 {len(preview["valid"])}件 / 重複 {len(preview["duplicates"])}件 / 要修正 {len(preview["errors"])}件'
+                     + (f'\n\n要修正の例:\n{problems}' if problems else "")
+                     + "\n\n新規の取引だけ帳簿に登録します。要修正行は登録しません。続行しますか？")
+            if not preview["valid"]:
+                messagebox.showinfo("CSV取り込み確認",summary.replace("続行しますか？","新規に登録する取引はありません。"))
+                return
+            if not messagebox.askyesno("CSV取り込み確認",summary):return
+            result=apply_csv_import(self.store,preview)
+            self.refresh()
+            messagebox.showinfo("CSV取り込み完了",f'新規 {result["imported"]}件を登録しました。\n重複 {result["duplicates"]}件 / 要修正 {result["errors"]}件は登録していません。')
+        except (CSVReviewError,OSError) as exc:
+            messagebox.showerror("CSV取り込みエラー",str(exc))
+        except Exception as exc:
+            messagebox.showerror("CSV取り込みエラー",f"安全のため登録を取り消しました。\n{exc}")
+    def month_end_pack(self):
+        d=date.today()
+        year=simpledialog.askinteger("月末帳簿パック","年",initialvalue=d.year,minvalue=2000)
+        month=simpledialog.askinteger("月末帳簿パック","月",initialvalue=d.month,minvalue=1,maxvalue=12)
+        out=filedialog.askdirectory(title="月次帳簿パックの保存先")
+        if not out or year is None or month is None:return
+        try:
+            result=export_month_end_package(self.store,year,month,out)
+            msg=f'HTML: {result["html"]}\nCSV: {result["csv"]}\nJSON: {result["json"]}'
+            msg+=f'\nPDF: {result["pdf"]}' if result["pdf_generated"] else "\nPDF: この環境では生成できませんでした（HTMLは保存済み）"
+            messagebox.showinfo("月末帳簿パック",msg)
+        except Exception as e:messagebox.showerror("月末帳簿パック",str(e))
+    def export(self):
+        x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
+        if x:self.store.export_csv(x); messagebox.showinfo("CSV","出力しました")
+    def backup(self):
+        x=filedialog.asksaveasfilename(defaultextension=".sqlite3",filetypes=[("SQLite","*.sqlite3")])
+        if x:self.store.backup(x); messagebox.showinfo("バックアップ","作成しました")
+    def close(self):self.store.close();self.destroy()
+if __name__=="__main__":App().mainloop()
