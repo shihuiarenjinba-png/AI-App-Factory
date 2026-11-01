@@ -120,7 +120,8 @@ def run(out, exe, source_sha):
             screenshots["04_japanese"] = screenshot(root, out / "04_japanese.png")
             with patch.object(app.filedialog, "asksaveasfilename", return_value=str(txt_path)):
                 desk.summary_button.invoke()
-            assert "日時の限界" in txt_path.read_text(encoding="utf-8")
+            assert all(marker in txt_path.read_text(encoding="utf-8") for marker in
+                       ("日時の限界", "お客様への確認ポイント", "次の操作:"))
             assert json.loads(json_path.read_text(encoding="utf-8"))["summary"]["MODIFIED"] == 1
             with csv_path.open(encoding="utf-8", newline="") as stream:
                 assert len(list(csv.DictReader(stream))) == 4
@@ -410,8 +411,10 @@ def run_packaged(out, exe, source_sha, calibration):
             with csv_path.open(encoding="utf-8", newline="") as stream:
                 if len(list(csv.DictReader(stream))) != 4:
                     raise AssertionError("Packaged CSV has incorrect rows")
-            if "日時の限界" not in txt_path.read_text(encoding="utf-8"):
-                raise AssertionError("Packaged Japanese TXT disclaimer missing")
+            customer_report = txt_path.read_text(encoding="utf-8")
+            if any(marker not in customer_report for marker in
+                   ("日時の限界", "お客様への確認ポイント", "次の操作:", "名前変更")):
+                raise AssertionError("Packaged Japanese TXT customer guidance missing")
             log.append("packaged CSV/JSON/TXT contents validated")
             stop()
             start()
