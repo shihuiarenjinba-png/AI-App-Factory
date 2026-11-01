@@ -4,6 +4,7 @@
 - Added `budget.py`: persistent month/account expense budgets, exact integer JPY validation, idempotent updates and audit records.
 - Report uses **posted journal lines** (debit minus credit) rather than manually entered actuals; split postings and refund/reversal credits reduce actual expenses. Month boundaries isolate entries. An unbudgeted active expense suppresses the misleading aggregate remaining balance.
 - Added `budget_ui.py` and an entry-screen button: "月の予算と実績", plain-language expense selection, actual/remaining/overspend, no tax-deduction claims. No automatic journal posting.
+- Hardened `core.Store.search_help`: help results now JOIN the active chart of accounts, preventing advanced reference-only code `2150` from being suggested as a postable account; added `tests/test_jp_help_integrity.py` for search, advanced filtering and rule-code consistency.
 - Added `tests/test_jp_budget.py`: split entries, refunds, journal/P&L/B/S balance, month isolation, unbudgeted expense, zero budget, restart persistence, idempotency and malformed input. CI result must be checked separately.
 - Does not change JP tax rates, depreciation, deduction decisions, filing, or market scope. Not yet GUI-tested at 1024×768.
 
