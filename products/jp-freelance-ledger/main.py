@@ -128,16 +128,16 @@ class App(tk.Tk):
         try:
             previous=balance_status(self.store.conn,month)
             result=balance_preview(self.store.conn,month,opening,closing)
-            summary=(f'対象月: {month}（前回: {previous}）\\n'
-                     f'対象取引: {result["transaction_count"]}件\\n'
-                     f'収入: {result["income_yen"]:,}円 / 経費: {result["expense_yen"]:,}円\\n'
-                     f'帳簿計算残高: {result["calculated_yen"]:,}円\\n'
-                     f'入力した月末残高: {result["closing_yen"]:,}円\\n'
+            summary=(f'対象月: {month}（前回: {previous}）\n'
+                     f'対象取引: {result["transaction_count"]}件\n'
+                     f'収入: {result["income_yen"]:,}円 / 経費: {result["expense_yen"]:,}円\n'
+                     f'帳簿計算残高: {result["calculated_yen"]:,}円\n'
+                     f'入力した月末残高: {result["closing_yen"]:,}円\n'
                      f'差額: {result["difference_yen"]:,}円')
             if result["difference_yen"]:
-                messagebox.showwarning("残高に差があります",summary+"\\n\\n取引や月初残高を確認してください。照合済みにはしません。")
+                messagebox.showwarning("残高に差があります",summary+"\n\n取引や月初残高を確認してください。照合済みにはしません。")
                 return
-            if not messagebox.askyesno("月次残高チェック",summary+"\\n\\n差額ゼロを記録しますか？（銀行別の照合・税務判定ではありません）"):
+            if not messagebox.askyesno("月次残高チェック",summary+"\n\n差額ゼロを記録しますか？（銀行別の照合・税務判定ではありません）"):
                 return
             saved=balance_confirm(self.store.conn,month,opening,closing,result["source_sha256"])
             messagebox.showinfo("月次残高チェック","照合を記録しました。" if saved["recorded"] else "同じ内容はすでに照合済みです。")
