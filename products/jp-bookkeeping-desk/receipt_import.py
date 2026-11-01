@@ -60,6 +60,10 @@ def _inspect(path: object, max_bytes: int) -> tuple[str, str, int]:
 
 def import_receipts_verified(conn: sqlite3.Connection, paths: object, max_bytes: int = MAX_RECEIPT_BYTES) -> dict:
     """Per-file validation; duplicate path/content rejected; no automatic posting."""
+    if type(max_bytes) is not int or not 1 <= max_bytes <= 200 * 1024 * 1024:
+        raise ValueError("ファイル容量上限は1〜209715200バイトの整数で指定してください")
+    if paths is None or isinstance(paths, (str, bytes, Path)):
+        raise ValueError("証憑は複数ファイルの一覧で指定してください")
     _prepare_schema(conn)
     result = {"added": 0, "duplicates": 0, "errors": 0, "details": []}
     for path in paths:
