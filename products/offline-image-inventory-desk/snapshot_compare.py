@@ -1,5 +1,6 @@
 """Deterministic, read-only image delivery snapshot comparison; no source writes."""
 import csv
+from datetime import datetime, timezone
 import hashlib
 import io
 import json
@@ -133,6 +134,71 @@ def compare_snapshots(old,new):
                         "old_bytes":x["bytes"] if x else "",
                         "new_bytes":y["bytes"] if y else ""})
     return {"schema":1,"old_root":old["root"],"new_root":new["root"],"summary":summary,"changes":changes}
+
+
+def render_delivery_summary(report, language="en", generated_at=None):
+    """Human-readable evidence, not a signature or proof of modification time."""
+    if language not in ("en", "ja") or not isinstance(report, dict) or report.get("schema") != 1:
+        raise ValueError("Invalid report or language")
+    counts, changes = report.get("summary"), report.get("changes")
+    statuses = ("ADDED", "REMOVED", "MODIFIED", "UNCHANGED")
+    if not isinstance(counts, dict) or set(counts) != set(statuses) or not isinstance(changes, list):
+        raise ValueError("Invalid counts")
+    actual = dict.fromkeys(statuses, 0)
+    for row in changes:
+        if not isinstance(row, dict) or set(row) != set(COLUMNS) or row["status"] not in actual:
+            raise ValueError("Invalid evidence row")
+        relative(row["relative_path"])
+        for key in ("old_sha256", "new_sha256"):
+            value = row[key]
+            if not isinstance(value, str) or (value and not re.fullmatch(r"[0-9a-f]{64}", value)):
+                raise ValueError("Invalid SHA-256")
+        actual[row["status"]] += 1
+    if counts != actual or changes != sorted(changes, key=lambda r: r["relative_path"]):
+        raise ValueError("Inconsistent evidence")
+    moment = generated_at if generated_at is not None else datetime.now(timezone.utc)
+    if not isinstance(moment, datetime) or moment.tzinfo is None:
+        raise ValueError("Timezone required")
+    timestamp = moment.astimezone(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    ja = language == "ja"
+    lines = [
+        "納品画像の変更証跡" if ja else "IMAGE DELIVERY CHANGE EVIDENCE",
+        "=" * 40,
+        ("レポート作成日時: " if ja else "Report generated: ") + timestamp,
+        ("追加 {ADDED} / 削除 {REMOVED} / 同名変更 {MODIFIED} / 変更なし {UNCHANGED}" if ja else
+         "Added {ADDED} / Removed {REMOVED} / Modified {MODIFIED} / Unchanged {UNCHANGED}").format(**counts),
+        ("読取・リンクエラー: 0。エラー時は比較を拒否し、レポートを作成しません。" if ja else
+         "Read/link errors: 0. Comparison is refused if any scan error occurs."),
+        ("元画像は読み取り専用。削除・編集・自動修復は行っていません。" if ja else
+         "Source images read-only: no deletion, editing or automatic repair."),
+        ("日時の限界: 上記はレポート作成時刻で、画像の変更日時・納品日時の証明ではありません。" if ja else
+         "Time limitation: report creation time does NOT prove modification or delivery time."),
+        ("SHA-256は読み取った内容の比較であり、署名・第三者認証ではありません。" if ja else
+         "SHA-256 compares scanned content; NOT a digital signature or third-party certification."),
+        "", "変更明細 / CHANGES", "-" * 40
+    ]
+    labels = {"ADDED":"追加" if ja else "Added", "REMOVED":"削除" if ja else "Removed",
+              "MODIFIED":"変更" if ja else "Modified"}
+    for row in changes:
+        if row["status"] == "UNCHANGED":
+            continue
+        lines += [
+            "[" + labels[row["status"]] + "] " + row["relative_path"],
+            "  Before SHA-256: " + (row["old_sha256"] or "—"),
+            "  After  SHA-256: " + (row["new_sha256"] or "—"),
+            "  Before dimensions/bytes: " + str(row["old_dimensions"] or "—") + " / " + str(row["old_bytes"] or "—"),
+            "  After  dimensions/bytes: " + str(row["new_dimensions"] or "—") + " / " + str(row["new_bytes"] or "—")
+        ]
+    if not any(row["status"] != "UNCHANGED" for row in changes):
+        lines.append("変更なし" if ja else "No changes detected")
+    return "\n".join(lines) + "\n"
+
+def write_delivery_summary(path, report, atomic_writer, language="en"):
+    """One-step TXT export outside both source folders."""
+    target = safe_output(path, [report["old_root"], report["new_root"]])
+    if target.suffix.lower() != ".txt":
+        raise ValueError("Use TXT")
+    atomic_writer(target, render_delivery_summary(report, language))
 
 def safe_output(path,roots):
     target=Path(path).absolute()
