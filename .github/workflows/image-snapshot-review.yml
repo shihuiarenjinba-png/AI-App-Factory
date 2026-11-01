@@ -46,6 +46,21 @@ jobs:
           $sha=(Get-FileHash $p -Algorithm SHA256).Hash.ToLowerInvariant()
           @{ stage="REVIEW_ONLY_UNSIGNED_EXE"; source_sha=$env:SOURCE_SHA; sha256=$sha; bytes=$bytes.Length; market_fit="MARKET_FIT_HOLD"; registration_type="MSIX_OR_PWA_APP"; identity_status="NOT_BOUND" } | ConvertTo-Json | Set-Content "dist/exe-receipt.json"
           Write-Output "EXE SHA256 $sha"
+      - name: Cloud Windows GUI smoke (source interactions + packaged EXE launch)
+        shell: pwsh
+        env:
+          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          python -m pip install --disable-pip-version-check "pillow==11.3.0" "pywinauto==0.6.9"
+          python products/offline-image-inventory-desk/tests/gui_smoke_windows.py --exe dist/offline-image-inventory-desk.exe --out gui-smoke-evidence --source-sha $env:SOURCE_SHA
+      - name: Upload CLOUD_WINDOWS_GUI_SMOKE evidence (not local GUI QA)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-snapshot-CLOUD_WINDOWS_GUI_SMOKE-NOT-LOCAL-QA
+          path: gui-smoke-evidence/
+          if-no-files-found: warn
+          retention-days: 5
       - uses: actions/upload-artifact@v4
         with:
           name: image-snapshot-unsigned-review-exe-NOT-MSIX
