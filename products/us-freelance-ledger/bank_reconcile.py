@@ -68,8 +68,15 @@ def _schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _require_cash_book(conn: sqlite3.Connection) -> None:
+    row = conn.execute("SELECT value FROM meta WHERE key='accounting_method'").fetchone()
+    if row is None or row[0] != "cash":
+        raise BankReviewError("Statement matching is available only for cash-basis books; accrual requires separate payment tracking")
+
+
 def match_transaction(conn: sqlite3.Connection, transaction_id: int, account: str, statement_date: str) -> None:
     _schema(conn)
+    _require_cash_book(conn)
     account, statement_date = _account(account), _day(statement_date)
     row = conn.execute("SELECT txn_date FROM transactions WHERE id=?", (transaction_id,)).fetchone()
     if row is None:
@@ -120,6 +127,7 @@ def statement_preview(
     opening: Any, closing: Any,
 ) -> dict:
     _schema(conn)
+    _require_cash_book(conn)
     account, statement_date = _account(account), _day(statement_date)
     opening_cents, closing_cents = _cents(opening), _cents(closing)
     if conn.execute(
