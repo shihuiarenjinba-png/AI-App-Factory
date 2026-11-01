@@ -52,6 +52,9 @@ def evaluate(truths: Iterable[ReceiptTruth], predictions: Iterable[ReceiptPredic
     pct=lambda x,d: None if d==0 else round(100*x/d,2)
     return {
         "documents":n,
+        "tax_labeled_cases":tax_n,
+        "account_labeled_cases":acct_n,
+        "high_risk_cases":review_n,
         "date_exact_pct":pct(date_ok,n),
         "merchant_exact_pct":pct(merchant_ok,n),
         "total_exact_pct":pct(total_ok,n),
@@ -62,7 +65,14 @@ def evaluate(truths: Iterable[ReceiptTruth], predictions: Iterable[ReceiptPredic
         "unsafe_auto_post_count":unsafe,
     }
 
-def release_gate(metrics):
+def release_gate(metrics, *, benchmark_source=None):
+    """Never certify OCR from synthetic or tiny example-only fixtures."""
+    if benchmark_source != "user_owned_local_labeled":
+        return {"pass":False,"reason":"verified local labeled benchmark required"}
+    if (metrics.get("documents",0)<100 or metrics.get("tax_labeled_cases",0)<20
+            or metrics.get("account_labeled_cases",0)<50
+            or metrics.get("high_risk_cases",0)<20):
+        return {"pass":False,"reason":"insufficient benchmark sample and risk coverage"}
     required=[
         metrics.get("date_exact_pct"),
         metrics.get("total_exact_pct"),
