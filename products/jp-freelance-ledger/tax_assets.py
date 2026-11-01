@@ -131,16 +131,46 @@ def jp_depreciation_schedule(
         })
     return rows
 
-def retrospective_adjustment(schedule, posted_by_year: dict[int,int]):
-    rows=[]; total=0
+def retrospective_adjustment(schedule, posted_by_year: dict[int, int]):
+    """Recompute every affected year, including years with posted-only amounts.
+
+    Review-only difference report; never post journals or amend tax returns.
+    """
+    if not isinstance(posted_by_year, dict):
+        raise ValueError("既計上額は年別の辞書で指定してください")
+    expected_by_year = {}
     for row in schedule:
-        year=int(row["year"]); expected=int(row["business_depreciation"])
-        posted=int(posted_by_year.get(year,0)); delta=expected-posted; total+=delta
-        rows.append({"year":year,"expected":expected,"posted":posted,"difference":delta})
+        year = int(row["year"])
+        expected = int(row["business_depreciation"])
+        if year < 1 or year > 9999 or year in expected_by_year or expected < 0:
+            raise ValueError("償却スケジュールの年・金額が不正です")
+        expected_by_year[year] = expected
+    posted = {}
+    for year, value in posted_by_year.items():
+        if type(year) is not int or not 1 <= year <= 9999:
+            raise ValueError("既計上額の年を確認してください")
+        if isinstance(value, bool):
+            raise ValueError("既計上額は整数の円で入力してください")
+        try:
+            amount = int(value)
+        except (ValueError, TypeError, OverflowError) as exc:
+            raise ValueError("既計上額は整数の円で入力してください") from exc
+        if str(value).strip() != str(amount) or abs(amount) > 10**15:
+            raise ValueError("既計上額は整数の円で入力してください")
+        posted[year] = amount
+    rows = []
+    total = 0
+    for year in sorted(set(expected_by_year) | set(posted)):
+        expected = expected_by_year.get(year, 0)
+        amount = posted.get(year, 0)
+        delta = expected - amount
+        total += delta
+        rows.append({"year": year, "expected": expected, "posted": amount,
+                     "difference": delta, "posted_only": year not in expected_by_year})
     return {
-        "rows":rows,
-        "total_difference":total,
-        "auto_post":False,
-        "review_required":True,
-        "message":"再計算差額です。過年度申告の訂正可否は自動判定せず、調整仕訳候補として確認してください。",
+        "rows": rows,
+        "total_difference": total,
+        "auto_post": False,
+        "review_required": True,
+        "message": "再計算差額です。過年度申告の訂正可否は自動判定せず、調整仕訳候補として確認してください。",
     }
