@@ -75,6 +75,13 @@ def prepare(out, exe, source_sha):
     make_png(revised / "modified.png", (200, 10, 20))
     (revised / "removed.png").unlink()
     make_png(revised / "added.png", (10, 210, 30))
+    # Separate failure fixture: intentionally invalid image, never inserted into
+    # the valid four-state delivery. Comparing this folder must fail closed.
+    error_folder = out / "read-error"
+    error_folder.mkdir()
+    for file in revised.glob("*.png"):
+        shutil.copyfile(file, error_folder / file.name)
+    (error_folder / "invalid.png").write_bytes(b"NOT_A_PNG_TEST_FIXTURE")
     shutil.copyfile(exe, out / "offline-image-inventory-desk.exe")
     with (out / "participant-responses.csv").open("w", newline="", encoding="utf-8") as f:
         csv.writer(f).writerow(FIELDS)  # no fake participant rows
@@ -86,6 +93,7 @@ def prepare(out, exe, source_sha):
         "fixture_expected": EXPECTED,
         "baseline_sha256": image_hashes(base),
         "delivery_sha256": image_hashes(revised),
+        "read_error_sha256": image_hashes(error_folder),
         "human_response_count": 0,
         "why_pay_verified": False,
         "market_score": 64,
@@ -99,7 +107,7 @@ def prepare(out, exe, source_sha):
         "Unprompted task: You received a revised image folder. Produce a client-readable\n"
         "change record without altering original images. Compare free tool first.\n"
         "Record baseline, compare delivery, export CSV/JSON/TXT, restart, reopen,\n"
-        "then simulate a read error (use an inaccessible image) and ensure stale\n"
+        "then compare read-error/ (invalid.png) and ensure stale\n"
         "results cannot be exported. Record click count, elapsed time, errors,\n"
         "assistance, free alternative, exact purchase answer, and consent.\n"
         "Use event command to time phases. Log real responses in CSV only after test.\n"
@@ -120,6 +128,10 @@ def verify(out):
         raise AssertionError("SOURCE_IMAGES_MODIFIED: baseline")
     if image_hashes(out / "delivery") != manifest["delivery_sha256"]:
         raise AssertionError("SOURCE_IMAGES_MODIFIED: delivery")
+    if image_hashes(out / "read-error") != manifest["read_error_sha256"]:
+        raise AssertionError("SOURCE_IMAGES_MODIFIED: read-error fixture")
+    if (out / "read-error" / "invalid.png").read_bytes() != b"NOT_A_PNG_TEST_FIXTURE":
+        raise AssertionError("Read-error fixture no longer invalid")
     if digest(out / "offline-image-inventory-desk.exe") != manifest["exe_sha256"]:
         raise AssertionError("PACKAGED_EXE_SHA_MISMATCH")
     b, d = manifest["baseline_sha256"], manifest["delivery_sha256"]
