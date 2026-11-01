@@ -5,6 +5,7 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,METHODS,LedgerError,Store,suggest_category,review_requirements
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
 from receipt_queue import enqueue_receipts, list_receipts, link_receipt
+from bank_reconcile import BankReviewError, match_transaction, unmatch_transaction, match_statuses, statement_preview, finalize_statement
 
 class App(tk.Tk):
     def __init__(self):
@@ -44,9 +45,14 @@ class App(tk.Tk):
         ttk.Button(receipt_actions,text="Add receipts / PDFs",command=self.add_receipts).pack(side="left",padx=(0,6))
         ttk.Button(receipt_actions,text="Review receipt queue",command=self.review_receipts).pack(side="left",padx=(0,6))
         ttk.Label(r,textvariable=self.receipt_summary).pack(anchor="w")
-        cols=("date","kind","amount","category","party","memo");self.tree=ttk.Treeview(r,columns=cols,show="headings")
-        for c,t in zip(cols,["Date","Type","Amount","Category","Payer / payee","Memo"]):
-            self.tree.heading(c,text=t);self.tree.column(c,width=120)
+        ttk.Label(r,text="Bank check: 1. Select a transaction  2. Match to statement  3. Check opening/closing balances. Manual review only.",wraplength=650).pack(anchor="w",pady=(5,1))
+        bank_actions=ttk.Frame(r);bank_actions.pack(fill="x",pady=3)
+        ttk.Button(bank_actions,text="Match selected",command=self.match_bank).pack(side="left",padx=(0,5))
+        ttk.Button(bank_actions,text="Undo match",command=self.unmatch_bank).pack(side="left",padx=(0,5))
+        ttk.Button(bank_actions,text="Check statement",command=self.check_bank).pack(side="left")
+        cols=("date","kind","amount","category","party","memo","bank");self.tree=ttk.Treeview(r,columns=cols,show="headings")
+        for c,t in zip(cols,["Date","Type","Amount","Category","Payer / payee","Memo","Bank check"]):
+            self.tree.heading(c,text=t);self.tree.column(c,width=90 if c in ("date","kind","amount","bank") else 110)
         self.tree.pack(fill="both",expand=True,pady=(8,0))
 
     def refresh_receipts(self):
@@ -98,6 +104,62 @@ class App(tk.Tk):
             self.v["doctype"].set("Receipt")
             win.destroy()
         ttk.Button(win,text="Use selected file for this transaction",command=choose).pack(pady=(2,12))
+
+    def _selected_transaction(self):
+        selected=self.tree.selection()
+        if not selected:
+            messagebox.showinfo("Choose a transaction","Select a ledger row first.")
+            return None
+        return int(selected[0])
+
+    def match_bank(self):
+        txn_id=self._selected_transaction()
+        if txn_id is None:return
+        account=simpledialog.askstring("Match to bank statement","Bank account label (e.g. Business Checking):",parent=self)
+        if account is None:return
+        statement_day=simpledialog.askstring("Match to bank statement","Statement ending date (YYYY-MM-DD):",parent=self)
+        if statement_day is None:return
+        if not messagebox.askyesno("Confirm manual match",
+            "Have you checked this transaction against the actual bank statement?\n"
+            "This does not import or verify bank records."):
+            return
+        try:match_transaction(self.store.conn,txn_id,account,statement_day)
+        except BankReviewError as exc:messagebox.showerror("Cannot match",str(exc));return
+        self.refresh()
+
+    def unmatch_bank(self):
+        txn_id=self._selected_transaction()
+        if txn_id is None:return
+        try:unmatch_transaction(self.store.conn,txn_id)
+        except BankReviewError as exc:messagebox.showwarning("Cannot undo",str(exc));return
+        self.refresh()
+
+    def check_bank(self):
+        account=simpledialog.askstring("Check bank statement","Bank account label:",parent=self)
+        if account is None:return
+        statement_day=simpledialog.askstring("Check bank statement","Statement ending date (YYYY-MM-DD):",parent=self)
+        if statement_day is None:return
+        opening=simpledialog.askstring("Check bank statement","Opening balance (USD, e.g. 100.00):",parent=self)
+        if opening is None:return
+        closing=simpledialog.askstring("Check bank statement","Closing balance (USD, e.g. 150.00):",parent=self)
+        if closing is None:return
+        try:report=statement_preview(self.store.conn,account,statement_day,opening,closing)
+        except BankReviewError as exc:messagebox.showerror("Statement check",str(exc));return
+        difference=report["difference_cents"]
+        if difference:
+            messagebox.showwarning("Balance does not match",
+                f'Difference USD {difference/100:,.2f}. Check missing transfers, bank fees, '
+                "cash entries and wrong matches. Nothing was finalized.")
+            return
+        if not messagebox.askyesno("Finalize bank statement",
+            f'{len(report["transaction_ids"])} matched transactions; difference USD 0.00.\n'
+            "Have you checked the actual statement and included all relevant bank movements?\n"
+            "Finalized matches cannot be undone in this version."):
+            return
+        try:finalize_statement(self.store.conn,account,statement_day,opening,closing)
+        except BankReviewError as exc:messagebox.showerror("Statement check",str(exc));return
+        self.refresh()
+        messagebox.showinfo("Statement checked","Matched entries were finalized locally. This is not a tax or bank certification.")
 
     def change_method(self):
         if not messagebox.askyesno(
@@ -154,8 +216,10 @@ class App(tk.Tk):
 
     def refresh(self):
         for i in self.tree.get_children():self.tree.delete(i)
+        bank_status=match_statuses(self.store.conn)
         for r in self.store.rows():
-            self.tree.insert("","end",values=(r["txn_date"],r["kind"],f'USD {r["amount_cents"]/100:,.2f}',r["category"],r["payer_payee"],r["memo"]))
+            status={"CLEARED":"Matched","RECONCILED":"Checked"}.get(bank_status.get(r["id"]),"Not matched")
+            self.tree.insert("","end",iid=str(r["id"]),values=(r["txn_date"],r["kind"],f'USD {r["amount_cents"]/100:,.2f}',r["category"],r["payer_payee"],r["memo"],status))
         d=date.today();s=self.store.monthly(d.year,d.month);y=self.store.annual_summary(d.year)
         self.summary.set(
             f"{d:%B %Y} bookkeeping net USD {s['net']/100:,.2f}  |  "
