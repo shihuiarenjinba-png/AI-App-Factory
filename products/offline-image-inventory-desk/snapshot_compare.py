@@ -136,6 +136,38 @@ def compare_snapshots(old,new):
     return {"schema":1,"old_root":old["root"],"new_root":new["root"],"summary":summary,"changes":changes}
 
 
+def describe_scan_errors(errors, language="en", limit=5):
+    """Explain incomplete scans in plain language without exposing exception internals."""
+    if language not in ("en", "ja") or not isinstance(errors, list) or not 1 <= limit <= 20:
+        raise ValueError("Invalid scan error request")
+    reasons = {
+        "PermissionError": ("Access denied. Check file permissions and retry.",
+                            "読み取り権限がありません。アクセス権を確認して再試行してください。"),
+        "FileNotFoundError": ("File disappeared. Check the folder and scan again.",
+                              "ファイルが見つかりません。フォルダを確認して再実行してください。"),
+        "ValueError": ("Invalid, linked, or changed image. Check the file and retry.",
+                       "画像の形式・リンク・読み取り中の変更を確認して再実行してください。"),
+        "OSError": ("File could not be read. Check the drive and retry.",
+                    "ファイルを読み取れません。保存先ドライブを確認して再実行してください。"),
+    }
+    ja = language == "ja"
+    lines = ["比較結果は作成していません。問題を修正し、フォルダを再比較してください。" if ja
+             else "No comparison was created. Resolve these issues, then compare again."]
+    for item in errors[:limit]:
+        if not isinstance(item, dict):
+            raise ValueError("Invalid scan error")
+        name = str(item.get("relative_path", "?"))
+        # JSON-quote filenames so control characters cannot forge report lines.
+        name = json.dumps(name, ensure_ascii=False)
+        reason = reasons.get(item.get("error"), (
+            "Could not read this item. Check the file and retry.",
+            "読み取れません。ファイルを確認して再実行してください。"))[int(ja)]
+        lines.append("- " + name + ": " + reason)
+    if len(errors) > limit:
+        lines.append(("ほか {n} 件" if ja else "{n} more issue(s)").format(n=len(errors)-limit))
+    return "\n".join(lines)
+
+
 def render_delivery_summary(report, language="en", generated_at=None):
     """Human-readable evidence, not a signature or proof of modification time."""
     if language not in ("en", "ja") or not isinstance(report, dict) or report.get("schema") != 1:
@@ -175,7 +207,17 @@ def render_delivery_summary(report, language="en", generated_at=None):
          "Time limitation: report creation time does NOT prove modification or delivery time."),
         ("SHA-256は読み取った内容の比較であり、署名・第三者認証ではありません。" if ja else
          "SHA-256 compares scanned content; NOT a digital signature or third-party certification."),
-        "", "変更明細 / CHANGES", "-" * 40
+        "",
+        "お客様への確認ポイント" if ja else "CLIENT REVIEW: WHAT CHANGED",
+        ("追加=新しい画像、削除=今回のフォルダにない画像、変更=同名でも内容や寸法が異なる画像。" if ja else
+         "Added = new image; Removed = absent from latest folder; Modified = same filename with different content or dimensions."),
+        ("次の操作: 下記の変更ファイルを確認し、納品先と差分を確認してください。" if ja else
+         "Next step: Review the changed filenames below and confirm differences with the recipient."),
+        ("比較方法: 2つのフォルダ内の相対パスを比較します。名前変更は「削除+追加」と表示されます。" if ja else
+         "Comparison matches relative paths in two folders. A renamed file appears as removed + added."),
+        ("変更なしの画像は件数に含まれますが、明細には表示しません。" if ja else
+         "Unchanged images count toward the total but are omitted from details."),
+        "", ("変更ファイルの詳細" if ja else "CHANGED FILE DETAILS"), "-" * 40
     ]
     labels = {"ADDED":"追加" if ja else "Added", "REMOVED":"削除" if ja else "Removed",
               "MODIFIED":"変更" if ja else "Modified"}
@@ -183,7 +225,7 @@ def render_delivery_summary(report, language="en", generated_at=None):
         if row["status"] == "UNCHANGED":
             continue
         lines += [
-            "[" + labels[row["status"]] + "] " + row["relative_path"],
+            "[" + labels[row["status"]] + "] " + json.dumps(row["relative_path"], ensure_ascii=False),
             "  Before SHA-256: " + (row["old_sha256"] or "—"),
             "  After  SHA-256: " + (row["new_sha256"] or "—"),
             "  Before dimensions/bytes: " + str(row["old_dimensions"] or "—") + " / " + str(row["old_bytes"] or "—"),
