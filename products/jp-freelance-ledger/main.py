@@ -83,10 +83,23 @@ class App(tk.Tk):
         text=" ".join([self.v["counterparty"].get(),self.v["memo"].get(),self.v["doctype"].get()])
         result=suggest_category(text,self.v["kind"].get())
         if not result:
-            messagebox.showinfo("勘定科目候補","候補を絞れませんでした。内容を確認して手動で選択してください。")
+            messagebox.showinfo("勘定科目候補","候補を絞れませんでした。摘要や用途を追加し、手動で科目を選択してください。")
             return
-        best=result[0]; self.v["category"].set(best["category"])
-        messagebox.showinfo("勘定科目候補",f'候補: {best["category"]}\n確信度: {best["confidence"]:.0%}\n一致語: {", ".join(best["matched"])}\n\n最終判断は内容を確認してください。')
+        if len(result)>1 and result[0]["confidence"]==result[1]["confidence"]:
+            choices="\n".join(f'・{r["category"]}（根拠: {", ".join(r["matched"])}）' for r in result)
+            messagebox.showinfo("候補が複数あります","同程度の候補があります。自動選択はしません。\n"+choices+"\n\n「科目・帳簿を調べる」から用途を確認してください。")
+            return
+        best=result[0]
+        details=self.store.search_help(best["category"],limit=5,include_advanced=True)
+        help_row=next((a for a in details if a["name"]==best["category"]),None)
+        books=f'\n記録先の帳簿: {help_row["books"]}' if help_row else ""
+        example=f'\n典型例: {help_row["example"]}' if help_row else ""
+        message=(f'候補: {best["category"]}\n確信度（目安）: {best["confidence"]:.0%}'
+                 f'\n根拠語: {", ".join(best["matched"])}{books}{example}'
+                 "\n\nこれは税務上の必要経費・控除可否の判定ではありません。"
+                 "\n確認して入力欄に設定しますか？")
+        if messagebox.askyesno("勘定科目候補の確認",message):
+            self.v["category"].set(best["category"])
     def add(self):
         try:self.store.add(self.v["date"].get(),self.v["kind"].get(),self.v["amount"].get(),self.v["category"].get(),self.v["counterparty"].get(),self.v["doctype"].get(),self.v["docpath"].get(),self.v["memo"].get())
         except LedgerError as e: messagebox.showerror("入力エラー",str(e)); return
