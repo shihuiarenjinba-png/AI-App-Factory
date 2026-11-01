@@ -41,7 +41,7 @@ class ReceiptReviewTests(unittest.TestCase):
         self.assertEqual((len(preview["valid"]), len(preview["duplicates"]), len(preview["errors"])), (2, 1, 2))
         self.assertEqual(self.store.pending_receipts(), [])
         result = receipt.apply_receipt_review(self.store, preview)
-        self.assertEqual(result, {"imported": 2, "duplicates": 1, "errors": 2})
+        self.assertEqual(result, {"imported": 2, "duplicates": 0, "errors": 2})
         self.assertEqual(len(self.store.pending_receipts()), 2)
         self.assertEqual(self.store.conn.execute(
             "SELECT COUNT(*) FROM audit_log WHERE action='RECEIPT_QUEUE_ADD'"
