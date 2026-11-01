@@ -211,9 +211,24 @@ def export_msix_csv(path,rows):
                          len(rows),MSIX_DESKTOP_MAX_SCREENSHOTS])
     atomic_write(path,output.getvalue(),[r["path"] for r in rows])
 
+CHANGE_LABELS = {
+    "en": {"ADDED": "Added", "REMOVED": "Removed", "MODIFIED": "Changed", "UNCHANGED": "Unchanged"},
+    "ja": {"ADDED": "追加", "REMOVED": "削除", "MODIFIED": "変更", "UNCHANGED": "変更なし"},
+}
+
+def comparison_view_rows(report, language, changes_only=False):
+    """Customer-facing labels. Exported evidence retains full SHA-256 and exact codes."""
+    if language not in CHANGE_LABELS:
+        raise ValueError("Unsupported language")
+    labels = CHANGE_LABELS[language]
+    return [(row["relative_path"], labels[row["status"]],
+             row["old_sha256"][:16] or "—", row["new_sha256"][:16] or "—")
+            for row in report["changes"]
+            if not changes_only or row["status"] != "UNCHANGED"]
+
 class Desk:
     def __init__(self,root):
-        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False
+        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False;self.comparison_window=None
         root.geometry("1024x768");root.minsize(850,600)
         body=ttk.Frame(root,padding=12);body.pack(fill="both",expand=True)
         self.heading=ttk.Label(body,font=("Segoe UI",18,"bold"));self.heading.pack(anchor="w")
@@ -343,6 +358,7 @@ class Desk:
 
     def try_demo(self):
         """Demonstrate the exact three-step flow with synthetic temporary files."""
+        self.close_comparison_window()
         self.comparison=None  # Never allow export of a stale real comparison.
         temp=tempfile.TemporaryDirectory(prefix="offline-image-demo-")
         try:
@@ -373,6 +389,8 @@ class Desk:
     def new_snapshot(self):
         folder=filedialog.askdirectory(parent=self.root,title=self.t("snap_new"))
         if not folder:return
+        self.close_comparison_window()
+        self.comparison=None
         try:
             baseline=snapshots.capture_folder(folder,inspect_image)
             if baseline["errors"]:
@@ -387,6 +405,8 @@ class Desk:
     def open_snapshot(self):
         path=filedialog.askopenfilename(parent=self.root,filetypes=[("JSON","*.json")],title=self.t("snap_open"))
         if not path:return
+        self.close_comparison_window()
+        self.comparison=None
         try:
             baseline=snapshots.load_snapshot(path)
             if baseline["errors"]:
@@ -398,7 +418,8 @@ class Desk:
         if self.baseline is None:self.status.set(self.t("snap_none"));return
         folder=filedialog.askdirectory(parent=self.root,title=self.t("snap_compare"))
         if not folder:return
-        # Never allow export of a previous success after a later comparison fails.
+        # Never display or export a previous success after a later comparison fails.
+        self.close_comparison_window()
         self.comparison=None
         try:
             current=snapshots.capture_folder(folder,inspect_image)
@@ -411,22 +432,56 @@ class Desk:
             self.show_comparison(report)
         except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
 
+    def close_comparison_window(self):
+        window=self.comparison_window
+        self.comparison_window=None
+        if window is not None and window.winfo_exists():
+            window.destroy()
+
     def show_comparison(self,report):
-        window=tk.Toplevel(self.root);window.title(self.t("snap_demo_title") if self.demo_mode else self.t("snap_report"))
-        window.geometry("880x500");window.minsize(650,350)
-        frame=ttk.Frame(window,padding=12);frame.pack(fill="both",expand=True)
+        self.close_comparison_window()
+        window=tk.Toplevel(self.root)
+        self.comparison_window=window
+        window.title(self.t("snap_demo_title") if self.demo_mode else self.t("snap_report"))
+        window.geometry("880x520")
+        window.minsize(650,350)
+        frame=ttk.Frame(window,padding=12)
+        frame.pack(fill="both",expand=True)
         ttk.Label(frame,text=self.t("snap_result").format(**report["summary"]),
-                  font=("Segoe UI",12,"bold")).pack(anchor="w",pady=(0,8))
-        table=ttk.Treeview(frame,columns=("file","change","before","after"),show="headings")
-        for key,label,width in (("file",self.t("path"),300),("change","Change / 変更",110),
-                                ("before","Before SHA-256",200),("after","After SHA-256",200)):
-            table.heading(key,text=label);table.column(key,width=width,stretch=key=="file")
-        for row in report["changes"]:
-            table.insert("","end",values=(row["relative_path"],row["status"],
-                          row["old_sha256"][:16],row["new_sha256"][:16]))
-        scroll=ttk.Scrollbar(frame,orient="vertical",command=table.yview)
+                  font=("Segoe UI",12,"bold")).pack(anchor="w",pady=(0,6))
+        guide=("Review changes and save a client-readable TXT or CSV/JSON evidence. "
+               "The hashes shown are previews; exports contain full SHA-256."
+               if self.language=="en" else
+               "変更を確認し、納品先向けTXTまたはCSV/JSONの証跡を保存できます。"
+               "画面のハッシュ値は短縮表示で、出力にはSHA-256全体が含まれます。")
+        ttk.Label(frame,text=guide,wraplength=830).pack(anchor="w",pady=(0,6))
+        actions=ttk.Frame(frame)
+        actions.pack(fill="x",pady=(0,7))
+        ttk.Button(actions,text=("Save client summary (TXT)" if self.language=="en" else "お客様向けTXTを保存"),
+                   command=self.export_delivery_summary).pack(side="left",padx=(0,8))
+        ttk.Button(actions,text=("Export CSV / JSON" if self.language=="en" else "CSV / JSONを保存"),
+                   command=self.export_evidence).pack(side="left",padx=(0,8))
+        only_changes=tk.BooleanVar(value=True)
+        table_frame=ttk.Frame(frame)
+        table_frame.pack(fill="both",expand=True)
+        table=ttk.Treeview(table_frame,columns=("file","change","before","after"),show="headings")
+        for key,label,width in (("file",self.t("path"),280),
+                                ("change","Change" if self.language=="en" else "変更内容",110),
+                                ("before","Before SHA-256",190),("after","After SHA-256",190)):
+            table.heading(key,text=label)
+            table.column(key,width=width,stretch=key=="file")
+        def redraw():
+            for item in table.get_children():
+                table.delete(item)
+            for values in comparison_view_rows(report,self.language,only_changes.get()):
+                table.insert("","end",values=values)
+        ttk.Checkbutton(actions,text=("Changed files only" if self.language=="en" else "変更した画像のみ"),
+                        variable=only_changes,command=redraw).pack(side="right")
+        scroll=ttk.Scrollbar(table_frame,orient="vertical",command=table.yview)
         table.configure(yscrollcommand=scroll.set)
-        table.pack(side="left",fill="both",expand=True);scroll.pack(side="right",fill="y")
+        table.pack(side="left",fill="both",expand=True)
+        scroll.pack(side="right",fill="y")
+        redraw()
 
     def export_delivery_summary(self):
         if self.comparison is None:self.status.set(self.t("snap_none"));return
