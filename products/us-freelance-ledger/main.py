@@ -216,8 +216,10 @@ class App(tk.Tk):
 
     def refresh(self):
         for i in self.tree.get_children():self.tree.delete(i)
+        bank_status=match_statuses(self.store.conn)
         for r in self.store.rows():
-            self.tree.insert("","end",values=(r["txn_date"],r["kind"],f'USD {r["amount_cents"]/100:,.2f}',r["category"],r["payer_payee"],r["memo"]))
+            status={"CLEARED":"Matched","RECONCILED":"Checked"}.get(bank_status.get(r["id"]),"Not matched")
+            self.tree.insert("","end",iid=str(r["id"]),values=(r["txn_date"],r["kind"],f'USD {r["amount_cents"]/100:,.2f}',r["category"],r["payer_payee"],r["memo"],status))
         d=date.today();s=self.store.monthly(d.year,d.month);y=self.store.annual_summary(d.year)
         self.summary.set(
             f"{d:%B %Y} bookkeeping net USD {s['net']/100:,.2f}  |  "
