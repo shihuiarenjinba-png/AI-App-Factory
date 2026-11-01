@@ -14,19 +14,34 @@ ROUNDING = {
     "切上げ": ROUND_UP,
 }
 
+def _validated_tax_inputs(amount, rate, rounding):
+    try:
+        yen = Decimal(str(amount))
+        tax_rate = Decimal(str(rate))
+    except (ValueError, ArithmeticError) as exc:
+        raise ValueError("金額・税率を数値で入力してください") from exc
+    if (not yen.is_finite() or yen < 0 or yen != yen.to_integral_value()
+            or yen > Decimal("1000000000000000")):
+        raise ValueError("金額は0円以上の整数で入力してください")
+    if not tax_rate.is_finite() or tax_rate < 0 or tax_rate > 1:
+        raise ValueError("税率は0以上1以下の小数で入力してください")
+    if rounding not in ROUNDING:
+        raise ValueError("端数処理方法を確認してください")
+    return yen, tax_rate
+
+
 def consumption_tax_from_net(net_yen, rate="0.10", rounding="切捨て"):
-    net=Decimal(str(net_yen))
-    r=Decimal(str(rate))
-    if net < 0 or r < 0: raise ValueError("金額・税率は0以上")
-    tax=(net*r).quantize(Decimal("1"), rounding=ROUNDING.get(rounding, ROUND_DOWN))
-    return {"net":int(net), "tax":int(tax), "gross":int(net+tax), "rate":str(r)}
+    net, r = _validated_tax_inputs(net_yen, rate, rounding)
+    tax = (net*r).quantize(Decimal("1"), rounding=ROUNDING[rounding])
+    return {"net": int(net), "tax": int(tax), "gross": int(net+tax), "rate": str(r)}
+
 
 def consumption_tax_from_gross(gross_yen, rate="0.10", rounding="切捨て"):
-    gross=Decimal(str(gross_yen)); r=Decimal(str(rate))
-    if gross < 0 or r < 0: raise ValueError("金額・税率は0以上")
-    if r == 0: return {"net":int(gross),"tax":0,"gross":int(gross),"rate":"0"}
-    net=(gross/(Decimal("1")+r)).quantize(Decimal("1"), rounding=ROUNDING.get(rounding, ROUND_DOWN))
-    return {"net":int(net),"tax":int(gross-net),"gross":int(gross),"rate":str(r)}
+    gross, r = _validated_tax_inputs(gross_yen, rate, rounding)
+    if r == 0:
+        return {"net": int(gross), "tax": 0, "gross": int(gross), "rate": "0"}
+    net = (gross/(Decimal("1")+r)).quantize(Decimal("1"), rounding=ROUNDING[rounding])
+    return {"net": int(net), "tax": int(gross-net), "gross": int(gross), "rate": str(r)}
 
 def validate_jp_depreciation_method(asset_class: str, first_use_date: str, method: str):
     d=date.fromisoformat(first_use_date)
