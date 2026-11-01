@@ -3,6 +3,7 @@ from datetime import date
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,LedgerError,Store,suggest_category
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
+from csv_review import CSVReviewError, review_csv, apply_csv_import
 
 class App(tk.Tk):
     def __init__(self):
@@ -28,7 +29,12 @@ class App(tk.Tk):
         ttk.Button(f,text="勘定科目を推測",command=self.suggest).grid(row=11,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="記帳する",command=self.add).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="税率・固定資産",command=self.tax_assets).grid(row=13,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="CSV出力",command=self.export).grid(row=14,column=0,sticky="ew",pady=4)
+        csv_menu_button=ttk.Menubutton(f,text="CSV 入出力")
+        csv_menu=tk.Menu(csv_menu_button,tearoff=False)
+        csv_menu.add_command(label="CSVを確認して取り込む",command=self.import_csv)
+        csv_menu.add_command(label="CSVに書き出す",command=self.export)
+        csv_menu_button["menu"]=csv_menu
+        csv_menu_button.grid(row=14,column=0,sticky="ew",pady=4)
         ttk.Button(f,text="帳簿バックアップ",command=self.backup).grid(row=14,column=1,sticky="ew",pady=4); f.columnconfigure(1,weight=1)
         r=ttk.Labelframe(p,text="帳簿",padding=10); p.add(r,weight=3); ttk.Label(r,textvariable=self.summary,font=("Yu Gothic UI",11,"bold")).pack(anchor="w")
         cols=("date","kind","amount","category","counterparty","memo"); self.tree=ttk.Treeview(r,columns=cols,show="headings")
@@ -108,6 +114,26 @@ class App(tk.Tk):
                 text="\n".join(f'{r["year"]}: {r["business_depreciation"]:,}円 ({r["method_note"]})' for r in rows[:12])
                 messagebox.showinfo("減価償却",text+"\n\n過年度差額は自動再計算できますが、申告訂正は自動確定しません。")
         except Exception as e:messagebox.showerror("計算エラー",str(e))
+    def import_csv(self):
+        path=filedialog.askopenfilename(title="CSVを確認して取り込む",filetypes=[("CSV","*.csv")])
+        if not path:return
+        try:
+            preview=review_csv(path,self.store)
+            problems="\\n".join(f'行{r["line"]}: {r["reason"]}' for r in preview["errors"][:5])
+            summary=(f'新規 {len(preview["valid"])}件 / 重複 {len(preview["duplicates"])}件 / 要修正 {len(preview["errors"])}件'
+                     + (f'\\n\\n要修正の例:\\n{problems}' if problems else "")
+                     + "\\n\\n新規の取引だけ帳簿に登録します。要修正行は登録しません。続行しますか？")
+            if not preview["valid"]:
+                messagebox.showinfo("CSV取り込み確認",summary.replace("続行しますか？","新規に登録する取引はありません。"))
+                return
+            if not messagebox.askyesno("CSV取り込み確認",summary):return
+            result=apply_csv_import(self.store,preview)
+            self.refresh()
+            messagebox.showinfo("CSV取り込み完了",f'新規 {result["imported"]}件を登録しました。\\n重複 {result["duplicates"]}件 / 要修正 {result["errors"]}件は登録していません。')
+        except (CSVReviewError,OSError) as exc:
+            messagebox.showerror("CSV取り込みエラー",str(exc))
+        except Exception as exc:
+            messagebox.showerror("CSV取り込みエラー",f"安全のため登録を取り消しました。\\n{exc}")
     def export(self):
         x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
         if x:self.store.export_csv(x); messagebox.showinfo("CSV","出力しました")
