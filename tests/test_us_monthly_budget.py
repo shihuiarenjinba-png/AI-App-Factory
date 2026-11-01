@@ -1,4 +1,5 @@
 """Functional fixtures for monthly budget review, not a tax-budget engine."""
+import ast
 import importlib.util
 import sys
 import tempfile
@@ -12,6 +13,13 @@ from budget import MonthlyBudgets
 
 
 class BudgetTests(unittest.TestCase):
+    def test_ui_entrypoint_parses_and_has_beginner_budget_action(self):
+        source = (PRODUCT / 'main.py').read_text(encoding='utf-8')
+        tree = ast.parse(source)
+        self.assertIn('Plan monthly spending', source)
+        app = next(n for n in tree.body if isinstance(n, ast.ClassDef) and n.name == 'App')
+        self.assertIn('monthly_budget', {n.name for n in app.body if isinstance(n, ast.FunctionDef)})
+
     def test_monthly_split_and_journal_report_invariants(self):
         with tempfile.TemporaryDirectory() as d:
             s = Store(Path(d) / "books.sqlite3")
@@ -69,11 +77,11 @@ class BudgetTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             s = Store(Path(d) / "books.sqlite3")
             b = MonthlyBudgets(s)
-            for month in ("2026-00", "2026-13", "2026-1", "bad", "2026-11-01"):
+            for month in ("2026-00", "2026-13", "2026-1", "0000-01", "bad", "2026-11-01"):
                 with self.subTest(month=month), self.assertRaises(BookError):
                     b.report(month)
             for code, value in (("9999", "20"), ("1000", "20"), ("5200", "-1"),
-                                ("5200", "NaN"), ("5200", "Infinity")):
+                                ("5200", "NaN"), ("5200", "Infinity"), ("5200", "")):
                 with self.subTest(code=code, value=value), self.assertRaises(BookError):
                     b.set_budget("2026-11", code, value)
             s.post("2026-12-31", "year end", [("5300", "1.00", ""), ("1100", "", "1.00")])
