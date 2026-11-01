@@ -4,6 +4,7 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import TYPES,BookError,Store,suggest_entry
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
 from budget_ui import open_budget_window
+from cash_movement_ui import open_cash_movement_window
 class App(tk.Tk):
  def __init__(self):
   super().__init__();self.title("複式簿記デスク 日本版");self.geometry("1180x760");self.minsize(980,650);self.s=Store();self.protocol("WM_DELETE_WINDOW",self.close)
@@ -21,7 +22,8 @@ class App(tk.Tk):
   ttk.Button(f,text="記帳",command=self.post).grid(row=12,column=0,sticky="ew");ttk.Button(f,text="科目追加",command=self.add_account).grid(row=12,column=1,sticky="ew");ttk.Button(f,text="期間を締める",command=self.lock).grid(row=12,column=2,sticky="ew")
   ttk.Button(f,text="税率・固定資産計算",command=self.tax_assets).grid(row=13,column=0,columnspan=3,sticky="ew",pady=3)
   ttk.Button(f,text="CSV出力",command=self.export).grid(row=14,column=0,sticky="ew",pady=4)
-  ttk.Button(f,text="月の予算と実績",command=self.open_budget).grid(row=14,column=1,columnspan=2,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
+  ttk.Button(f,text="月の予算と実績",command=self.open_budget).grid(row=14,column=1,sticky="ew",pady=4)
+  ttk.Button(f,text="お金の出入りを確認",command=self.open_cash_movement).grid(row=14,column=2,sticky="ew",pady=4);f.columnconfigure(0,weight=2)
   nb=ttk.Notebook(p);p.add(nb,weight=3);j=ttk.Frame(nb,padding=8);r=ttk.Frame(nb,padding=8);nb.add(j,text="仕訳帳");nb.add(r,text="帳票")
   self.tree=ttk.Treeview(j,columns=("d","x","a","db","cr"),show="headings")
   for c,t in zip(("d","x","a","db","cr"),("日付","摘要","勘定科目","借方","貸方")):self.tree.heading(c,text=t)
@@ -120,5 +122,6 @@ class App(tk.Tk):
   x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
   if x:self.s.export(x);messagebox.showinfo("CSV","出力しました")
  def open_budget(self):open_budget_window(self,self.s)
+ def open_cash_movement(self):open_cash_movement_window(self,self.s)
  def close(self):self.s.close();self.destroy()
 if __name__=="__main__":App().mainloop()
