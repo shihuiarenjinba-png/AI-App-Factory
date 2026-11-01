@@ -5,6 +5,7 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,METHODS,LedgerError,Store,suggest_category,review_requirements
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
 from receipt_queue import enqueue_receipts, list_receipts, link_receipt
+from receipt_integrity import audit_receipts
 
 class App(tk.Tk):
     def __init__(self):
@@ -43,6 +44,7 @@ class App(tk.Tk):
         receipt_actions=ttk.Frame(r);receipt_actions.pack(fill="x",pady=(6,2))
         ttk.Button(receipt_actions,text="Add receipts / PDFs",command=self.add_receipts).pack(side="left",padx=(0,6))
         ttk.Button(receipt_actions,text="Review receipt queue",command=self.review_receipts).pack(side="left",padx=(0,6))
+        ttk.Button(receipt_actions,text="Check receipt files",command=self.check_receipt_files).pack(side="left",padx=(0,6))
         ttk.Label(r,textvariable=self.receipt_summary).pack(anchor="w")
         cols=("date","kind","amount","category","party","memo");self.tree=ttk.Treeview(r,columns=cols,show="headings")
         for c,t in zip(cols,["Date","Type","Amount","Category","Payer / payee","Memo"]):
@@ -98,6 +100,27 @@ class App(tk.Tk):
             self.v["doctype"].set("Receipt")
             win.destroy()
         ttk.Button(win,text="Use selected file for this transaction",command=choose).pack(pady=(2,12))
+
+    def check_receipt_files(self):
+        """Help beginners find missing or changed supporting files before export."""
+        results = audit_receipts(self.store.conn)
+        if not results:
+            messagebox.showinfo("Receipt files", "No receipt files have been added yet.")
+            return
+        ok = sum(r["status"] == "OK" for r in results)
+        issues = [r for r in results if r["status"] != "OK"]
+        summary = (
+            f"{ok} file(s) match the saved reference; {len(issues)} need attention.\\n"
+            "Files are not stored inside the ledger backup. Keep your originals safely.\\n"
+            "This check does not decide tax deductibility or recordkeeping compliance."
+        )
+        if issues:
+            details = "\\n".join(
+                f"- {Path(r['path']).name}: {r['reason']}" for r in issues[:8]
+            )
+            messagebox.showwarning("Receipt files to review", summary + "\\n\\n" + details)
+        else:
+            messagebox.showinfo("Receipt file check", summary)
 
     def change_method(self):
         if not messagebox.askyesno(
