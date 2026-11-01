@@ -328,9 +328,9 @@ def run_packaged(out, exe, source_sha, calibration):
             if not edits:
                 raise AssertionError("Native dialog has no editable folder/file path field")
             field = edits[-1]
-            field.set_edit_text(str(path))
-            time.sleep(0.35)
-            dialog.set_focus()
+            field.click_input()
+            pyautogui.hotkey("ctrl", "a")
+            pyautogui.write(str(path), interval=0.002)
             pyautogui.press("enter")
             time.sleep(1.0)
             # Some native dialogs first navigate into the typed folder.
@@ -341,6 +341,16 @@ def run_packaged(out, exe, source_sha, calibration):
                     buttons[-1].click_input()
                     time.sleep(0.8)
             if win32gui.IsWindow(dialog.handle) and win32gui.IsWindowVisible(dialog.handle):
+                diagnostics = [
+                    {"type": c.element_info.control_type, "text": c.window_text(),
+                     "id": c.element_info.automation_id}
+                    for c in uia.descendants()
+                ]
+                (out / "native-dialog-debug.json").write_text(
+                    json.dumps({"requested_path": str(path), "controls": diagnostics},
+                               ensure_ascii=False, indent=2), encoding="utf-8")
+                dialog.capture_as_image().save(str(out / "native-dialog-debug.png"))
+                print("NATIVE_DIALOG_DIAGNOSTICS", json.dumps(diagnostics, ensure_ascii=False))
                 raise AssertionError("Native dialog remained open after selecting " + str(path))
 
         def action(button, *paths):
