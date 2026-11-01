@@ -88,4 +88,49 @@ class SnapshotTests(unittest.TestCase):
         p=self.image("a.png",tail=b"hello")
         self.assertEqual(self.capture()["files"][0]["sha256"],hashlib.sha256(p.read_bytes()).hexdigest())
 
+
+    def test_delivery_summary_export_and_restart(self):
+        p=self.image("a.png",tail=b"first");self.image("gone.png")
+        old=self.capture();old_sha=hashlib.sha256(p.read_bytes()).hexdigest()
+        p.write_bytes(p.read_bytes().replace(b"first",b"other"))
+        (self.folder/"gone.png").unlink();added=self.image("new.png")
+        report=snap.compare_snapshots(old,self.capture())
+        from datetime import datetime, timezone
+        moment=datetime(2026,11,1,14,0,tzinfo=timezone.utc)
+        txt=snap.render_delivery_summary(report,"en",moment)
+        self.assertEqual(txt,snap.render_delivery_summary(report,"en",moment))
+        for marker in ("Added 1","Removed 1","Modified 1","2026-11-01 14:00:00 UTC",
+                       "Time limitation","Read/link errors: 0","no deletion",old_sha,
+                       hashlib.sha256(p.read_bytes()).hexdigest(),
+                       hashlib.sha256(added.read_bytes()).hexdigest()):
+            self.assertIn(marker,txt)
+        self.assertIn("日時の限界",snap.render_delivery_summary(report,"ja",moment))
+        before={f.name:f.read_bytes() for f in self.folder.glob("*.png")}
+        output=self.base/"summary.txt"
+        snap.write_delivery_summary(output,report,app.atomic_write,"ja")
+        self.assertIn("SHA-256",output.read_text(encoding="utf-8"))
+        self.assertEqual(before,{f.name:f.read_bytes() for f in self.folder.glob("*.png")})
+        with self.assertRaises(ValueError):
+            snap.write_delivery_summary(self.folder/"summary.txt",report,app.atomic_write)
+
+    def test_summary_errors_and_1024_width(self):
+        self.image("a.png");old=self.capture();report=snap.compare_snapshots(old,self.capture())
+        import copy
+        corrupt=copy.deepcopy(report);corrupt["summary"]["ADDED"]=1
+        with self.assertRaises(ValueError):snap.render_delivery_summary(corrupt)
+        corrupt=copy.deepcopy(report);corrupt["changes"][0]["old_sha256"]="invalid"
+        with self.assertRaises(ValueError):snap.render_delivery_summary(corrupt)
+        def denied(path):raise PermissionError("denied")
+        with self.assertRaises(ValueError):
+            snap.compare_snapshots(old,snap.capture_folder(self.folder,denied))
+        link=self.folder/"linked.png"
+        try:link.symlink_to(self.folder/"a.png")
+        except (OSError,NotImplementedError):pass
+        else:
+            with self.assertRaises(ValueError):snap.compare_snapshots(old,self.capture())
+        source=Path(app.__file__).read_text(encoding="utf-8")
+        self.assertIn('root.geometry("1024x768")',source)
+        self.assertIn('summarybar=ttk.Frame(body)',source)
+        self.assertIn('command=self.export_delivery_summary',source)
+
 if __name__=="__main__":unittest.main()
