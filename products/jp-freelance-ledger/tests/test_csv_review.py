@@ -65,10 +65,11 @@ class CSVReviewTests(unittest.TestCase):
             self.row(category="税額自動確定"),
             self.row(kind="米国"),
             self.row(amount="0"),
+            self.row(amount="999999999999999999999"),
             self.row(),
         ])
         preview = review_csv(self.path, self.store)
-        self.assertEqual(len(preview["errors"]), 5)
+        self.assertEqual(len(preview["errors"]), 6)
         self.assertEqual(len(preview["valid"]), 1)
         self.assertEqual(apply_csv_import(self.store, preview)["imported"], 1)
 
