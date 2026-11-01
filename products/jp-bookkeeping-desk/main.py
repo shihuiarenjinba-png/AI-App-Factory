@@ -2,6 +2,7 @@ import tkinter as tk
 from datetime import date
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import TYPES,BookError,Store,suggest_entry
+from monthly_close import export_month_end_package
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
 from budget_ui import open_budget_window
 from cash_movement_ui import open_cash_movement_window
@@ -118,6 +119,16 @@ class App(tk.Tk):
     lines=[f'{r["year"]}: {r["business_depreciation"]:,}円 / 月数 {r["months"]} / {r["method_note"]}' for r in rows[:12]]
     messagebox.showinfo("減価償却スケジュール","\n".join(lines)+"\n\n※税務上の方法・率・耐用年数は最新の国税庁資料と届出状況を確認してください。")
   except Exception as e:messagebox.showerror("計算エラー",str(e))
+ def month_end_pack(self):
+  d=date.today();year=simpledialog.askinteger("月末締めパック","年",initialvalue=d.year,minvalue=2000);month=simpledialog.askinteger("月末締めパック","月",initialvalue=d.month,minvalue=1,maxvalue=12)
+  out=filedialog.askdirectory(title="月末締めパックの保存先")
+  if not out or year is None or month is None:return
+  try:
+   result=export_month_end_package(self.s,year,month,out)
+   msg=f'HTML: {result["html"]}\nCSV: {result["csv"]}\nJSON: {result["json"]}'
+   msg+=f'\nPDF: {result["pdf"]}' if result["pdf_generated"] else "\nPDF: この環境では生成できませんでした（HTMLは保存済み）"
+   messagebox.showinfo("月末締めパック",msg)
+  except Exception as e:messagebox.showerror("月末締めパック",str(e))
  def export(self):
   x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
   if x:self.s.export(x);messagebox.showinfo("CSV","出力しました")
