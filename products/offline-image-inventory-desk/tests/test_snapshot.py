@@ -134,6 +134,41 @@ class SnapshotTests(unittest.TestCase):
         self.assertIn('command=self.export_delivery_summary',source)
 
 
+    def test_client_report_instructions_and_safe_filenames(self):
+        self.image("a.png")
+        report=snap.compare_snapshots(self.capture(),self.capture())
+        from datetime import datetime, timezone
+        when=datetime(2026,11,2,tzinfo=timezone.utc)
+        en=snap.render_delivery_summary(report,"en",when)
+        ja=snap.render_delivery_summary(report,"ja",when)
+        for phrase in ("CLIENT REVIEW: WHAT CHANGED", "Next step:", "renamed file",
+                       "Unchanged images", "No changes detected"):
+            self.assertIn(phrase,en)
+        for phrase in ("お客様への確認ポイント", "次の操作:", "名前変更", "変更なし"):
+            self.assertIn(phrase,ja)
+        # A filename containing a newline must not forge a report heading.
+        altered=json.loads(json.dumps(report))
+        altered["changes"][0]["relative_path"]="photo\\nFAKE VERIFIED"
+        altered["changes"][0]["status"]="MODIFIED"
+        altered["summary"]={"ADDED":0,"REMOVED":0,"MODIFIED":1,"UNCHANGED":0}
+        safe=snap.render_delivery_summary(altered,"en",when)
+        self.assertIn("photo\\\\nFAKE VERIFIED",safe)
+        self.assertNotIn("photo\\nFAKE VERIFIED",safe)
+
+    def test_scan_errors_explain_next_step_both_languages(self):
+        errors=[{"relative_path":"private.png","error":"PermissionError"},
+                {"relative_path":"bad.png","error":"ValueError"},
+                {"relative_path":"gone.png","error":"FileNotFoundError"}]
+        en=snap.describe_scan_errors(errors,"en",limit=2)
+        ja=snap.describe_scan_errors(errors,"ja",limit=2)
+        self.assertIn("Access denied",en)
+        self.assertIn("Invalid, linked",en)
+        self.assertIn("1 more issue",en)
+        self.assertIn("読み取り権限",ja)
+        self.assertIn("再実行",ja)
+        with self.assertRaises(ValueError):
+            snap.describe_scan_errors(errors,"fr")
+
     def test_failed_rescan_clears_previous_exportable_report(self):
         """A prior successful comparison must never be exportable after read failure."""
         from unittest.mock import Mock, patch
