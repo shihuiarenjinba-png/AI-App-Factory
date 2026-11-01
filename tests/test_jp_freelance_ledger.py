@@ -9,6 +9,13 @@ class T(unittest.TestCase):
  def test_local_account_suggestion(self):
   x=m.suggest_category("NTT 通信回線の月額料金","経費")
   self.assertTrue(x); self.assertEqual(x[0]["category"],"通信費")
+ def test_short_latin_keyword_does_not_guess_advertising(self):
+  self.assertEqual(m.suggest_category("Adobe subscription renewal","経費"),[])
+  self.assertTrue(any(x["category"]=="広告宣伝費" for x in m.suggest_category("Google Ads 広告","経費")))
+  self.assertEqual(m.suggest_category("住所 address","経費"),[])
+ def test_suggestion_ui_syntax(self):
+  p=P.with_name("main.py")
+  compile(p.read_text(encoding="utf-8"),str(p),"exec")
  def test_annual_net(self):
   with tempfile.TemporaryDirectory() as d:
    s=m.Store(Path(d)/"x.db");s.add("2026-01-01","収入","10000","売上高");s.add("2026-02-01","経費","2000","通信費");self.assertEqual(s.annual_summary(2026)["差引"],8000);s.close()
