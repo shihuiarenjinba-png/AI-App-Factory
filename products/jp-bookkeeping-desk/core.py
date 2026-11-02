@@ -4,6 +4,17 @@ from datetime import date
 from decimal import Decimal,InvalidOperation,ROUND_HALF_UP
 from pathlib import Path
 try:
+ from receipt_event_history import ReceiptHistory
+except ModuleNotFoundError:
+ import importlib.util as _history_importlib
+ import sys as _history_sys
+ _history_path=Path(__file__).with_name("receipt_event_history.py")
+ _history_spec=_history_importlib.spec_from_file_location(f"{__name__}_receipt_event_history",_history_path)
+ _history_module=_history_importlib.module_from_spec(_history_spec)
+ _history_sys.modules[_history_spec.name]=_history_module
+ _history_spec.loader.exec_module(_history_module)
+ ReceiptHistory=_history_module.ReceiptHistory
+try:
     from account_catalog import ACCOUNT_CATALOG,BOOK_GUIDE
 except ModuleNotFoundError:
     import importlib.util as _importlib_util
@@ -70,7 +81,7 @@ def y(v):
  return int(d.quantize(Decimal("1"),rounding=ROUND_HALF_UP))
 class Store:
  def __init__(self,path=None):
-  self.path=Path(path) if path else pth();self.path.parent.mkdir(parents=True,exist_ok=True);self.conn=sqlite3.connect(self.path);self.conn.row_factory=sqlite3.Row;self.schema();self.seed();self.seed_help()
+  self.path=Path(path) if path else pth();self.path.parent.mkdir(parents=True,exist_ok=True);self.conn=sqlite3.connect(self.path);self.conn.row_factory=sqlite3.Row;self.schema();self.seed();self.seed_help();self.receipt_history=ReceiptHistory(self.conn)
  def schema(self):
   self.conn.executescript("""PRAGMA foreign_keys=ON;
   CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL,type TEXT NOT NULL CHECK(type IN ('資産','負債','純資産','収益','費用')),active INTEGER NOT NULL DEFAULT 1);
@@ -100,14 +111,26 @@ class Store:
   q=(q or "").strip()
   if not q:return []
   like=f"%{q}%";return [dict(r) for r in self.conn.execute("SELECT book,purpose,keywords FROM book_help WHERE book LIKE ? OR purpose LIKE ? OR keywords LIKE ? ORDER BY book LIMIT ?",(like,like,like,max(1,min(int(limit),20))))]
- def enqueue_receipts(self,paths):
+ def enqueue_receipts(self,paths,at=None):
+  """Add new receipts with atomic queue+event writes; never invent old history."""
   n=0
-  with self.conn:
-   for p in paths:
-    p=str(p).strip()
-    if p:
-     cur=self.conn.execute("INSERT OR IGNORE INTO receipt_queue(file_path) VALUES(?)",(p,));n+=cur.rowcount
+  for p in paths:
+   p=str(p).strip()
+   if p:
+    try:
+     _,added=self.receipt_history.add(p,at=at)
+    except ValueError as e:raise BookError(str(e)) from e
+    n+=int(added)
   return n
+ def receipts(self):
+  return [dict(r) for r in self.conn.execute(
+   "SELECT id,file_path,status,created_at FROM receipt_queue ORDER BY id")]
+ def set_receipt_status(self,receipt_id,status,at=None):
+  """Manual receipt queue state only; does not post a journal or approve tax."""
+  try:return self.receipt_history.transition(int(receipt_id),status,at=at)
+  except (ValueError,TypeError) as e:raise BookError(str(e)) from e
+ def receipt_month_end(self,year,month):
+  return self.receipt_history.replay(year,month)
  def accounts(self):return [dict(r) for r in self.conn.execute("SELECT * FROM accounts WHERE active=1 ORDER BY code")]
  def add_account(self,code,name,t):
   if not code.strip() or not name.strip() or t not in TYPES:raise BookError("科目コード・名称・区分を確認してください")
