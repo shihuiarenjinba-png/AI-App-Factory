@@ -62,6 +62,16 @@ class BankCSVPreviewTests(unittest.TestCase):
         self.assertIn("DUPLICATE_CSV_CANDIDATE", result["rows"][1]["issues"])
         self.assertIn("NO_LEDGER_CANDIDATE", result["rows"][2]["issues"])
 
+    def test_same_day_difference_candidate_is_not_an_auto_match(self):
+        self.write_rows([["2026-10-12", "50.26", "credit", "USD"]])
+        before = self.fingerprint()
+        result = self.preview()
+        self.assertEqual(result["review_required"], 1)
+        self.assertEqual(result["rows"][0]["ledger_candidate_ids"], [])
+        self.assertEqual(result["rows"][0]["difference_candidates"],
+                         [{"transaction_id": self.tid, "difference_cents": 1}])
+        self.assertEqual(self.fingerprint(), before)
+
     def test_invalid_sign_date_and_missing_amount_never_post(self):
         self.write_rows([["2026-02-30", "10.00", "credit", "USD"],
                          ["2026-10-12", "-50.25", "credit", "USD"],
