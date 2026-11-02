@@ -193,7 +193,7 @@ def export_month_end_package(store,year,month,out_dir):
     if edge:
         try:
             cp=subprocess.run([edge,"--headless","--disable-gpu","--no-pdf-header-footer",f"--print-to-pdf={pdf_path}",html_path.resolve().as_uri()],
-                              stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=60)
+                              stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL,timeout=60)
             pdf_ok=(cp.returncode==0 and pdf_path.exists() and pdf_path.stat().st_size>0)
         except Exception:pdf_ok=False
     return {"html":str(html_path),"csv":str(csv_path),"json":str(json_path),"pdf":str(pdf_path) if pdf_ok else None,"pdf_generated":pdf_ok}
