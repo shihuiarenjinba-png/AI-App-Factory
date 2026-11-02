@@ -146,6 +146,11 @@ def launch_exe(exe, appdata, output, label):
         if shot.width < 300 or shot.height < 250:
             raise RuntimeError("Packaged GUI screenshot too small")
         shot.save(output / (label + "-packaged.png"))
+        area = get_work_area()
+        if (bounds[0] < area[0] or bounds[1] < area[1] or
+                bounds[2] > area[2] or bounds[3] > area[3]):
+            raise RuntimeError("Packaged window clipped by Windows work area: "
+                               + str(bounds) + " vs " + str(area))
         dpi = None
         try:
             dpi = windows().GetDpiForWindow(hwnd)
