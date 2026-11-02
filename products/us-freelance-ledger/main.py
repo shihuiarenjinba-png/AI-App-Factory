@@ -29,7 +29,12 @@ def _work_area(root):
                 return area.left, area.top, area.right - area.left, area.bottom - area.top
         except (AttributeError, OSError, ValueError):
             pass
-    return 0, 0, root.winfo_screenwidth(), root.winfo_screenheight()
+    width, height = root.winfo_screenwidth(), root.winfo_screenheight()
+    if sys.platform == "win32":
+        # SPI failure is not evidence that the taskbar is absent. Keep a
+        # conservative inset on all four sides rather than hiding controls.
+        return 64, 64, max(1, width - 128), max(1, height - 128)
+    return 0, 0, width, height
 
 
 def _window_bounds(area):
