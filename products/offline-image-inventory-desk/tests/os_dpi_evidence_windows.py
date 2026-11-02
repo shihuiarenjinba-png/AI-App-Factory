@@ -8,7 +8,9 @@ import ctypes
 import hashlib
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
+import uuid
 
 
 def dpi_gate(target_percent, system_dpi, monitor_dpi, per_monitor_aware):
@@ -59,6 +61,9 @@ def os_dpi_observation():
 
 def run(exe, receipt_path, out, source_sha, calibration):
     out.mkdir(parents=True, exist_ok=True)
+    # Each real Windows OS scaling session needs a distinct capture identity.
+    session_id = uuid.uuid4().hex
+    observed_at_utc = datetime.now(timezone.utc).isoformat()
     exe_bytes = exe.read_bytes()
     digest = hashlib.sha256(exe_bytes).hexdigest()
     receipt = json.loads(receipt_path.read_text(encoding="utf-8-sig"))
@@ -96,9 +101,14 @@ def run(exe, receipt_path, out, source_sha, calibration):
                     or replay.get("client_html_sha256") is None):
                 raise ValueError("REAL_OS_DPI_EXACT_EXE_E2E_MISMATCH")
             record.update(status="CLOUD_REAL_OS_DPI_GUI_E2E_PASS_NOT_LOCAL_NOT_HUMAN",
-                          packaged_gui_e2e=True)
+                          packaged_gui_e2e=True,
+                          replay_receipt_sha256=hashlib.sha256(
+                              (target_dir / "packaged-exe-e2e-receipt.json").read_bytes()
+                          ).hexdigest())
         results[str(target)] = record
-    result = {"classification": "CLOUD_WINDOWS_OS_DPI_EVIDENCE_NOT_LOCAL_NOT_HUMAN",
+    result = {"evidence_version": 2, "session_id": session_id,
+              "observed_at_utc": observed_at_utc,
+              "classification": "CLOUD_WINDOWS_OS_DPI_EVIDENCE_NOT_LOCAL_NOT_HUMAN",
               "source_sha": source_sha, "exe_sha256": digest,
               "observation": observation, "measurement_error": measurement_error,
               "targets": results,
