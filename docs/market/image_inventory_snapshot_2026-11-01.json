@@ -1,0 +1,100 @@
+{
+  "schema": 1,
+  "checked_on": "2026-11-01",
+  "product": "offline-image-inventory-desk",
+  "status": "MARKET_FIT_HOLD",
+  "score": 64,
+  "score_breakdown": {
+    "problem_severity": 14,
+    "differentiation": 11,
+    "willingness_to_pay": 6,
+    "usability": 10,
+    "trust_privacy": 9,
+    "discoverability": 9,
+    "implementation_risk": 5
+  },
+  "buyer": "Small production studio or archive staff handing off client image folders",
+  "why_pay_hypothesis": "One-screen, read-only delivery change evidence showing added, missing and same-name changed images with SHA-256 and dimensions, exported as CSV/JSON.",
+  "why_pay_verified": false,
+  "direct_competitors": [
+    {
+      "name": "Beyond Compare",
+      "url": "https://beyond-compare.com/shop/pricing",
+      "price": "$35 Standard / $70 Pro per user"
+    },
+    {
+      "name": "FreeFileSync",
+      "url": "https://freefilesync.org/",
+      "price": "free"
+    },
+    {
+      "name": "WinMerge",
+      "url": "https://github.com/WinMerge/winmerge",
+      "price": "free"
+    },
+    {
+      "name": "digiKam",
+      "url": "https://docs.digikam.org/en/left_sidebar/similarity_view.html",
+      "price": "free"
+    }
+  ],
+  "free_alternatives": [
+    {
+      "name": "FreeFileSync",
+      "url": "https://freefilesync.org/"
+    },
+    {
+      "name": "WinMerge",
+      "url": "https://github.com/WinMerge/winmerge"
+    },
+    {
+      "name": "digiKam",
+      "url": "https://docs.digikam.org/en/left_sidebar/similarity_view.html"
+    }
+  ],
+  "paid_adjacent": {
+    "name": "XnView MP commercial",
+    "price": "EUR 29",
+    "url": "https://www.xnview.com/en/xnview-mp/"
+  },
+  "review_complaints": [
+    {
+      "finding": "User reported unintentional deletion with FreeFileSync mirror; anecdotal",
+      "date": "2024-03-02",
+      "url": "https://www.reddit.com/r/DataHoarder/comments/1b50unr/",
+      "response": "Never offer sync/mirror/delete"
+    },
+    {
+      "finding": "digiKam duplicate review friction, not a demand proof for snapshot tool",
+      "date": "2026-08-02",
+      "url": "https://www.reddit.com/r/digiKam/comments/1vd350c/new_to_digikam_need_a_faster_way_to_review/",
+      "response": "Do not sell duplicate finder as USP"
+    },
+    {
+      "finding": "User reported slow full-content folder comparison, anecdotal",
+      "date": "2026-10-09",
+      "url": "https://www.reddit.com/r/DataHoarder/comments/1x1uepk/compare_backup_to_original/",
+      "response": "Limit 200 images, disclose full hashing cost"
+    }
+  ],
+  "differentiation_hypotheses": [
+    "Image-specific SHA-256 and dimensions plus before/after CSV/JSON, without synchronization.",
+    "Three-step beginner delivery audit, no source image writes."
+  ],
+  "offline_advantage": "No network, account, telemetry or image edits",
+  "price_hypothesis": "$9.99-$19.99 one-time, not validated",
+  "store_keywords": [
+    "image folder compare",
+    "image delivery audit",
+    "photo change report",
+    "offline image inventory",
+    "画像納品チェック",
+    "画像差分"
+  ],
+  "limitations": [
+    "Free alternatives already compare file content; no validated paid demand",
+    "No real 1024x768 Windows GUI evidence",
+    "Header-only image validation, no signing or timestamp authority"
+  ],
+  "next_validation": "Five studio interviews and task-based first-run purchase-intent testing; retain MARKET_FIT_HOLD."
+}
