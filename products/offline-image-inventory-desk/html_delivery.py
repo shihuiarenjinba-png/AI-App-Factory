@@ -168,7 +168,7 @@ def render_html_delivery(report, language="en", destination=None, generated_at=N
         ("added", "ADDED"), ("removed", "REMOVED"), ("modified", "MODIFIED"),
         ("unchanged", "UNCHANGED")))
     filename = Path(destination).name if destination else "report.html"
-    page = '''<!doctype html><html lang="''' + language + '''"><head><meta charset="utf-8">
+    page = ('''<!doctype html><html lang="''' + language + '''"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; img-src data:; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; connect-src 'none'">
 <title>''' + escape(words["title"]) + '''</title><style>
@@ -194,7 +194,7 @@ summary{cursor:pointer}details{margin-top:12px}
         escape(words["sha"]) + ' ' + escape(words["preview"]) +
         '''</p></header>''' + ("".join(sections) if sections else
                              '<article>' + escape(words["nochange"]) + '</article>') +
-        '''</main></body></html>'''
+        '''</main></body></html>''')
     if len(page.encode("utf-8")) > MAX_HTML_BYTES:
         raise ValueError("HTML report exceeds safe size limit")
     return page
