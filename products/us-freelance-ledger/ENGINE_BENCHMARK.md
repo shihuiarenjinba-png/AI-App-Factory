@@ -117,3 +117,13 @@ The separate `codex/us-freelance-bank-review-20261101` branch already implements
 - **Consumer workflow:** (1) Check statement entries; (2) confirm difference USD 0.00; (3) finalize after reviewing the original statement. For mistakes use **Undo checked**, then review and finalize again. Always **REVIEW REQUIRED**; no bank credentials, bank feed, automatic journal posting or tax decision.
 - **Still missing relative to GnuCash:** bank import, transfer/split accounting, accrual payment tracking, external statement authenticity, immutable external audit storage, real Windows GUI walkthrough. No feature parity or SALE_READY claim.
 - **Separate tax-year review:** IRS official rate table https://www.irs.gov/tax-professionals/standard-mileage-rates lists 2026 business mileage at 72.5 cents Jan–Jun and 76 cents Jul–Dec. These are not automatically applied by the bank reconciliation feature. Tax deductibility and Form 3115 remain REVIEW REQUIRED.
+
+
+## Local reconciliation receipt export (2026-11-03; Draft PR #80)
+
+- **New, US-only:** verified checked statement or historical audited undo -> a CSV plus a readable TXT, containing account, statement date, opening/closing, cleared movement, difference, transaction IDs/amounts, matching/reconciliation/undo audit events, generation UTC and both save paths. The original SQLite ledger remains unchanged.
+- **Fail closed:** a nonzero difference cannot be finalized; no verified membership/legacy evidence, altered current matches, broken undo evidence, invalid output paths, existing CSV/TXT, and write failures cannot be reported as successful. No silent overwrite; a failed second-file write cleans up the newly created first file.
+- **GnuCash benchmark:** its reconciliation screen shows statement start/end and the difference before finishing (https://www.gnucash.org/docs/v5/C/gnucash-manual/acct-reconcile.html). This app does **not** claim its complete accounting engine, imported bank data, or parity.
+- **QuickBooks benchmark:** its Audit Log can show reconciliation undo and transaction changes (https://quickbooks.intuit.com/learn-support/en-us/help-article/statement-reconciliation/view-details-missing-reconciliation-reports/L2C82hF5l_US_en_US). Our audit is local SQLite evidence, **not tamper-proof**, not a cloud multi-user audit log.
+- **freee benchmark:** its cash/bank report can filter account/period (https://support.freee.co.jp/hc/ja/articles/203293830-). This app does **not** provide bank sync or the same multi-account cash reporting.
+- **Remaining gates:** packaged Windows EXE and physical DPI 125%/150%, actual consumer QA, and independent security review. No bank certification, automated tax treatment, Store promotion or SALE_READY.
