@@ -346,6 +346,35 @@ class ReceiptBackupRecoveryTests(unittest.TestCase):
             finally:
                 s.close()
 
+    def test_recovered_book_selection_persists_and_invalid_pointer_holds(self):
+        selection = load("jp_book_selection_test", "book_selection.py")
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            s, _ = self._book(root)
+            try:
+                archive = root / "backup.zip"
+                s.create_receipt_backup(archive)
+                recovered = s.restore_receipt_backup(archive, root)
+                default = root / "live" / "books.sqlite3"
+                restored = Path(recovered["database"])
+                selection.remember_book(default, restored)
+                self.assertEqual(selection.active_book(default), restored)
+                reopened = core.Store(selection.active_book(default))
+                try:
+                    self.assertEqual(reopened.pnl()["利益"], 800)
+                finally:
+                    reopened.close()
+                pointer = default.parent / "active-book.json"
+                obj = json.loads(pointer.read_text(encoding="utf-8"))
+                obj["ledger_id"] = "00000000-0000-0000-0000-000000000000"
+                pointer.write_text(json.dumps(obj), encoding="utf-8")
+                with self.assertRaises(selection.BookSelectionError):
+                    selection.active_book(default)
+                selection.reset_book(default)
+                self.assertEqual(selection.active_book(default), default)
+            finally:
+                s.close()
+
     def test_other_ledger_id_and_novice_controls(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
