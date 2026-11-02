@@ -7,7 +7,8 @@ import tkinter as tk
 from tkinter import ttk
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+from types import SimpleNamespace
 
 PRODUCT = Path(__file__).resolve().parents[1] / "products" / "us-freelance-ledger"
 sys.path.insert(0, str(PRODUCT))
@@ -57,6 +58,45 @@ class FirstRunLayoutTests(unittest.TestCase):
         self.assertEqual(buttons["Check statement"], {"row": 0, "column": 1})
         self.assertEqual(buttons["Undo match"], {"row": 1, "column": 0})
         self.assertEqual(buttons["Undo checked"], {"row": 1, "column": 1})
+
+    def test_gui_check_statement_only_finalizes_zero_difference(self):
+        fake = SimpleNamespace(store=SimpleNamespace(conn=object()), refresh=Mock())
+        prompts = ["Checking", "2026-10-31", "0.00", "10.00"]
+        with patch.object(ui.simpledialog, "askstring", side_effect=prompts), \
+             patch.object(ui, "statement_preview",
+                          return_value={"difference_cents": 0, "transaction_ids": [1]}), \
+             patch.object(ui.messagebox, "askyesno", return_value=True), \
+             patch.object(ui.messagebox, "showinfo"), \
+             patch.object(ui, "finalize_statement") as finalize:
+            ui.App.check_bank(fake)
+            finalize.assert_called_once_with(fake.store.conn, *prompts)
+            fake.refresh.assert_called_once()
+
+        fake.refresh.reset_mock()
+        with patch.object(ui.simpledialog, "askstring", side_effect=prompts), \
+             patch.object(ui, "statement_preview",
+                          return_value={"difference_cents": 1, "transaction_ids": [1]}), \
+             patch.object(ui.messagebox, "showwarning") as warning, \
+             patch.object(ui, "finalize_statement") as finalize:
+            ui.App.check_bank(fake)
+            warning.assert_called_once()
+            finalize.assert_not_called()
+            fake.refresh.assert_not_called()
+
+    def test_gui_undo_error_never_claims_success(self):
+        fake = SimpleNamespace(store=SimpleNamespace(conn=object()), refresh=Mock())
+        with patch.object(ui.simpledialog, "askstring",
+                          side_effect=["Checking", "2026-10-31"]), \
+             patch.object(ui.messagebox, "askyesno", return_value=True), \
+             patch.object(ui, "cancel_statement",
+                          side_effect=ui.BankReviewError("Evidence changed")) as cancel, \
+             patch.object(ui.messagebox, "showerror") as error, \
+             patch.object(ui.messagebox, "showinfo") as success:
+            ui.App.cancel_bank(fake)
+            cancel.assert_called_once()
+            error.assert_called_once()
+            success.assert_not_called()
+            fake.refresh.assert_not_called()
 
     def test_real_tk_buttons_fit_1024x720_if_display_available(self):
         try:
