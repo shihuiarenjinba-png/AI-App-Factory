@@ -1,6 +1,6 @@
 """Opt-in, fail-closed receipt status history foundation for JP month-end reports.
 
-Not yet wired to legacy GUI/Store.enqueue_receipts or monthly_close. Never infer
+Wired for new queue/status writes; old rows are not backfilled. Never infer
 historical statuses from receipt_queue.created_at or its present status.
 All event times are UTC; the requested month-end boundary is Asia/Tokyo.
 """
@@ -57,7 +57,7 @@ class ReceiptHistory:
                 ("1" if old_rows or old_events else "0",))
         self.conn.commit()
 
-    def add(self, path, at=None):
+    def add(self, path, at=None, on_insert=None):
         path = str(path).strip()
         if not path:
             raise ValueError("empty receipt path")
@@ -74,6 +74,8 @@ class ReceiptHistory:
             self.conn.execute(
                 "INSERT INTO receipt_status_events(receipt_id,event_kind,status,occurred_utc,path_snapshot) VALUES(?,?,?,?,?)",
                 (rid, "ENQUEUED", "PENDING", when, path))
+            if on_insert is not None:
+                on_insert(rid)  # Same transaction: queue, event and custody metadata.
             return rid, True
 
     def transition(self, receipt_id, new_status, at=None):
