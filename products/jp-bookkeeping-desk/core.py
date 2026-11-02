@@ -15,6 +15,18 @@ except ModuleNotFoundError:
  _history_spec.loader.exec_module(_history_module)
  ReceiptHistory=_history_module.ReceiptHistory
 try:
+ from receipt_custody import ReceiptCustody, CustodyError
+except ModuleNotFoundError:
+ import importlib.util as _custody_importlib
+ import sys as _custody_sys
+ _custody_path=Path(__file__).with_name("receipt_custody.py")
+ _custody_spec=_custody_importlib.spec_from_file_location(f"{__name__}_receipt_custody",_custody_path)
+ _custody_module=_custody_importlib.module_from_spec(_custody_spec)
+ _custody_sys.modules[_custody_spec.name]=_custody_module
+ _custody_spec.loader.exec_module(_custody_module)
+ ReceiptCustody=_custody_module.ReceiptCustody
+ CustodyError=_custody_module.CustodyError
+try:
     from account_catalog import ACCOUNT_CATALOG,BOOK_GUIDE
 except ModuleNotFoundError:
     import importlib.util as _importlib_util
@@ -81,7 +93,7 @@ def y(v):
  return int(d.quantize(Decimal("1"),rounding=ROUND_HALF_UP))
 class Store:
  def __init__(self,path=None):
-  self.path=Path(path) if path else pth();self.path.parent.mkdir(parents=True,exist_ok=True);self.conn=sqlite3.connect(self.path);self.conn.row_factory=sqlite3.Row;self.schema();self.seed();self.seed_help();self.receipt_history=ReceiptHistory(self.conn)
+  self.path=Path(path) if path else pth();self.path.parent.mkdir(parents=True,exist_ok=True);self.conn=sqlite3.connect(self.path);self.conn.row_factory=sqlite3.Row;self.schema();self.seed();self.seed_help();self.receipt_history=ReceiptHistory(self.conn);self.receipt_custody=ReceiptCustody(self.conn,self.path)
  def schema(self):
   self.conn.executescript("""PRAGMA foreign_keys=ON;
   CREATE TABLE IF NOT EXISTS accounts(id INTEGER PRIMARY KEY AUTOINCREMENT,code TEXT UNIQUE NOT NULL,name TEXT NOT NULL,type TEXT NOT NULL CHECK(type IN ('資産','負債','純資産','収益','費用')),active INTEGER NOT NULL DEFAULT 1);
@@ -111,17 +123,27 @@ class Store:
   q=(q or "").strip()
   if not q:return []
   like=f"%{q}%";return [dict(r) for r in self.conn.execute("SELECT book,purpose,keywords FROM book_help WHERE book LIKE ? OR purpose LIKE ? OR keywords LIKE ? ORDER BY book LIMIT ?",(like,like,like,max(1,min(int(limit),20))))]
- def enqueue_receipts(self,paths,at=None):
-  """Add new receipts with atomic queue+event writes; never invent old history."""
+ def enqueue_receipts(self,paths,at=None,preserve_source=False):
+  """New GUI ingestion preserves original bytes; legacy path-only calls remain review-only."""
   n=0
   for p in paths:
    p=str(p).strip()
    if p:
     try:
-     _,added=self.receipt_history.add(p,at=at)
-    except ValueError as e:raise BookError(str(e)) from e
+     if preserve_source:
+      _,added=self.receipt_custody.capture(p,self.receipt_history,at=at)
+     else:
+      _,added=self.receipt_history.add(p,at=at)
+    except (ValueError,OSError) as e:raise BookError(str(e)) from e
     n+=int(added)
   return n
+ def receipt_custody_status(self,receipt_id):
+  return self.receipt_custody.verify(receipt_id)
+ def receipt_custody_summary(self):
+  rows=[(r,self.receipt_custody_status(r["id"])) for r in self.receipts()]
+  return {"verified":sum(x["status"]=="VERIFIED" for _,x in rows),
+          "review_required":sum(x["status"]!="VERIFIED" for _,x in rows),
+          "details":[{"id":r["id"],"file_path":r["file_path"],**x} for r,x in rows]}
  def receipts(self):
   return [dict(r) for r in self.conn.execute(
    "SELECT id,file_path,status,created_at FROM receipt_queue ORDER BY id")]
