@@ -99,6 +99,14 @@ def preview_bank_csv(source, mapping, conn):
             key = (str(item[1]), str(item[2]), int(item[3]))
             ledger.setdefault(key, []).append(int(item[0]))
             by_day_kind.setdefault(key[:2], []).append((int(item[0]), int(item[3])))
+        has_matches = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name='bank_matches'"
+        ).fetchone() is not None
+        already_matched = set()
+        if has_matches:
+            already_matched = {int(x[0]) for x in conn.execute(
+                "SELECT transaction_id FROM bank_matches"
+            )}
         rows = []
         seen = set()
         for index, item in enumerate(reader, 2):
@@ -132,6 +140,8 @@ def preview_bank_csv(source, mapping, conn):
                     issues.append("NO_LEDGER_CANDIDATE")
                 elif len(candidates) > 1:
                     issues.append("MULTIPLE_LEDGER_CANDIDATES")
+                if any(x in already_matched for x in candidates):
+                    issues.append("LEDGER_ALREADY_MATCHED")
             except BankCSVError as exc:
                 day, cents, kind, candidates, differences = "", None, "", [], []
                 issues.append("INVALID_ROW: " + str(exc))
