@@ -68,14 +68,14 @@ LABELS["ja"].update({"snap_new":"1. フォルダを記録","snap_open":"記録�
 
 LABELS["en"].update({
  "snap_demo":"Try a sample (4 changes)",
- "snap_demo_done":"SAMPLE ONLY: 1 added, 1 removed, 1 changed, 1 unchanged. Review the table, then export CSV/JSON or TXT. To use your own photos, start at step 1.",
- "snap_intro":"1. Save a BEFORE folder snapshot. 2. Compare the AFTER folder. 3. Export a client-readable CSV/JSON/TXT. Try the synthetic example first; no photos are uploaded or edited.",
+ "snap_demo_done":"SAMPLE ONLY: 1 added, 1 removed, 1 changed, 1 unchanged. Review the table, then save the client HTML report with image previews. TXT/CSV/JSON evidence is optional. To use your own photos, start at step 1.",
+ "snap_intro":"1. Save a BEFORE folder snapshot. 2. Compare the AFTER folder. 3. Save a client HTML report with verified image previews. TXT/CSV/JSON evidence is optional. Try the synthetic example first; no photos are uploaded or edited.",
  "snap_demo_title":"SAMPLE — image delivery changes (not your files)"
 })
 LABELS["ja"].update({
  "snap_demo":"見本で試す（4件の変更）",
- "snap_demo_done":"見本データです：追加1・削除1・変更1・同一1。表を確認し、CSV/JSON/TXTを保存できます。実際の画像は手順1から始めてください。",
- "snap_intro":"1. 変更前フォルダを記録 → 2. 変更後フォルダを比較 → 3. CSV/JSON/TXTの証跡を保存。見本から試せます。画像の送信・編集はしません。",
+ "snap_demo_done":"見本データです：追加1・削除1・変更1・同一1。表を確認し、まず画像見本付きHTML納品書を保存できます。TXT/CSV/JSONは補助証跡です。実際の画像は手順1から始めてください。",
+ "snap_intro":"1. 変更前フォルダを記録 → 2. 変更後フォルダを比較 → 3. 画像見本付きHTML納品書を保存。TXT/CSV/JSONは補助証跡です。見本から試せます。画像の送信・編集はしません。",
  "snap_demo_title":"見本 — 画像の変更結果（お客様の画像ではありません）"
 })
 
@@ -622,11 +622,11 @@ class Desk:
         frame.pack(fill="both",expand=True)
         ttk.Label(frame,text=self.t("snap_result").format(**report["summary"]),
                   font=("Segoe UI",12,"bold")).pack(anchor="w",pady=(0,6))
-        guide=("Review changes and save a client-readable TXT or CSV/JSON evidence. "
-               "The hashes shown are previews; exports contain full SHA-256."
+        guide=("Review the changes, then save the client HTML report with verified image previews. "
+               "TXT/CSV/JSON are optional evidence exports; full SHA-256 values are preserved there."
                if self.language=="en" else
-               "変更を確認し、納品先向けTXTまたはCSV/JSONの証跡を保存できます。"
-               "画面のハッシュ値は短縮表示で、出力にはSHA-256全体が含まれます。")
+               "変更を確認したら、まず画像見本付きHTML納品書を保存してください。"
+               "TXT/CSV/JSONは補助証跡で、SHA-256全体を保持します。")
         ttk.Label(frame,text=guide,wraplength=830).pack(anchor="w",pady=(0,6))
         actions=ttk.Frame(frame)
         actions.pack(fill="x",pady=(0,7))
