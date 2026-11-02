@@ -130,7 +130,9 @@ class SnapshotTests(unittest.TestCase):
             with self.assertRaises(ValueError):snap.compare_snapshots(old,self.capture())
         source=Path(app.__file__).read_text(encoding="utf-8")
         self.assertIn('root.geometry("1024x768")',source)
-        self.assertIn('summarybar=ttk.Frame(body)',source)
+        self.assertIn('self.notebook=ttk.Notebook(body)',source)
+        self.assertIn('self.step3=step3',source)
+        self.assertIn('self.inventory_tab=ttk.Frame(self.notebook',source)
         self.assertIn('command=self.export_delivery_summary',source)
 
 
