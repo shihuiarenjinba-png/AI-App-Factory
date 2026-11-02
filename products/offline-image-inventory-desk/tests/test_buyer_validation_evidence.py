@@ -86,6 +86,24 @@ class BuyerEvidenceTests(unittest.TestCase):
             self.assertEqual(list(reader), [])
         self.assertEqual(kit.verify(self.out)["response_rows"], 0)
 
+    def test_expected_html_and_manual_rubric_are_pinned_not_buyer_answers(self):
+        self.make()
+        contract_path = self.out / "EXPECTED_DELIVERY_AND_RUBRIC.json"
+        contract = kit.json.loads(contract_path.read_text(encoding="utf-8"))
+        self.assertEqual(contract["fixture_counts"],
+                         {"ADDED": 1, "REMOVED": 1, "MODIFIED": 1, "UNCHANGED": 1})
+        self.assertEqual(contract["expected_files"], kit.EXPECTED)
+        self.assertIn("変更なし", contract["html_ja"])
+        self.assertIn("Unchanged", contract["html_en"])
+        self.assertEqual(len(contract["manual_rubric"]["criteria"]), 5)
+        self.assertEqual(kit.verify(self.out)["response_rows"], 0)
+        self.assertIn("EXPECTED_DELIVERY_AND_RUBRIC.json",
+                      (self.out / "README.txt").read_text(encoding="utf-8"))
+        contract["fixture_counts"]["MODIFIED"] = 0
+        contract_path.write_text(kit.json.dumps(contract), encoding="utf-8")
+        with self.assertRaisesRegex(AssertionError, "EXPECTED_DELIVERY_RUBRIC_MODIFIED"):
+            kit.verify(self.out)
+
     def test_extra_non_png_or_nested_fixture_refused(self):
         self.make()
         extra = self.out / "delivery" / "alternate.jpg"
