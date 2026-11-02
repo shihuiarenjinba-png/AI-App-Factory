@@ -77,6 +77,18 @@ def export_month_end_package(store,year,month,out_dir):
                    "difference":month_debits-month_credits}
     pending_receipts=int(store.conn.execute(
         "SELECT COUNT(*) FROM receipt_queue WHERE status!='POSTED'").fetchone()[0])
+    # Historical receipt counts come only from complete append-only event history.
+    # Legacy/unlogged rows remain null/HOLD; never derive past status from now.
+    receipt_history=store.receipt_month_end(year,month)
+    receipt_as_of=receipt_history["unprocessed_receipts_as_of_month_end"]
+    receipt_as_of_label=(f"{receipt_as_of}件（記録済み履歴から検証）"
+                         if receipt_history["status"]=="VERIFIED_HISTORY_ONLY"
+                         else "算出不可（履歴不足・要確認）")
+    pending_rows=[r for r in store.receipts() if r["status"]!="POSTED"]
+    receipt_detail_rows="".join(
+        f"<tr><td>{int(r['id'])}</td><td>{html.escape(Path(str(r['file_path']).replace(chr(92),'/')).name)}</td>"
+        f"<td>未処理</td></tr>" for r in pending_rows
+    ) or "<tr><td colspan='3'>現在の未処理証憑はありません</td></tr>"
     # Every displayed account balance is traceable to its dated journal lines.
     # Do not treat all-time Store.trial() or future-dated entries as month-end evidence.
     account_drilldown=[]
@@ -113,7 +125,10 @@ def export_month_end_package(store,year,month,out_dir):
           "account_drilldown":account_drilldown,
           "unprocessed_receipts":pending_receipts,
           "unprocessed_receipts_scope":"CURRENT_QUEUE_ALL_DATES_NOT_HISTORICAL_AS_OF",
-          "unprocessed_receipts_as_of_month_end":None,
+          "unprocessed_receipts_as_of_month_end":receipt_as_of,
+          "receipt_history_status":receipt_history["status"],
+          "receipt_history_reason":receipt_history.get("reason"),
+          "receipt_history_scope":receipt_history["scope"],
           "tax_filing_or_deduction_approved":False}
     json_path=out/f"{stem}_月次締め.json";json_path.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
     jrows="".join(
@@ -164,7 +179,11 @@ def export_month_end_package(store,year,month,out_dir):
 <h2>当月損益</h2><p>収益 {pnl_month['収益']:,}円 / 費用 {pnl_month['費用']:,}円 / 利益 {pnl_month['利益']:,}円</p>
 <h2>当年1月から対象月末までの累計損益</h2><p>収益 {pnl['収益']:,}円 / 費用 {pnl['費用']:,}円 / 利益 {pnl['利益']:,}円</p>
 <h2>対象月末の貸借対照</h2><p>資産 {bs['資産']:,}円 / 負債 {bs['負債']:,}円 / 純資産 {bs['純資産']:,}円 / 当期利益 {bs['当期利益']:,}円 / 前期以前の未振替損益 {bs['前期以前の未振替損益']:,}円</p>
-<h2>月末の確認事項</h2><p>現在の未処理証憑 {pending_receipts}件（全期間の現時点のキュー。対象月末時点の履歴件数ではありません）。証憑原本・事業用途・私用按分・固定資産判定は人が確認してください。帳票は税務申告や控除可否を自動確定しません。</p>
+<section id="receipt-card"><h2>未処理証憑の確認</h2>
+<p><strong>現在の未処理証憑 {pending_receipts}件</strong>（全期間・今の処理状態。過去の月末件数とは異なります）。</p>
+<p><strong>{cutoff} 月末時点の未処理証憑：{receipt_as_of_label}</strong>。旧データや履歴が欠けた証憑がある場合は推測せず要確認とします。</p>
+<p><a href="#receipt-details">現在の未処理証憑の詳細を見る</a>。証憑原本・事業用途・私用按分・固定資産判定は人が確認してください。処理済み表示も仕訳登録・税務認定を意味しません。</p></section>
+<section id="receipt-details"><h3>現在の未処理証憑一覧</h3><table><tr><th>ID</th><th>ファイル名</th><th>状態</th></tr>{receipt_detail_rows}</table></section>
 <h2>この数字の根拠を見る</h2><p>下の科目リンクから元仕訳を確認できます。損益の当月・当年累計と、貸借の月末累計は対象期間が異なります。これは会計確認用で税務上の必要経費を認定しません。</p>\n<h2>損益科目の内訳</h2><table><tr><th>科目と元仕訳</th><th>区分</th><th>当月</th><th>当年累計</th></tr>{pnl_account_rows}</table>\n<h2>月末時点の試算表</h2><table><tr><th>コードと元仕訳</th><th>科目</th><th>借方</th><th>貸方</th></tr>{trows}</table>\n<h2>勘定科目ごとの元仕訳</h2>{source_html}
 <h2>当月仕訳</h2><table><tr><th>日付</th><th>摘要</th><th>科目</th><th>借方</th><th>貸方</th></tr>{jrows}</table>
 <p>電子取引で受領した証憑は元データも保存してください。この帳票は確認・共有用です。</p>
