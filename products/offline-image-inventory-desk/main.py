@@ -83,7 +83,8 @@ LABELS["en"].update({
  "step_compare":"Step 2 — Compare the delivered folder",
  "step_deliver":"Step 3 — Save the customer report",
  "snap_hint":"New here? Try the sample first. For a real delivery, save the original folder record, then compare the revised folder.",
- "delivery_note":"Images are never changed. After comparing, review the changes and save a readable TXT report. CSV/JSON is available for detailed evidence."
+ "delivery_note":"Images stay unchanged. Save a self-contained HTML report with verified image previews for your client. TXT/CSV/JSON remain available.",
+ "snap_html":"Save client HTML with previews", "snap_html_done":"Client HTML saved at:", "snap_html_failed":"HTML was not saved. Compare the folder again."
 })
 LABELS["ja"].update({
  "delivery_tab":"納品レポート", "inventory_tab":"画像一覧・詳細検査",
@@ -91,7 +92,8 @@ LABELS["ja"].update({
  "step_compare":"手順2 — 納品後のフォルダを比較",
  "step_deliver":"手順3 — お客様向けレポートを保存",
  "snap_hint":"初めての方は見本から試せます。実際の納品では変更前を記録し、変更後のフォルダと比較してください。",
- "delivery_note":"画像は変更しません。比較結果を確認し、読みやすいTXTを保存できます。詳細記録はCSV/JSONで出力できます。"
+ "delivery_note":"元画像は変更しません。画像見本付きHTMLを納品先へ保存できます。TXT/CSV/JSONも引き続き利用できます。",
+ "snap_html":"画像付きHTML納品書を保存", "snap_html_done":"HTMLを保存しました：", "snap_html_failed":"HTMLは保存できませんでした。フォルダを再比較してください。"
 })
 
 def jpeg_dimensions(data):
@@ -290,9 +292,12 @@ class Desk:
         step3=ttk.LabelFrame(self.delivery_tab,padding=10)
         step3.pack(fill="x",pady=(0,9))
         self.step3=step3
-        self.summary_button=ttk.Button(step3,command=self.export_delivery_summary)
+        self.html_button=ttk.Button(step3,command=self.export_delivery_html)
+        self.html_button.pack(anchor="w",pady=(0,7))
+        step3_details=ttk.Frame(step3);step3_details.pack(fill="x")
+        self.summary_button=ttk.Button(step3_details,command=self.export_delivery_summary)
         self.summary_button.pack(side="left",padx=(0,8))
-        button=ttk.Button(step3,command=self.export_evidence)
+        button=ttk.Button(step3_details,command=self.export_evidence)
         button.pack(side="left")
         self.snapshot_buttons["snap_export"]=button
         self.delivery_note=ttk.Label(self.delivery_tab,wraplength=680,justify="left")
@@ -355,6 +360,7 @@ class Desk:
         self.inventory_intro.configure(text=self.t("help"))
         for k,b in self.buttons.items():b.configure(text=self.t(k))
         for k,b in self.snapshot_buttons.items():b.configure(text=self.t(k))
+        self.html_button.configure(text=self.t("snap_html"))
         self.summary_button.configure(text=self.t("snap_summary"))
         self.demo_button.configure(text=self.t("snap_demo"))
         self.preflight_box.configure(text=self.t("preflight"))
@@ -537,9 +543,12 @@ class Desk:
         ttk.Label(frame,text=guide,wraplength=830).pack(anchor="w",pady=(0,6))
         actions=ttk.Frame(frame)
         actions.pack(fill="x",pady=(0,7))
-        ttk.Button(actions,text=("Save client summary (TXT)" if self.language=="en" else "お客様向けTXTを保存"),
+        ttk.Button(actions,text=self.t("snap_html"),
+                   command=self.export_delivery_html).pack(side="left",padx=(0,8))
+        ttk.Button(actions,text=("Save TXT" if self.language=="en" else "TXTを保存"),
                    command=self.export_delivery_summary).pack(side="left",padx=(0,8))
-        ttk.Button(actions,text=("Export CSV / JSON" if self.language=="en" else "CSV / JSONを保存"),
+        advanced_actions=ttk.Frame(frame);advanced_actions.pack(fill="x",pady=(0,7))
+        ttk.Button(advanced_actions,text=("Export CSV / JSON" if self.language=="en" else "CSV / JSONを保存"),
                    command=self.export_evidence).pack(side="left",padx=(0,8))
         only_changes=tk.BooleanVar(value=True)
         table_frame=ttk.Frame(frame)
@@ -555,13 +564,28 @@ class Desk:
                 table.delete(item)
             for values in comparison_view_rows(report,self.language,only_changes.get()):
                 table.insert("","end",values=values)
-        ttk.Checkbutton(actions,text=("Changed files only" if self.language=="en" else "変更した画像のみ"),
+        ttk.Checkbutton(advanced_actions,text=("Changed files only" if self.language=="en" else "変更した画像のみ"),
                         variable=only_changes,command=redraw).pack(side="right")
         scroll=ttk.Scrollbar(table_frame,orient="vertical",command=table.yview)
         table.configure(yscrollcommand=scroll.set)
         table.pack(side="left",fill="both",expand=True)
         scroll.pack(side="right",fill="y")
         redraw()
+
+    def export_delivery_html(self):
+        if self.comparison is None:self.status.set(self.t("snap_none"));return
+        path=filedialog.asksaveasfilename(parent=self.root,defaultextension=".html",
+                filetypes=[("HTML","*.html")],title=self.t("snap_html"))
+        if not path or not self.confirm(path):return
+        try:
+            snapshots.write_html_delivery(path,self.comparison,atomic_write,self.language)
+            self.status.set(self.t("snap_html_done")+" "+str(Path(path).absolute()))
+        except (OSError,ValueError,UnicodeError,TypeError) as exc:
+            # A changed or unreadable source invalidates the prior success.
+            self.comparison=None
+            self.close_comparison_window()
+            self.status.set(self.t("snap_html_failed"))
+            self.error(exc)
 
     def export_delivery_summary(self):
         if self.comparison is None:self.status.set(self.t("snap_none"));return
