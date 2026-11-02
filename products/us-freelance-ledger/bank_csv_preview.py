@@ -92,11 +92,13 @@ def preview_bank_csv(source, mapping, conn):
         if reader.fieldnames != headers:
             raise BankCSVError("CSV header changed; select the file again")
         ledger = {}
+        by_day_kind = {}
         for item in conn.execute(
             "SELECT id,txn_date,kind,amount_cents FROM transactions ORDER BY id"
         ):
             key = (str(item[1]), str(item[2]), int(item[3]))
             ledger.setdefault(key, []).append(int(item[0]))
+            by_day_kind.setdefault(key[:2], []).append((int(item[0]), int(item[3])))
         rows = []
         seen = set()
         for index, item in enumerate(reader, 2):
@@ -116,6 +118,13 @@ def preview_bank_csv(source, mapping, conn):
                 kind = _direction(item[mapping["direction"]])
                 key = (day, kind, cents)
                 candidates = ledger.get(key, [])
+                differences = [] if candidates else [
+                    {"transaction_id": transaction_id, "difference_cents": cents - book_cents}
+                    for transaction_id, book_cents in sorted(
+                        by_day_kind.get((day, kind), []),
+                        key=lambda pair: (abs(cents - pair[1]), pair[0])
+                    )[:3]
+                ]
                 if key in seen:
                     issues.append("DUPLICATE_CSV_CANDIDATE")
                 seen.add(key)
@@ -124,11 +133,11 @@ def preview_bank_csv(source, mapping, conn):
                 elif len(candidates) > 1:
                     issues.append("MULTIPLE_LEDGER_CANDIDATES")
             except BankCSVError as exc:
-                day, cents, kind, candidates = "", None, "", []
+                day, cents, kind, candidates, differences = "", None, "", [], []
                 issues.append("INVALID_ROW: " + str(exc))
             rows.append({
                 "line": index, "date": day, "amount_cents": cents, "direction": kind,
-                "ledger_candidate_ids": candidates,
+                "ledger_candidate_ids": candidates, "difference_candidates": differences,
                 "status": "REVIEW REQUIRED" if issues else "CANDIDATE ONLY",
                 "issues": issues,
             })
@@ -166,13 +175,14 @@ def save_review_report(preview, destination):
         "Rows requiring review: " + str(preview["review_required"]),
         "No ledger posting, bank verification, matching or tax certification.",
         "",
-        "LINE | DATE | DIRECTION | USD CENTS | LEDGER CANDIDATES | STATUS | ISSUES",
+        "LINE | DATE | DIRECTION | USD CENTS | LEDGER CANDIDATES | POSSIBLE DIFFERENCES (BANK MINUS LEDGER CENTS) | STATUS | ISSUES",
     ]
     for row in preview["rows"]:
         lines.append(" | ".join([
             str(row["line"]), _safe_cell(row["date"]), _safe_cell(row["direction"]),
             str(row["amount_cents"]) if row["amount_cents"] is not None else "INVALID",
             ",".join(str(i) for i in row["ledger_candidate_ids"]),
+            ",".join(str(x["transaction_id"])+":"+str(x["difference_cents"]) for x in row["difference_candidates"]),
             row["status"], "; ".join(_safe_cell(x) for x in row["issues"]),
         ]))
     try:
