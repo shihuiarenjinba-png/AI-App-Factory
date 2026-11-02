@@ -27,6 +27,20 @@ except ModuleNotFoundError:
  ReceiptCustody=_custody_module.ReceiptCustody
  CustodyError=_custody_module.CustodyError
 try:
+ from receipt_backup import create_backup, inspect_backup, restore_backup, BackupError
+except ModuleNotFoundError:
+ import importlib.util as _backup_importlib
+ import sys as _backup_sys
+ _backup_path=Path(__file__).with_name("receipt_backup.py")
+ _backup_spec=_backup_importlib.spec_from_file_location(f"{__name__}_receipt_backup",_backup_path)
+ _backup_module=_backup_importlib.module_from_spec(_backup_spec)
+ _backup_sys.modules[_backup_spec.name]=_backup_module
+ _backup_spec.loader.exec_module(_backup_module)
+ create_backup=_backup_module.create_backup
+ inspect_backup=_backup_module.inspect_backup
+ restore_backup=_backup_module.restore_backup
+ BackupError=_backup_module.BackupError
+try:
     from account_catalog import ACCOUNT_CATALOG,BOOK_GUIDE
 except ModuleNotFoundError:
     import importlib.util as _importlib_util
@@ -137,6 +151,16 @@ class Store:
     except (ValueError,OSError) as e:raise BookError(str(e)) from e
     n+=int(added)
   return n
+ def create_receipt_backup(self,target):
+  try:return create_backup(self,target)
+  except (BackupError,OSError) as e:raise BookError(str(e)) from e
+ def inspect_receipt_backup(self,archive):
+  try:return inspect_backup(archive)
+  except (BackupError,OSError) as e:raise BookError(str(e)) from e
+ def restore_receipt_backup(self,archive,destination_parent):
+  # Always restore as a separate book. Never replace the currently open database.
+  try:return restore_backup(archive,destination_parent)
+  except (BackupError,OSError) as e:raise BookError(str(e)) from e
  def receipt_custody_status(self,receipt_id):
   return self.receipt_custody.verify(receipt_id)
  def receipt_custody_summary(self):
