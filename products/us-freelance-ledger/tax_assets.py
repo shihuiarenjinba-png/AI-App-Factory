@@ -122,3 +122,42 @@ def require_tax_profile(source_url, tax_year, method_name):
     if int(tax_year) < 2000: raise ValueError("Tax year is invalid")
     if not isinstance(method_name,str) or not method_name.strip(): raise ValueError("Method name is required")
     return {"source_url":source_url,"tax_year":int(tax_year),"method_name":method_name.strip(),"review_required":True}
+
+
+def business_mileage_2026_review(trip_date, miles, purpose="business"):
+    """Date-scoped IRS *estimate*, never an approved deduction or auto-post.
+
+    2026 is split at July 1 by IRS Announcement 2026-11. Unsupported years
+    and non-business purposes are REVIEW_REQUIRED with no business estimate.
+    This does not establish eligibility, log substantiation, or method choice.
+    """
+    if not isinstance(trip_date, str) or len(trip_date) != 10:
+        raise ValueError("Trip date must be YYYY-MM-DD")
+    try:
+        driven = date.fromisoformat(trip_date)
+    except ValueError as exc:
+        raise ValueError("Invalid trip date") from exc
+    if driven.isoformat() != trip_date:
+        raise ValueError("Trip date must be YYYY-MM-DD")
+    distance = _finite(miles, "miles")
+    if distance < 0 or distance > Decimal("10000000"):
+        raise ValueError("Miles must be between 0 and 10000000")
+    base = {"status": "REVIEW_REQUIRED", "review_required": True,
+            "auto_post": False, "deduction_approved": False,
+            "trip_date": trip_date, "purpose": purpose,
+            "miles": distance, "rate_usd_per_mile": None,
+            "estimate_usd": None, "source_url": None}
+    if driven.year != 2026:
+        return {**base, "reason": "TAX_YEAR_UNSUPPORTED_REVIEW_REQUIRED"}
+    if purpose != "business":
+        return {**base, "reason": "NON_BUSINESS_PURPOSE_REVIEW_REQUIRED"}
+    if driven < date(2026, 7, 1):
+        rate = Decimal("0.725")
+        source = "https://www.irs.gov/newsroom/irs-sets-2026-business-standard-mileage-rate-at-725-cents-per-mile-up-25-cents"
+    else:
+        rate = Decimal("0.76")
+        source = "https://www.irs.gov/irb/2026-29_irb"
+    return {**base, "reason": "BUSINESS_MILEAGE_METHOD_AND_LOG_REVIEW_REQUIRED",
+            "rate_usd_per_mile": rate,
+            "estimate_usd": (distance * rate).quantize(Decimal("0.01"), rounding=ROUND_HALF_UP),
+            "source_url": source}
