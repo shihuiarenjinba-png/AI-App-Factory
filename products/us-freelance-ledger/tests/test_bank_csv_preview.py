@@ -9,6 +9,7 @@ from pathlib import Path
 PRODUCT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PRODUCT))
 from core import Store
+from bank_reconcile import match_transaction
 from bank_csv_preview import BankCSVError, csv_headers, preview_bank_csv, save_review_report
 
 MAPPING = {"date": "Posted", "amount": "USD amount", "direction": "Flow", "currency": "CCY"}
@@ -88,6 +89,15 @@ class BankCSVPreviewTests(unittest.TestCase):
             self.write_rows([["2026-10-12", "50.25", "in", currency]])
             with self.subTest(currency=currency), self.assertRaisesRegex(BankCSVError, "USD"):
                 self.preview()
+
+    def test_existing_manual_match_is_not_silently_reused(self):
+        match_transaction(self.store.conn, self.tid, "Checking", "2026-10-31")
+        self.write_rows([["2026-10-12", "50.25", "credit", "USD"]])
+        before = self.fingerprint()
+        result = self.preview()
+        self.assertEqual(result["review_required"], 1)
+        self.assertIn("LEDGER_ALREADY_MATCHED", result["rows"][0]["issues"])
+        self.assertEqual(self.fingerprint(), before)
 
     def test_missing_or_reused_mapping_rejected(self):
         self.write_rows([["2026-10-12", "50.25", "in", "USD"]])
