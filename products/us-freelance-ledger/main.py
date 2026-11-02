@@ -7,6 +7,14 @@ from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_d
 from receipt_queue import enqueue_receipts, list_receipts, link_receipt
 from bank_reconcile import BankReviewError, match_transaction, unmatch_transaction, match_statuses, statement_preview, finalize_statement, cancel_statement
 
+# Keep the confirmation aligned with cancel_statement: no blanket promise of undo.
+BANK_FINALIZE_WARNING = (
+    "Undo checked can reopen only the latest statement with intact saved evidence.\n"
+    "Legacy/missing evidence, changed entries or a later checked month: "
+    "REVIEW REQUIRED; automatic undo is blocked.\n"
+    "Undo leaves ledger amounts unchanged, returns matches to review, and saves an audit record."
+)
+
 class App(tk.Tk):
     def __init__(self):
         super().__init__();self.title("Freelance Ledger US");self.geometry("1100x720");self.minsize(900,620)
@@ -155,7 +163,7 @@ class App(tk.Tk):
         if not messagebox.askyesno("Finalize bank statement",
             f'{len(report["transaction_ids"])} matched transactions; difference USD 0.00.\n'
             "Have you checked the actual statement and included all relevant bank movements?\n"
-            "Finalized matches cannot be undone in this version."):
+            BANK_FINALIZE_WARNING):
             return
         try:finalize_statement(self.store.conn,account,statement_day,opening,closing)
         except BankReviewError as exc:messagebox.showerror("Statement check",str(exc));return
