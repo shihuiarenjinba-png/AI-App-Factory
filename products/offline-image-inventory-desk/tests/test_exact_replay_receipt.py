@@ -41,9 +41,13 @@ class ExactReplayEvidenceTests(unittest.TestCase):
             "source_images_untouched": True, "read_denied_fail_closed": True,
             "fixture_sha256_before": {"baseline": hashes, "delivery": hashes},
             "fixture_sha256_after": {"baseline": hashes, "delivery": hashes},
-            "screenshots": {}, "market_fit": "MARKET_FIT_HOLD",
+            "screenshots": {},
+            "display_pixels": [1024, 768],
+            "actual_windows_work_area": [0, 0, 1024, 720],
+            "source_tk_dpi_simulation_not_os_dpi": True,
+            "market_fit": "MARKET_FIT_HOLD",
             "market_score": 64, "why_pay_verified": False,
-            "checks": ["packaged EXE process started PID=42",
+            "checks": ["packaged EXE fits real Windows usable work area (0, 0, 1024, 720); PID=42",
                        "packaged CSV/JSON/TXT contents validated",
                        "packaged HTML local customer previews validated",
                        "real Windows exclusive-file read denial fail-closed; stale export blocked"]
@@ -54,7 +58,7 @@ class ExactReplayEvidenceTests(unittest.TestCase):
             png.write_bytes(("synthetic " + name).encode())
             self.packaged["screenshots"][name] = {
                 "sha256": hashlib.sha256(png.read_bytes()).hexdigest(),
-                "width": 1024, "height": 768
+                "width": 1024, "height": 703
             }
         (self.evidence / "packaged-changes.json").write_text(
             json.dumps({"summary": EXPECTED}), encoding="utf-8")
@@ -115,8 +119,18 @@ class ExactReplayEvidenceTests(unittest.TestCase):
             self.check()
 
     def test_small_window_rejected(self):
-        self.packaged["screenshots"]["04_exe_japanese"]["width"] = 900
-        with self.assertRaisesRegex(EvidenceError, "SCREENSHOT_BELOW_1024x768"):
+        self.packaged["screenshots"]["04_exe_japanese"]["width"] = 700
+        with self.assertRaisesRegex(EvidenceError, "SCREENSHOT_OUTSIDE_1024x720_WORK_AREA"):
+            self.check()
+
+    def test_taskbar_work_area_missing_rejected(self):
+        self.packaged["actual_windows_work_area"] = [0, 0, 1024, 768]
+        with self.assertRaisesRegex(EvidenceError, "WORK_AREA_NOT_1024x720"):
+            self.check()
+
+    def test_display_not_1024x768_rejected(self):
+        self.packaged["display_pixels"] = [1920, 1080]
+        with self.assertRaisesRegex(EvidenceError, "DISPLAY_NOT_1024x768"):
             self.check()
 
     def test_missing_output_rejected(self):
