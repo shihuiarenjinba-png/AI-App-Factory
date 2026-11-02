@@ -30,6 +30,37 @@ EXPECTED = {"same.png": "UNCHANGED", "modified.png": "MODIFIED",
 PHASES = ("free", "first_30sec", "product", "delivery",
           "recipient_review", "restart", "read_error")
 
+# Fixed expected outcomes, not buyer answers. Include with the existing EXE kit.
+DELIVERY_EXPECTATION = {
+    "classification": "EXPECTED_OUTPUT_AND_OBSERVER_RUBRIC_NOT_BUYER_RESPONSES",
+    "fixture_counts": {"ADDED": 1, "REMOVED": 1, "MODIFIED": 1, "UNCHANGED": 1},
+    "expected_files": EXPECTED,
+    "html_en": ["Added", "Removed", "Changed", "Unchanged"],
+    "html_ja": ["追加", "削除", "変更", "変更なし"],
+    "recipient_checks": [
+        "Identify four statuses and filenames without a walkthrough.",
+        "A missing BEFORE image cannot be reconstructed from a snapshot.",
+        "SHA-256 identifies scanned bytes, not authorship or certification.",
+        "Report creation time is not image modification or delivery time.",
+        "The saved HTML opens locally without remote dependencies."
+    ],
+    "failure_checks": [
+        "Reopen the baseline and reproduce the four status counts.",
+        "Comparing read-error/ with invalid.png fails, never stale success.",
+        "A failed comparison must not allow delivery of old successful HTML.",
+        "Baseline and delivery image SHA-256 remain unchanged."
+    ],
+    "manual_rubric": {
+        "scale": {"0": "Failed or unsafe", "1": "Completed with help or confusion",
+                  "2": "Completed unassisted and correctly"},
+        "criteria": ["first_30sec_goal", "baseline_and_comparison",
+                     "html_saved_and_opened", "recipient_understanding",
+                     "restart_and_failure_recovery"],
+        "free_tool_comparison": "Same fixtures and client task; record time, errors and readability.",
+        "decision": "Observer scores are not purchase intent and never promote market-fit."
+    }
+}
+
 
 def digest(path):
     h = hashlib.sha256()
@@ -120,6 +151,9 @@ def prepare(out, exe, source_sha):
         "not_local_gui_pass": True,
     }
     (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    (out / "EXPECTED_DELIVERY_AND_RUBRIC.json").write_text(
+        json.dumps(DELIVERY_EXPECTATION, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8")
     (out / "README.txt").write_text(
         "Offline Image Inventory Desk - independent buyer test (NOT RUN)\n"
         "Use 1024x768 Windows; run packaged EXE, not main.py. Test EN and JA.\n"
@@ -134,6 +168,11 @@ def prepare(out, exe, source_sha):
         "read_error phases in that order; record clicks/errors, real answers.\n"
         "Use event command to time phases. Log real responses in CSV only after test.\n"
         "Run verify after every session to check original image SHA-256.\n"
+        "EXPECTED_DELIVERY_AND_RUBRIC.json contains the expected four HTML\n"
+        "statuses and the manual 0/1/2 observer rubric, NOT buyer answers.\n"
+        "Compare free tools using the SAME fixtures and client task.\n"
+        "Run: py -3 buyer_validation_evidence.py verify --out .\n"
+        "Run: py -3 buyer_validation_audit.py --out . after real sessions.\n"
         "Never upload client images, identifiable responses or paid-test records to GitHub.\n"
         "Hosted Windows CI is NOT LOCAL_GUI_PASS or purchase evidence.\n",
         encoding="utf-8")
@@ -144,6 +183,8 @@ def prepare(out, exe, source_sha):
 def verify(out):
     out = Path(out).resolve()
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
+    if json.loads((out / "EXPECTED_DELIVERY_AND_RUBRIC.json").read_text(encoding="utf-8")) != DELIVERY_EXPECTATION:
+        raise AssertionError("EXPECTED_DELIVERY_RUBRIC_MODIFIED")
     if manifest["fixture_expected"] != EXPECTED:
         raise AssertionError("Unexpected fixture contract")
     if (manifest.get("journey_protocol") != "UNCOACHED_DELIVERY_JOURNEY_V1"
