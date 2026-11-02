@@ -322,6 +322,30 @@ class ReceiptBackupRecoveryTests(unittest.TestCase):
             finally:
                 s.close()
 
+    def test_untracked_blob_and_linked_archive_refused(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            s, _ = self._book(root)
+            try:
+                archive = root / "backup.zip"
+                orphan = root / "live" / "receipt-originals" / "untracked.bin"
+                orphan.write_bytes(b"unexpected")
+                with self.assertRaises(core.BookError):
+                    s.create_receipt_backup(archive)
+                self.assertFalse(archive.exists())
+                orphan.unlink()
+                s.create_receipt_backup(archive)
+                link = root / "linked.zip"
+                try:
+                    link.symlink_to(archive)
+                except (OSError, NotImplementedError):
+                    pass
+                else:
+                    with self.assertRaises(core.BookError):
+                        s.inspect_receipt_backup(link)
+            finally:
+                s.close()
+
     def test_other_ledger_id_and_novice_controls(self):
         with tempfile.TemporaryDirectory() as td:
             root = Path(td)
