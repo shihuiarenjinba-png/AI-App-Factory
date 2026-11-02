@@ -6,6 +6,7 @@ All money arithmetic uses integer cents. Existing transaction amounts are immuta
 from __future__ import annotations
 
 import sqlite3
+import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from typing import Any
@@ -165,6 +166,10 @@ def statement_preview(
         "movement_cents": movement, "calculated_cents": calculated,
         "difference_cents": closing_cents - calculated,
         "transaction_ids": [int(r[0]) for r in rows],
+        "members": [
+            {"transaction_id": int(r[0]), "kind": str(r[1]), "amount_cents": int(r[2])}
+            for r in rows
+        ],
     }
 
 
@@ -197,6 +202,116 @@ def finalize_statement(
                 ("BANK_RECONCILE", cur.lastrowid,
                  f'{preview["account"]}|{preview["statement_date"]}|{preview["closing_cents"]}'),
             )
+            # Snapshot exact membership so a later cancellation can reject missing or
+            # altered matches, including zero-net pairs. Legacy statements have no
+            # snapshot and intentionally cannot be cancelled automatically.
+            conn.execute(
+                "INSERT INTO audit_log(action,entity_id,detail) VALUES(?,?,?)",
+                ("BANK_RECONCILE_MEMBERS", cur.lastrowid,
+                 json.dumps({key: preview[key] for key in (
+                     "account", "statement_date", "opening_cents", "closing_cents",
+                     "movement_cents", "transaction_ids", "members"
+                 )}, sort_keys=True)),
+            )
     except sqlite3.IntegrityError as exc:
         raise BankReviewError("Statement already exists or contains conflicting matches") from exc
     return preview
+
+
+def cancel_statement(conn: sqlite3.Connection, account: str, statement_date: str) -> dict:
+    """Reopen only the latest, verifiably intact finalized statement.
+
+    Cancellation is an explicit, audited manual correction. The original ledger
+    transactions remain unchanged. A legacy reconciliation without a membership
+    snapshot is deliberately blocked rather than guessed.
+    """
+    try:
+        _schema(conn)
+        _require_cash_book(conn)
+    except sqlite3.DatabaseError as exc:
+        raise BankReviewError("Bank database is unavailable or damaged; no changes saved") from exc
+    account, statement_date = _account(account), _day(statement_date)
+    if conn.in_transaction:
+        raise BankReviewError("Finish the current database operation before cancelling")
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT id,opening_cents,closing_cents,movement_cents "
+            "FROM bank_reconciliations WHERE account=? AND statement_date=?",
+            (account, statement_date),
+        ).fetchone()
+        if row is None:
+            raise BankReviewError("No finalized statement exists for this account and date")
+        if conn.execute(
+            "SELECT 1 FROM bank_reconciliations WHERE account=? AND statement_date>? LIMIT 1",
+            (account, statement_date),
+        ).fetchone():
+            raise BankReviewError("Cancel the latest statement first to preserve balance continuity")
+        rid = int(row[0])
+        evidence = conn.execute(
+            "SELECT detail FROM audit_log WHERE action='BANK_RECONCILE_MEMBERS' "
+            "AND entity_id=? ORDER BY id DESC LIMIT 1", (rid,),
+        ).fetchone()
+        if evidence is None:
+            raise BankReviewError("Legacy statement lacks verified membership; manual review required")
+        try:
+            snapshot = json.loads(evidence[0])
+            expected_ids = snapshot["transaction_ids"]
+            if (not isinstance(expected_ids, list)
+                or not expected_ids
+                or any(type(x) is not int or x <= 0 for x in expected_ids)
+                or len(set(expected_ids)) != len(expected_ids)):
+                raise ValueError("Invalid member identifiers")
+            expected = {
+                "account": account, "statement_date": statement_date,
+                "opening_cents": int(row[1]), "closing_cents": int(row[2]),
+                "movement_cents": int(row[3]), "transaction_ids": expected_ids,
+            }
+            # Compare exact per-transaction evidence after loading the current rows.
+            # A zero-net offsetting pair must not hide edits to individual amounts.
+        except (ValueError, TypeError, KeyError, OverflowError) as exc:
+            raise BankReviewError("Statement evidence is damaged; manual review required") from exc
+        matches = conn.execute(
+            "SELECT m.transaction_id,m.account,m.statement_date,m.status,"
+            "t.kind,t.amount_cents FROM bank_matches m "
+            "LEFT JOIN transactions t ON t.id=m.transaction_id "
+            "WHERE m.reconciliation_id=? ORDER BY m.transaction_id", (rid,),
+        ).fetchall()
+        expected["members"] = [
+            {"transaction_id": int(x[0]), "kind": x[4], "amount_cents": x[5]}
+            for x in matches
+        ]
+        if snapshot != expected:
+            raise BankReviewError("Statement member evidence or amounts changed; manual review required")
+        actual_ids = [int(x[0]) for x in matches]
+        movement = sum(int(x[5]) * (1 if x[4] == "income" else -1)
+                       for x in matches if x[4] in ("income", "expense") and x[5] is not None)
+        if (actual_ids != sorted(expected_ids)
+            or any(x[1] != account or x[2] != statement_date or x[3] != "RECONCILED"
+                   or x[4] not in ("income", "expense") or x[5] is None for x in matches)
+            or movement != int(row[3])
+            or int(row[1]) + movement != int(row[2])):
+            raise BankReviewError("Statement matches or amounts changed; manual review required")
+        updated = conn.execute(
+            "UPDATE bank_matches SET status='CLEARED',reconciliation_id=NULL "
+            "WHERE reconciliation_id=? AND status='RECONCILED'", (rid,),
+        )
+        if updated.rowcount != len(expected_ids):
+            raise BankReviewError("Statement matches changed during cancellation")
+        deleted = conn.execute("DELETE FROM bank_reconciliations WHERE id=?", (rid,))
+        if deleted.rowcount != 1:
+            raise BankReviewError("Statement changed during cancellation")
+        conn.execute(
+            "INSERT INTO audit_log(action,entity_id,detail) VALUES(?,?,?)",
+            ("BANK_RECONCILE_CANCEL", rid, json.dumps(snapshot, sort_keys=True)),
+        )
+        conn.commit()
+        return {"account": account, "statement_date": statement_date,
+                "transaction_ids": expected_ids, "status": "CLEARED",
+                "review_required": True}
+    except sqlite3.DatabaseError as exc:
+        conn.rollback()
+        raise BankReviewError("Bank database is unavailable or damaged; no changes saved") from exc
+    except Exception:
+        conn.rollback()
+        raise
