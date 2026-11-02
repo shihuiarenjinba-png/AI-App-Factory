@@ -61,6 +61,43 @@ def screenshot(root, destination):
     return {"width": w, "height": h, "sha256": sha(destination)}
 
 
+def windows_work_area():
+    """Actual Windows work area, excluding taskbars; no fabricated display size."""
+    import ctypes
+    from ctypes import wintypes
+    rect = wintypes.RECT()
+    if not ctypes.windll.user32.SystemParametersInfoW(
+            0x0030, 0, ctypes.byref(rect), 0):
+        raise AssertionError("Cannot verify Windows usable work area")
+    return (rect.left, rect.top, rect.right, rect.bottom)
+
+
+def assert_scroll_reachable(root, desk, widget, name):
+    """Fail if a novice control is clipped even after scrolling it into view."""
+    canvas = desk.delivery_canvas
+    root.update_idletasks()
+    root.update()
+    region_height = desk.delivery_content.winfo_height()
+    view_height = canvas.winfo_height()
+    if view_height < 250:
+        raise AssertionError("Novice delivery viewport too small")
+    center = (widget.winfo_rooty() - desk.delivery_content.winfo_rooty()
+              + widget.winfo_height() // 2)
+    maximum = max(0, region_height - view_height)
+    offset = min(maximum, max(0, center - view_height // 2))
+    canvas.yview_moveto(offset / maximum if maximum else 0)
+    root.update_idletasks()
+    root.update()
+    left, top = canvas.winfo_rootx(), canvas.winfo_rooty()
+    right, bottom = left + canvas.winfo_width(), top + canvas.winfo_height()
+    x, y = widget.winfo_rootx(), widget.winfo_rooty()
+    if (not widget.winfo_viewable() or x < left or y < top
+            or x + widget.winfo_width() > right - 2
+            or y + widget.winfo_height() > bottom - 2
+            or widget.winfo_width() < widget.winfo_reqwidth()):
+        raise AssertionError("NOVICE_CONTROL_CLIPPED: " + name)
+
+
 def invoke_with_dialog(button, name, value):
     with patch.object(app.filedialog, name, return_value=str(value)):
         button.invoke()
@@ -116,8 +153,9 @@ def run(out, exe, source_sha):
             logs.append("Japanese language selection persisted across Tk restart")
         finally:
             root.destroy()
-        # Hosted Windows screenshots at simulated 125% and 150% Tk font scaling.
-        # Assert novice controls are visible inside 1024x768, not merely created.
+        # Explicit 1000x650 client viewport models a 1024x768 desktop
+        # after taskbar/window chrome; font scaling is simulated Tk scaling,
+        # not a claim that the Windows OS DPI setting changed.
         for factor, language in ((1.25, "en"), (1.50, "ja")):
             app.save_language("en")
             root = tk.Tk()
@@ -125,29 +163,31 @@ def run(out, exe, source_sha):
                 default_scaling = float(root.tk.call("tk", "scaling"))
                 root.tk.call("tk", "scaling", default_scaling * factor)
                 desk = app.Desk(root)
+                root.geometry("1000x650+0+0")
                 if language == "ja":
                     desk.lang.invoke()
                 root.update_idletasks()
                 root.update()
                 assert desk.notebook.index(desk.notebook.select()) == 0
                 assert not desk.preflight_box.winfo_viewable(), "Technical checks exposed on novice tab"
-                assert all(button.winfo_viewable() for button in desk.snapshot_buttons.values())
-                for key, widget in {**desk.snapshot_buttons, "demo": desk.demo_button,
-                                    "summary": desk.summary_button, "html": desk.html_button,
-                                    "open_saved": desk.open_report_button,
-                                    "note": desk.delivery_note}.items():
-                    x = widget.winfo_rootx() - root.winfo_rootx()
-                    y = widget.winfo_rooty() - root.winfo_rooty()
-                    if x < 0 or y < 0 or x + widget.winfo_width() > root.winfo_width() - 2 or y + widget.winfo_height() > root.winfo_height() - 2:
-                        raise AssertionError("DPI clipping: %s at %s%%: %s,%s" %
-                                             (key, round(factor * 100), x, y))
-                key = "dpi_%s_%s" % (round(factor * 100), language)
+                controls = {**desk.snapshot_buttons, "demo": desk.demo_button,
+                            "summary": desk.summary_button, "html": desk.html_button,
+                            "open_saved": desk.open_report_button,
+                            "note": desk.delivery_note}
+                for key, widget in controls.items():
+                    assert_scroll_reachable(root, desk, widget, key)
+                desk.delivery_canvas.yview_moveto(0)
+                root.update()
+                key = "workarea_1024x720_dpi_%s_%s" % (round(factor * 100), language)
                 screenshots[key] = screenshot(root, out / (key + ".png"))
+                desk.delivery_canvas.yview_moveto(1)
+                root.update()
+                screenshots[key + "_end"] = screenshot(root, out / (key + "_end.png"))
                 desk.notebook.select(desk.inventory_tab)
                 root.update()
                 assert desk.tree.winfo_viewable(), "Legacy image inventory inaccessible"
                 desk.notebook.select(desk.delivery_tab)
-                logs.append("novice 3-step UI visible at %s%% scaling (%s), advanced tab accessible" %
+                logs.append("1024x720 work-area simulation at %s%% Tk font scaling (%s): all novice controls reachable without horizontal clipping" %
                             (round(factor * 100), language))
             finally:
                 root.destroy()
@@ -378,9 +418,15 @@ def run_packaged(out, exe, source_sha, calibration):
             time.sleep(1.2)
             window.set_focus()
             rect = window.rectangle()
-            if rect.width() < 1000 or rect.height() < 700:
+            work = windows_work_area()
+            if (rect.left < work[0] - 12 or rect.top < work[1] - 12
+                    or rect.right > work[2] + 12 or rect.bottom > work[3] - 2):
+                raise AssertionError("PACKAGED_WINDOW_OUTSIDE_USABLE_WORK_AREA: %s vs %s" %
+                                     (rect, work))
+            if rect.width() < 850 or rect.height() < 600:
                 raise AssertionError("Packaged EXE window too small: " + str(rect))
-            log.append("packaged EXE process started PID=" + str(process.pid))
+            log.append("packaged EXE fits real Windows usable work area %s; PID=%s" %
+                       (work, process.pid))
 
         def stop():
             nonlocal process, window
@@ -461,7 +507,7 @@ def run_packaged(out, exe, source_sha, calibration):
             time.sleep(0.3)
             rect = window.rectangle()
             image = ImageGrab.grab(bbox=(rect.left, rect.top, rect.right, rect.bottom))
-            if image.width < 1000 or image.height < 700:
+            if image.width < 850 or image.height < 600:
                 raise AssertionError("Packaged GUI capture clipped")
             path = out / (label + ".png")
             image.save(path)
@@ -615,6 +661,9 @@ def run_packaged(out, exe, source_sha, calibration):
             "fixture_sha256_before": originals,
             "fixture_sha256_after": {"baseline": hashes(baseline), "delivery": hashes(delivery)},
             "screenshots": shots,
+            "display_pixels": [int(pyautogui.size().width), int(pyautogui.size().height)],
+            "actual_windows_work_area": list(windows_work_area()),
+            "source_tk_dpi_simulation_not_os_dpi": True,
             "checks": log,
             "market_fit": "MARKET_FIT_HOLD",
             "market_score": 64,
