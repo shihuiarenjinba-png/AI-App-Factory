@@ -19,7 +19,9 @@ from tkinter import ttk
 from types import SimpleNamespace
 from unittest.mock import patch
 from core import Store
-import main as ui
+UI_SPEC = importlib.util.spec_from_file_location("us_freelance_bank_report_ui", PRODUCT / "main.py")
+ui = importlib.util.module_from_spec(UI_SPEC)
+UI_SPEC.loader.exec_module(ui)
 
 
 class BankReportGuiTests(unittest.TestCase):
