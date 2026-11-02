@@ -55,6 +55,7 @@ class BankReceiptTests(unittest.TestCase):
         cancel_statement(self.store.conn, self.account, self.day)
         self.store.close()
         self.store = Store(self.db)
+        self.addCleanup(self.store.close)
         receipt = self.report()
         self.assertEqual(receipt["status"], "UNDONE (historical receipt)")
         text = Path(receipt["text_path"]).read_text(encoding="utf-8")
