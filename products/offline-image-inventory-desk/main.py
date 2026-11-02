@@ -4,6 +4,7 @@ from urllib.parse import urlsplit
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
+from user_preferences import load_language, save_language
 
 MAX_BYTES=64*1024*1024
 MAX_ITEMS=200
@@ -265,9 +266,12 @@ def comparison_view_rows(report, language, changes_only=False):
             for row in report["changes"]
             if not changes_only or row["status"] != "UNCHANGED"]
 
+LABELS["en"]["lang_save_failed"] = "Language changed for this session, but the preference could not be saved."
+LABELS["ja"]["lang_save_failed"] = "この画面では言語を変更しましたが、次回起動用の設定を保存できませんでした。"
+
 class Desk:
     def __init__(self,root):
-        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False;self.comparison_window=None;self.last_html_report_path=None
+        self.root=root;self.language=load_language();self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False;self.comparison_window=None;self.last_html_report_path=None
         root.geometry("1024x768");root.minsize(850,600)
         body=ttk.Frame(root,padding=10);body.pack(fill="both",expand=True)
         header=ttk.Frame(body);header.pack(fill="x")
@@ -428,8 +432,15 @@ class Desk:
             self.error(exc)
 
     def toggle(self):
-        self.language="ja" if self.language=="en" else "en";self.localize()
-        if self.demo_mode:self.status.set(self.t("snap_demo_done"))
+        self.language="ja" if self.language=="en" else "en"
+        self.localize()
+        try:
+            save_language(self.language)
+        except OSError:
+            self.status.set(self.t("lang_save_failed"))
+            return
+        if self.demo_mode:
+            self.status.set(self.t("snap_demo_done"))
     def toggle_preflight(self):
         if not self.preflight.get():self.issues.set(False)
         self.localize();self.refresh()
