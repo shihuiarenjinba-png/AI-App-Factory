@@ -85,6 +85,28 @@ class BankReceiptTests(unittest.TestCase):
         with self.assertRaises(BankReviewError):
             self.report()
 
+    def test_corrupt_snapshot_balance_type_is_fail_closed(self):
+        self.check()
+        row = self.store.conn.execute(
+            "SELECT id,detail FROM audit_log WHERE action='BANK_RECONCILE_MEMBERS'"
+        ).fetchone()
+        import json
+        payload = json.loads(row[1])
+        payload["opening_cents"] = "10000"
+        self.store.conn.execute("UPDATE audit_log SET detail=? WHERE id=?", (json.dumps(payload), row[0]))
+        self.store.conn.commit()
+        with self.assertRaises(BankReviewError):
+            self.report()
+
+    def test_changed_reconcile_audit_is_fail_closed(self):
+        self.check()
+        self.store.conn.execute(
+            "UPDATE audit_log SET detail='wrong' WHERE action='BANK_RECONCILE'"
+        )
+        self.store.conn.commit()
+        with self.assertRaises(BankReviewError):
+            self.report()
+
     def test_csv_existing_is_not_overwritten(self):
         self.check()
         target = self.folder / "check.csv"
