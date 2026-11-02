@@ -24,4 +24,4 @@ Checked: 2026-11-02 JST. Scope: JP-only local bookkeeping, not a tax-filing or s
 
 **MARKET_FIT_HOLD.** Backup is a reliability baseline already offered by free competitors. The hypothesis is that a beginner values one portable bundle containing journal and original evidence with preflight safety checks, but willingness to pay is unmeasured. Real Windows GUI 1024x768 at 125/150% DPI, recovery-to-open-ledger usability, and independent buyer tasks remain unverified. Do not score higher or promote to Store packaging on the basis of synthetic tests alone.
 
-Consumer verdict now: **NO** — a recovered ledger is written safely but the GUI still lacks a guided way to open that restored book on the next launch. This is the next consumer usability gap to resolve, not an excuse to add ERP complexity.
+Consumer verdict now: **NO** — the GUI now offers explicit opening of a restored book, remembers it on the next launch, and lets the user return to the original book. However, real Windows GUI/125%-150% DPI and independent beginner recovery tasks have not been observed, so usability and willingness to pay remain unverified. Do not add ERP complexity to compensate.
