@@ -17,10 +17,16 @@ class App(tk.Tk):
 
     def build(self):
         ttk.Label(self,text="Freelance Ledger US",font=("Segoe UI",18,"bold")).pack(anchor="w",padx=14,pady=(14,2))
-        ttk.Label(self,text="United States only · USD · local-only. Bookkeeping support only; federal special rules require review and state/local rules are not automated.").pack(anchor="w",padx=14)
+        ttk.Label(
+            self,
+            text=("United States only · USD · local-only. Bookkeeping support only; federal special rules require review "
+                  "and state/local rules are not automated. Cash/accrual is stored as a recordkeeping policy in this version; "
+                  "it does not automatically shift income or expense recognition dates."),
+            wraplength=1040,justify="left"
+        ).pack(anchor="w",fill="x",padx=14)
         p=ttk.Panedwindow(self,orient="horizontal");p.pack(fill="both",expand=True,padx=14,pady=10)
         f=ttk.Labelframe(p,text="Transaction",padding=10);p.add(f,weight=1)
-        ttk.Label(f,text="Accounting method").grid(row=0,column=0,sticky="w")
+        ttk.Label(f,text="Accounting method (policy)").grid(row=0,column=0,sticky="w")
         m=ttk.Combobox(f,textvariable=self.v["method"],values=METHODS,state="readonly")
         m.grid(row=0,column=1,sticky="ew",pady=3);m.bind("<<ComboboxSelected>>",lambda _e:self.change_method())
         ttk.Label(f,text="Type").grid(row=1,column=0,sticky="w")
