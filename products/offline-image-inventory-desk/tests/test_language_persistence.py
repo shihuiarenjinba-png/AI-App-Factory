@@ -38,7 +38,7 @@ class LanguagePreferenceTests(unittest.TestCase):
                 for raw in (b"{bad", b"[]", b'{"version":1,"language":"xx"}',
                             b'{"version":true,"language":"ja"}',
                             b'{"version":1,"language":"ja"}' + b" " * 4096,
-                            b"\\xff"):
+                            bytes([255])):
                     path.write_bytes(raw)
                     self.assertEqual(app.load_language(), "en")
                 app.save_language("ja")
