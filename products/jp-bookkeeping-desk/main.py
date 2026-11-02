@@ -60,22 +60,31 @@ class App(tk.Tk):
  def import_receipts(self):
   paths=filedialog.askopenfilenames(title="複数のレシート・請求書画像/PDFを選択")
   if not paths:return
-  added=self.s.enqueue_receipts(paths)
+  added=0;failures=[]
+  for path in paths:
+   try:added+=self.s.enqueue_receipts([path],preserve_source=True)
+   except BookError as e:failures.append(f"{Path(path).name}: {e}")
   self.refresh_receipt_card()
-  messagebox.showinfo("証憑取り込み",f"{added}件をローカル待ち行列に追加しました。\n\n次段階はOCR→日付/金額/店名→科目候補→仕訳候補→確認です。現時点では画像だけで自動確定しません。")
+  summary=f"{added}件の原本バイトをローカルに保存しました。"
+  if failures:
+   summary+=f"\n{len(failures)}件は保存できず要確認です。\n"+"\n".join(failures[:5])
+  summary+="\n原本の確認と記帳・税務上の必要経費判定は別です。自動で経費認定しません。"
+  (messagebox.showwarning if failures else messagebox.showinfo)("証憑取り込み",summary)
  def refresh_receipt_card(self):
   rows=self.s.receipts()
   pending=sum(r["status"]!="POSTED" for r in rows)
+  custody=self.s.receipt_custody_summary()
   self.receipt_summary.set(
-   f"現在の未処理：{pending}件（全期間）。対象月末時点の件数は月末レポートで確認します。"
-   "古いデータや記録欠損がある場合は算出不可と表示します。"
-   "処理状態は仕訳・税務上の経費承認を意味しません。")
+   f"現在の未処理：{pending}件（全期間）。原本を確認できる：{custody['verified']}件、"
+   f"確認が必要：{custody['review_required']}件。"
+   "対象月末時点の件数は月末レポートで確認します。"
+   "古いデータや記録欠損は要確認です。処理状態は仕訳・税務上の経費承認を意味しません。")
  def view_receipts(self):
   win=tk.Toplevel(self);win.title("証憑の確認・処理状態");win.geometry("760x440");win.minsize(640,350)
   ttk.Label(win,text="原本を確認してから状態を変更してください。処理済みでも仕訳登録・税務上の経費認定はされません。",
             wraplength=700).pack(anchor="w",padx=12,pady=10)
-  tree=ttk.Treeview(win,columns=("id","file","status"),show="headings",selectmode="browse")
-  for col,title,width in (("id","ID",65),("file","証憑ファイル名",390),("status","現在の状態",170)):
+  tree=ttk.Treeview(win,columns=("id","file","status","original"),show="headings",selectmode="browse")
+  for col,title,width in (("id","ID",55),("file","証憑ファイル名",250),("status","現在の状態",170),("original","原本の確認",155)):
    tree.heading(col,text=title);tree.column(col,width=width,stretch=(col=="file"))
   tree.pack(fill="both",expand=True,padx=12,pady=6)
   def populate():
@@ -83,11 +92,17 @@ class App(tk.Tk):
    for row in self.s.receipts():
     filename=Path(str(row["file_path"]).replace(chr(92),"/")).name
     status="未処理" if row["status"]=="PENDING" else "処理済み（確認状態のみ）"
-    tree.insert("","end",iid=str(row["id"]),values=(row["id"],filename,status))
+    custody=self.s.receipt_custody_status(row["id"])
+    original="原本を確認できる" if custody["status"]=="VERIFIED" else "確認が必要"
+    tree.insert("","end",iid=str(row["id"]),values=(row["id"],filename,status,original))
   def change(status):
    selected=tree.selection()
    if not selected:
     messagebox.showinfo("証憑の確認","対象の証憑を選択してください",parent=win);return
+   if status=="POSTED":
+    custody=self.s.receipt_custody_status(int(selected[0]))
+    if custody["status"]!="VERIFIED":
+     messagebox.showerror("原本の確認",f"原本の保存状態が未確認です：{custody['reason']}\n原本を確認するまで処理済みには変更できません。",parent=win);return
    action="処理済み" if status=="POSTED" else "未処理"
    if not messagebox.askyesno("証憑の確認",f"選択した証憑を{action}に変更しますか？\n税務判断や仕訳登録は行いません。",parent=win):return
    try:self.s.set_receipt_status(int(selected[0]),status)
@@ -96,6 +111,16 @@ class App(tk.Tk):
   actions=ttk.Frame(win);actions.pack(fill="x",padx=12,pady=10)
   ttk.Button(actions,text="原本を確認済みとして記録",command=lambda:change("POSTED")).pack(side="left",padx=(0,8))
   ttk.Button(actions,text="未処理に戻す",command=lambda:change("PENDING")).pack(side="left")
+  def inspect_original():
+   selected=tree.selection()
+   if not selected:
+    messagebox.showinfo("原本の確認","証憑を選択してください",parent=win);return
+   info=self.s.receipt_custody_status(int(selected[0]))
+   if info["status"]=="VERIFIED":
+    messagebox.showinfo("原本の確認",f"原本を確認できる\nSHA-256: {info['sha256']}\n容量: {info['size_bytes']} bytes\n保存日時(UTC): {info['captured_utc']}\nローカル保存先: {info['stored_original']}\n\nこの照合は税務上の承認を意味しません。",parent=win)
+   else:
+    messagebox.showwarning("原本の確認",f"確認が必要：{info['reason']}\n原本の再確認が必要です。旧データを自動補完しません。",parent=win)
+  ttk.Button(actions,text="原本の保存状態を確認",command=inspect_original).pack(side="left",padx=(8,0))
   populate()
  def suggest(self):
   cand=suggest_entry(self.desc.get())
