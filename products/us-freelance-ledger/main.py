@@ -162,7 +162,7 @@ class App(tk.Tk):
             return
         if not messagebox.askyesno("Finalize bank statement",
             f'{len(report["transaction_ids"])} matched transactions; difference USD 0.00.\n'
-            "Have you checked the actual statement and included all relevant bank movements?\n"
+            "Have you checked the actual statement and included all relevant bank movements?\n" +
             BANK_FINALIZE_WARNING):
             return
         try:finalize_statement(self.store.conn,account,statement_day,opening,closing)
