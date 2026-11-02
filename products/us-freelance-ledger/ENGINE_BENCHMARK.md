@@ -106,3 +106,14 @@ Each APP rotation:
 5. Verify reports reconcile back to journal/ledger totals.
 6. Preserve local-only operation and simple consumer UI.
 7. Do not claim feature parity until fixtures and Windows QA pass.
+
+## US bank review implementation gap (2026-11-03)
+
+GnuCash reconciliation reference: https://www.gnucash.org/features.phtml
+The separate `codex/us-freelance-bank-review-20261101` branch already implements cash-basis manual matching, exact integer-cent difference checks, duplicate-match rejection, chronological statements, and a novice UI. Do not duplicate that engine on PR #60. This stacked draft adds **audited undo of the latest finalized statement** only.
+
+- **Now covered by tests:** statement opening + cleared signed movement = closing only when difference is exactly zero; duplicate finalization blocked; undo latest finalized statement reopens its exact verified members; month-to-month continuity; restart and re-finalization; corrupt/missing evidence fails closed; transaction amounts and bookkeeping totals unchanged.
+- **Undo evidence:** new finalizations record an exact membership snapshot in the existing SQLite audit log. Cancellation checks the snapshot and all transaction amounts, atomically reopens matches, removes the finalized marker, and records `BANK_RECONCILE_CANCEL` with the original snapshot. Legacy statements without this new evidence are **not automatically undoable**. Audit rows are locally stored and are not tamper-proof or an external bank certification.
+- **Consumer workflow:** (1) Check statement entries; (2) confirm difference USD 0.00; (3) finalize after reviewing the original statement. For mistakes use **Undo checked**, then review and finalize again. Always **REVIEW REQUIRED**; no bank credentials, bank feed, automatic journal posting or tax decision.
+- **Still missing relative to GnuCash:** bank import, transfer/split accounting, accrual payment tracking, external statement authenticity, immutable external audit storage, real Windows GUI walkthrough. No feature parity or SALE_READY claim.
+- **Separate tax-year review:** IRS official rate table https://www.irs.gov/tax-professionals/standard-mileage-rates lists 2026 business mileage at 72.5 cents Jan–Jun and 76 cents Jul–Dec. These are not automatically applied by the bank reconciliation feature. Tax deductibility and Form 3115 remain REVIEW REQUIRED.
