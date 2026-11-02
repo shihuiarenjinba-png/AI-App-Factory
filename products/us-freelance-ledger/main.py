@@ -9,6 +9,7 @@ from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_d
 from receipt_queue import enqueue_receipts, list_receipts, link_receipt
 from bank_reconcile import BankReviewError, match_transaction, unmatch_transaction, match_statuses, statement_preview, finalize_statement, cancel_statement
 from bank_report import export_bank_report
+from bank_csv_preview import BankCSVError, csv_headers, preview_bank_csv, save_review_report
 
 # Keep the confirmation aligned with cancel_statement: no blanket promise of undo.
 BANK_FINALIZE_WARNING = (
@@ -105,6 +106,7 @@ class App(tk.Tk):
         ttk.Button(bank_actions,text="Undo match",command=self.unmatch_bank).grid(row=1,column=0,sticky="ew",padx=(0,4),pady=2)
         ttk.Button(bank_actions,text="Undo checked",command=self.cancel_bank).grid(row=1,column=1,sticky="ew",padx=(4,0),pady=2)
         ttk.Button(bank_actions,text="Export bank check report",command=self.export_bank_check).grid(row=2,column=0,columnspan=2,sticky="ew",pady=2)
+        ttk.Button(bank_actions,text="Preview bank CSV (no posting)",command=self.preview_bank_csv_gui).grid(row=3,column=0,columnspan=2,sticky="ew",pady=2)
         bank_actions.columnconfigure(0,weight=1)
         bank_actions.columnconfigure(1,weight=1)
         cols=("date","kind","amount","category","party","memo","bank");self.tree=ttk.Treeview(r,columns=cols,show="headings")
@@ -240,6 +242,102 @@ class App(tk.Tk):
             "Review the actual statement, check the difference is zero, and finalize again."
         )
 
+
+
+    def preview_bank_csv_gui(self):
+        """Three-step bank CSV review. Source and ledger are never modified."""
+        win=tk.Toplevel(self)
+        win.title("Bank CSV review — USD only — NOT posted")
+        win.transient(self)
+        win.geometry(f"{min(780,max(480,self.winfo_width()-80))}x{min(520,max(400,self.winfo_height()-50))}")
+        win.resizable(True,True)
+        source=tk.StringVar(value="No file chosen")
+        status=tk.StringVar(value="Choose a CSV, map four columns, then preview. Nothing is posted.")
+        selection={name:tk.StringVar(value="") for name in ("date","amount","direction","currency")}
+        state={"source":None,"preview":None}
+        ttk.Label(win,text="1. Choose USD bank CSV  →  2. Map columns and review candidates  →  3. Save review copy",
+                  wraplength=680).pack(anchor="w",padx=10,pady=(10,4))
+        ttk.Label(win,text="Read-only: no automatic entries, bank matching, tax decisions or file changes.",
+                  wraplength=680).pack(anchor="w",padx=10)
+        top=ttk.Frame(win);top.pack(fill="x",padx=10,pady=6)
+        ttk.Label(top,textvariable=source).pack(side="left",fill="x",expand=True)
+        mapping_frame=ttk.Frame(win);mapping_frame.pack(fill="x",padx=10,pady=4)
+        combos={}
+        for i,(name,title) in enumerate((("date","Date"),("amount","Positive amount"),
+                                         ("direction","In / Out"),("currency","Currency (USD)"))):
+            cell=ttk.Frame(mapping_frame);cell.grid(row=0,column=i,sticky="ew",padx=3)
+            ttk.Label(cell,text=title).pack(anchor="w")
+            combo=ttk.Combobox(cell,textvariable=selection[name],values=(),state="readonly",width=15)
+            combo.pack(fill="x");combos[name]=combo
+            mapping_frame.columnconfigure(i,weight=1)
+        columns=("line","date","direction","cents","ledger","status")
+        listing=ttk.Treeview(win,columns=columns,show="headings",height=7)
+        for name,title,width in (("line","CSV line",65),("date","Date",95),
+                                 ("direction","In / Out",85),("cents","USD cents",95),
+                                 ("ledger","Possible ledger IDs",130),("status","Review",160)):
+            listing.heading(name,text=title)
+            listing.column(name,width=width,stretch=name in ("ledger","status"))
+        listing.pack(fill="both",expand=True,padx=10,pady=(5,2))
+        ttk.Label(win,textvariable=status,wraplength=700).pack(anchor="w",padx=10,pady=4)
+        actions=ttk.Frame(win);actions.pack(fill="x",padx=10,pady=(2,10))
+        save_button=ttk.Button(actions,text="3. Save review copy (.txt)",state="disabled")
+        save_button.pack(side="right",padx=3)
+        def choose():
+            filename=filedialog.askopenfilename(parent=win,title="Choose a USD bank CSV",
+                                               filetypes=[("CSV","*.csv")])
+            if not filename:return
+            state["preview"]=None
+            save_button.configure(state="disabled")
+            for item in listing.get_children():listing.delete(item)
+            try:headers=csv_headers(filename)
+            except BankCSVError as exc:
+                state["source"]=None
+                source.set("No valid CSV selected")
+                status.set(str(exc));messagebox.showerror("CSV not accepted",str(exc),parent=win)
+                return
+            state["source"]=filename;source.set(filename)
+            for name,combo in combos.items():
+                selection[name].set("")
+                combo.configure(values=headers)
+            status.set("Select the Date, Amount, In/Out and Currency columns explicitly.")
+        def review():
+            state["preview"]=None
+            save_button.configure(state="disabled")
+            for item in listing.get_children():listing.delete(item)
+            if not state["source"]:
+                messagebox.showwarning("Choose CSV","Select a CSV file first.",parent=win);return
+            try:
+                report=preview_bank_csv(state["source"],{k:v.get() for k,v in selection.items()},
+                                        self.store.conn)
+            except BankCSVError as exc:
+                status.set("REVIEW REQUIRED — " + str(exc))
+                messagebox.showwarning("Preview refused",str(exc),parent=win)
+                return
+            state["preview"]=report
+            for row in report["rows"][:100]:
+                listing.insert("","end",values=(row["line"],row["date"],row["direction"],
+                    row["amount_cents"] if row["amount_cents"] is not None else "INVALID",
+                    ",".join(map(str,row["ledger_candidate_ids"])),
+                    row["status"] + (": "+",".join(row["issues"]) if row["issues"] else "")))
+            status.set(f'{len(report["rows"])} bank rows; {report["review_required"]} require review. '
+                       'Showing first 100; possible ledger matches are NOT confirmed. '
+                       'Save a review copy to see all rows.')
+            save_button.configure(state="normal")
+        def save():
+            report=state["preview"]
+            if report is None:return
+            target=filedialog.asksaveasfilename(parent=win,title="Save bank CSV review copy",
+                  defaultextension=".txt",filetypes=[("Text review","*.txt")])
+            if not target:return
+            try:path=save_review_report(report,target)
+            except BankCSVError as exc:
+                messagebox.showerror("NOT saved",str(exc),parent=win);return
+            messagebox.showinfo("Review copy saved — REVIEW REQUIRED",
+                f'Saved to: {path}\nOriginal bank CSV and ledger unchanged. '
+                'Check the actual bank statement before manual matching.',parent=win)
+        ttk.Button(top,text="1. Choose CSV",command=choose).pack(side="right",padx=3)
+        ttk.Button(actions,text="2. Preview candidates",command=review).pack(side="left",padx=3)
+        save_button.configure(command=save)
 
     def export_bank_check(self):
         """Export a checked statement or an audited historical undo, never silently overwrite."""
