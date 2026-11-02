@@ -51,10 +51,11 @@ For each consenting independent participant, use their own Windows environment
 at 1024x768 and the bundled EXE. The `buyer_validation_evidence.py` CLI
 supports `event --out <kit> --participant P01 --phase product --action start`
 and `event --out <kit> --participant P01 --phase product --action stop --clicks N --errors N`
-to time real sessions. Supported phases: `free`, `product`, `restart`,
-`read_error`. Manually fill the response CSV with **only authentic** answers.
-Run `verify --out <kit>` after each test to detect any fixture image or EXE
-SHA changes. Keep human response sheets and any real client data **off GitHub**.
+to time real sessions. Supported phases (in order): `free`, `first_30sec`, `product`, `delivery`,
+`recipient_review`, `restart`, `read_error`. Manually fill the response CSV with **only authentic** answers.
+Run `verify --out <kit>` before and after each test to detect any fixture image or EXE
+SHA changes, unexpected non-PNG sample files, nested folders, or linked files.
+An altered kit must be replaced with a fresh copy of the exact-head artifact; do not silently repair and count the altered session. Keep human response sheets and any real client data **off GitHub**.
 No CI step fills responses or promotes the market score.
 
 ## Uncoached 30-second → compare → delivery → recipient journey (2026-11-02)
