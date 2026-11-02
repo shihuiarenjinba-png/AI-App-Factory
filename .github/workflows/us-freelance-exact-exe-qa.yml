@@ -1,0 +1,91 @@
+name: US Freelance Ledger exact PR80 unsigned EXE and hosted GUI QA
+
+on:
+  push:
+    branches:
+      - codex/us-freelance-exact-exe-qa-20261103
+    paths:
+      - .github/workflows/us-freelance-exact-exe-qa.yml
+      - products/us-freelance-ledger/qa/hosted_exe_qa.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: us-freelance-exact-exe-qa
+  cancel-in-progress: false
+
+jobs:
+  exact-source-windows-qa:
+    if: github.repository == 'shihuiarenjinba-png/AI-App-Factory' && github.ref == 'refs/heads/codex/us-freelance-exact-exe-qa-20261103'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout QA harness only (not product source)
+        uses: actions/checkout@v4
+        with:
+          ref: codex/us-freelance-exact-exe-qa-20261103
+          path: qa
+          persist-credentials: false
+      - name: Checkout existing PR80 product source without changing it
+        uses: actions/checkout@v4
+        with:
+          ref: codex/us-freelance-bank-report-20261103
+          fetch-depth: 0
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Refuse source drift, uncommitted changes, or wrong product
+        shell: pwsh
+        run: |
+          $expected = 'ffbff04f642634093468cbf7267facd6a075ddb3'
+          $actual = (git -C source rev-parse HEAD).Trim()
+          if ($actual -ne $expected) { throw "PR80 exact HEAD drift: $actual" }
+          if ((git -C source status --porcelain -- products/us-freelance-ledger).Trim()) { throw 'Dirty product source' }
+          if (!(Test-Path source/products/us-freelance-ledger/manifest.json)) { throw 'Product manifest missing' }
+          $m = Get-Content source/products/us-freelance-ledger/manifest.json -Raw | ConvertFrom-Json
+          if ($m.slug -ne 'us-freelance-ledger' -or $m.market -ne 'US' -or $m.entry -ne 'main.py') { throw 'Wrong product manifest' }
+          Write-Host "PINNED_PR80_SOURCE=$actual"
+      - name: Run existing product and factory regressions
+        shell: pwsh
+        run: |
+          Push-Location source
+          try {
+            python -m unittest discover -s tests -v
+            if ($LASTEXITCODE -ne 0) { throw 'Factory tests failed' }
+            python -m unittest discover -s products/us-freelance-ledger/tests -v
+            if ($LASTEXITCODE -ne 0) { throw 'US product tests failed' }
+          } finally { Pop-Location }
+      - name: Install pinned unsigned PE builder and screenshot support
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0" "pillow==11.3.0"
+      - name: Build unsigned US product EXE from PR80 exact source
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --noupx --name us-freelance-ledger --paths source/products/us-freelance-ledger --distpath dist/qa --workpath dist/build --specpath dist/spec source/products/us-freelance-ledger/main.py
+          if ($LASTEXITCODE -ne 0) { throw 'EXE build failed' }
+      - name: Verify PE, source SHA, manifest, EXE hash/size, ZIP CRC
+        shell: pwsh
+        run: |
+          python qa/products/us-freelance-ledger/qa/hosted_exe_qa.py package --source source --output dist/qa
+          if ($LASTEXITCODE -ne 0) { throw 'Unsigned PE evidence verification failed' }
+      - name: Real packaged GUI launch and pinned Tk button workflow
+        shell: pwsh
+        run: |
+          python qa/products/us-freelance-ledger/qa/hosted_exe_qa.py gui --source source --output dist/qa
+          if ($LASTEXITCODE -ne 0) { throw 'Hosted GUI QA HOLD: see receipt; not a human or physical DPI pass' }
+      - name: Upload exact-source unsigned PE, checksums, ZIP and GUI receipts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-freelance-ledger-pr80-unsigned-qa
+          path: |
+            dist/qa/us-freelance-ledger.exe
+            dist/qa/us-freelance-ledger-unsigned-qa.zip
+            dist/qa/*.json
+            dist/qa/*.png
+            dist/qa/*.csv
+            dist/qa/*.txt
+          if-no-files-found: warn
+          retention-days: 5
