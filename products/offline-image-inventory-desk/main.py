@@ -643,7 +643,12 @@ class Desk:
             self.comparison=report
             self.status.set(self.t("snap_result").format(**report["summary"]))
             self.show_comparison(report)
-        except (OSError,ValueError,UnicodeError,TypeError) as exc:self.error(exc)
+        except (OSError,ValueError,UnicodeError,TypeError) as exc:
+            # A raised read/validation error must not leave the prior success
+            # message on screen even though the old comparison was cleared.
+            self.comparison=None
+            self.status.set(self.t("snap_failed"))
+            self.error(self.t("snap_failed")+"\n"+str(exc))
 
     def close_comparison_window(self):
         window=self.comparison_window
