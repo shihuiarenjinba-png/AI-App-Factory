@@ -203,6 +203,7 @@ class ReceiptBackupRecoveryTests(unittest.TestCase):
                 self.assertEqual(s.inspect_receipt_backup(archive)["ledger_id"],
                                  result["ledger_id"])
                 self.assertEqual(s.journal()[0]["description"], "synthetic")
+                (root / "recovered").mkdir()
                 restore = s.restore_receipt_backup(archive, root / "recovered")
             except Exception:
                 s.close()
