@@ -166,6 +166,10 @@ def statement_preview(
         "movement_cents": movement, "calculated_cents": calculated,
         "difference_cents": closing_cents - calculated,
         "transaction_ids": [int(r[0]) for r in rows],
+        "members": [
+            {"transaction_id": int(r[0]), "kind": str(r[1]), "amount_cents": int(r[2])}
+            for r in rows
+        ],
     }
 
 
@@ -206,7 +210,7 @@ def finalize_statement(
                 ("BANK_RECONCILE_MEMBERS", cur.lastrowid,
                  json.dumps({key: preview[key] for key in (
                      "account", "statement_date", "opening_cents", "closing_cents",
-                     "movement_cents", "transaction_ids"
+                     "movement_cents", "transaction_ids", "members"
                  )}, sort_keys=True)),
             )
     except sqlite3.IntegrityError as exc:
@@ -263,8 +267,8 @@ def cancel_statement(conn: sqlite3.Connection, account: str, statement_date: str
                 "opening_cents": int(row[1]), "closing_cents": int(row[2]),
                 "movement_cents": int(row[3]), "transaction_ids": expected_ids,
             }
-            if snapshot != expected:
-                raise ValueError("Statement evidence differs from database")
+            # Compare exact per-transaction evidence after loading the current rows.
+            # A zero-net offsetting pair must not hide edits to individual amounts.
         except (ValueError, TypeError, KeyError, OverflowError) as exc:
             raise BankReviewError("Statement evidence is damaged; manual review required") from exc
         matches = conn.execute(
@@ -273,6 +277,12 @@ def cancel_statement(conn: sqlite3.Connection, account: str, statement_date: str
             "LEFT JOIN transactions t ON t.id=m.transaction_id "
             "WHERE m.reconciliation_id=? ORDER BY m.transaction_id", (rid,),
         ).fetchall()
+        expected["members"] = [
+            {"transaction_id": int(x[0]), "kind": x[4], "amount_cents": x[5]}
+            for x in matches
+        ]
+        if snapshot != expected:
+            raise BankReviewError("Statement member evidence or amounts changed; manual review required")
         actual_ids = [int(x[0]) for x in matches]
         movement = sum(int(x[5]) * (1 if x[4] == "income" else -1)
                        for x in matches if x[4] in ("income", "expense") and x[5] is not None)
