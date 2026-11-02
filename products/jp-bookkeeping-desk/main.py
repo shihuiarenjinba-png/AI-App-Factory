@@ -1,5 +1,6 @@
 import tkinter as tk
 from datetime import date
+from pathlib import Path
 from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import TYPES,BookError,Store,suggest_entry
 from monthly_close import export_month_end_package
@@ -31,6 +32,10 @@ class App(tk.Tk):
   for c,t in zip(("d","x","a","db","cr"),("日付","摘要","勘定科目","借方","貸方")):self.tree.heading(c,text=t)
   self.tree.pack(fill="both",expand=True)
   ttk.Button(r,text="この数字の根拠を見る：月末レポートを保存（HTML・CSV・JSON）",command=self.month_end_pack).pack(anchor="w",pady=(0,6))
+  receipt_card=ttk.Labelframe(r,text="未処理証憑（確認する書類）",padding=8);receipt_card.pack(fill="x",pady=(0,6))
+  self.receipt_summary=tk.StringVar(value="未処理証憑を確認しています")
+  ttk.Label(receipt_card,textvariable=self.receipt_summary,wraplength=650,justify="left").pack(anchor="w")
+  ttk.Button(receipt_card,text="未処理証憑の一覧・処理状態を見る",command=self.view_receipts).pack(anchor="w",pady=(5,0))
   self.report=tk.Text(r,font=("Consolas",10),state="disabled");self.report.pack(fill="both",expand=True)
  def refresh_accounts(self):
   vals=[f'{a["code"]} {a["name"]}' for a in self.s.accounts()]
@@ -56,7 +61,42 @@ class App(tk.Tk):
   paths=filedialog.askopenfilenames(title="複数のレシート・請求書画像/PDFを選択")
   if not paths:return
   added=self.s.enqueue_receipts(paths)
+  self.refresh_receipt_card()
   messagebox.showinfo("証憑取り込み",f"{added}件をローカル待ち行列に追加しました。\n\n次段階はOCR→日付/金額/店名→科目候補→仕訳候補→確認です。現時点では画像だけで自動確定しません。")
+ def refresh_receipt_card(self):
+  rows=self.s.receipts()
+  pending=sum(r["status"]!="POSTED" for r in rows)
+  self.receipt_summary.set(
+   f"現在の未処理：{pending}件（全期間）。対象月末時点の件数は月末レポートで確認します。"
+   "古いデータや記録欠損がある場合は算出不可と表示します。"
+   "処理状態は仕訳・税務上の経費承認を意味しません。")
+ def view_receipts(self):
+  win=tk.Toplevel(self);win.title("証憑の確認・処理状態");win.geometry("760x440");win.minsize(640,350)
+  ttk.Label(win,text="原本を確認してから状態を変更してください。処理済みでも仕訳登録・税務上の経費認定はされません。",
+            wraplength=700).pack(anchor="w",padx=12,pady=10)
+  tree=ttk.Treeview(win,columns=("id","file","status"),show="headings",selectmode="browse")
+  for col,title,width in (("id","ID",65),("file","証憑ファイル名",390),("status","現在の状態",170)):
+   tree.heading(col,text=title);tree.column(col,width=width,stretch=(col=="file"))
+  tree.pack(fill="both",expand=True,padx=12,pady=6)
+  def populate():
+   for item in tree.get_children():tree.delete(item)
+   for row in self.s.receipts():
+    filename=Path(str(row["file_path"]).replace(chr(92),"/")).name
+    status="未処理" if row["status"]=="PENDING" else "処理済み（確認状態のみ）"
+    tree.insert("","end",iid=str(row["id"]),values=(row["id"],filename,status))
+  def change(status):
+   selected=tree.selection()
+   if not selected:
+    messagebox.showinfo("証憑の確認","対象の証憑を選択してください",parent=win);return
+   action="処理済み" if status=="POSTED" else "未処理"
+   if not messagebox.askyesno("証憑の確認",f"選択した証憑を{action}に変更しますか？\n税務判断や仕訳登録は行いません。",parent=win):return
+   try:self.s.set_receipt_status(int(selected[0]),status)
+   except BookError as e:messagebox.showerror("証憑の履歴",f"状態変更を中止しました：{e}",parent=win);return
+   populate();self.refresh_receipt_card()
+  actions=ttk.Frame(win);actions.pack(fill="x",padx=12,pady=10)
+  ttk.Button(actions,text="原本を確認済みとして記録",command=lambda:change("POSTED")).pack(side="left",padx=(0,8))
+  ttk.Button(actions,text="未処理に戻す",command=lambda:change("PENDING")).pack(side="left")
+  populate()
  def suggest(self):
   cand=suggest_entry(self.desc.get())
   if not cand:
@@ -88,7 +128,7 @@ class App(tk.Tk):
   for x in self.s.trial():
    if x["debit"] or x["credit"]:t.append(f'{x["code"]:<6}{x["name"]:<18}{x["debit"]:>14,}{x["credit"]:>14,}')
   t+=["",f'貸借一致: {"OK" if chk["balanced"] else "要確認"} / 差額 {chk["difference"]:,}円',"","損益計算書",f'収益 {p["収益"]:,}円',f'費用 {p["費用"]:,}円',f'当期利益 {p["利益"]:,}円',"","貸借対照表",f'資産 {b["資産"]:,}円',f'負債 {b["負債"]:,}円',f'純資産 {b["純資産"]:,}円',f'当期利益 {b["当期利益"]:,}円']
-  self.report.configure(state="normal");self.report.delete("1.0","end");self.report.insert("1.0","\n".join(t));self.report.configure(state="disabled")
+  self.report.configure(state="normal");self.report.delete("1.0","end");self.report.insert("1.0","\n".join(t));self.report.configure(state="disabled");self.refresh_receipt_card()
  def tax_assets(self):
   mode=simpledialog.askstring("税率・固定資産","消費税 または 減価償却 と入力してください")
   if not mode:return
