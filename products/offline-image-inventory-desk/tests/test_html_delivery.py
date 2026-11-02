@@ -111,7 +111,7 @@ class HTMLDeliveryTests(unittest.TestCase):
 
     def test_escapes_filename_and_never_embeds_baseline_from_snapshot(self):
         evidence = {
-            "schema": 1, "old_root": str(self.old), "new_root": str(self.new),
+            "schema": 1, "old_root": str(self.base / "missing-before"), "new_root": str(self.new),
             "summary": {"ADDED": 0, "REMOVED": 1, "MODIFIED": 0, "UNCHANGED": 0},
             "changes": [{
                 "relative_path": 'bad&<script>alert(1)</script>.png', "status": "REMOVED",
