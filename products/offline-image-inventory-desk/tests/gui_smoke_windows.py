@@ -103,6 +103,39 @@ def run(out, exe, source_sha):
             logs.append("in-app 3-step synthetic sample demonstrated in EN/JA without editing photos")
         finally:
             root.destroy()
+        # Hosted Windows screenshots at simulated 125% and 150% Tk font scaling.
+        # Assert novice controls are visible inside 1024x768, not merely created.
+        for factor, language in ((1.25, "en"), (1.50, "ja")):
+            root = tk.Tk()
+            try:
+                default_scaling = float(root.tk.call("tk", "scaling"))
+                root.tk.call("tk", "scaling", default_scaling * factor)
+                desk = app.Desk(root)
+                if language == "ja":
+                    desk.lang.invoke()
+                root.update_idletasks()
+                root.update()
+                assert desk.notebook.index(desk.notebook.select()) == 0
+                assert not desk.preflight_box.winfo_viewable(), "Technical checks exposed on novice tab"
+                assert all(button.winfo_viewable() for button in desk.snapshot_buttons.values())
+                for key, widget in {**desk.snapshot_buttons, "demo": desk.demo_button,
+                                    "summary": desk.summary_button, "note": desk.delivery_note}.items():
+                    x = widget.winfo_rootx() - root.winfo_rootx()
+                    y = widget.winfo_rooty() - root.winfo_rooty()
+                    if x < 0 or y < 0 or x + widget.winfo_width() > root.winfo_width() - 2 or y + widget.winfo_height() > root.winfo_height() - 2:
+                        raise AssertionError("DPI clipping: %s at %s%%: %s,%s" %
+                                             (key, round(factor * 100), x, y))
+                key = "dpi_%s_%s" % (round(factor * 100), language)
+                screenshots[key] = screenshot(root, out / (key + ".png"))
+                desk.notebook.select(desk.inventory_tab)
+                root.update()
+                assert desk.tree.winfo_viewable(), "Legacy image inventory inaccessible"
+                desk.notebook.select(desk.delivery_tab)
+                logs.append("novice 3-step UI visible at %s%% scaling (%s), advanced tab accessible" %
+                            (round(factor * 100), language))
+            finally:
+                root.destroy()
+
         # Drive baseline/compare/export in a fresh real Tk session.
         root = tk.Tk()
         try:
