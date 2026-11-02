@@ -179,6 +179,29 @@ class BankReviewTests(unittest.TestCase):
             "SELECT COUNT(*) FROM audit_log WHERE action='BANK_RECONCILE_CANCEL'"
         ).fetchone()[0], 0)
 
+    def test_cancel_rejects_offsetting_amount_edits_with_unchanged_net(self):
+        income = self.add("income", "10.00")
+        expense = self.add("expense", "10.00")
+        for txn in (income, expense):
+            bank.match_transaction(self.store.conn, txn, "Checking", "2026-10-31")
+        bank.finalize_statement(self.store.conn, "Checking", "2026-10-31", "5", "5")
+        # A matching +$1 change to both sides keeps movement at zero, but
+        # must not be accepted as the same finalized statement evidence.
+        self.store.conn.execute(
+            "UPDATE transactions SET amount_cents=amount_cents+100 WHERE id IN (?,?)",
+            (income, expense),
+        )
+        self.store.conn.commit()
+        with self.assertRaisesRegex(bank.BankReviewError, "evidence or amounts changed"):
+            bank.cancel_statement(self.store.conn, "Checking", "2026-10-31")
+        self.assertEqual(bank.match_statuses(self.store.conn),
+                         {income: "RECONCILED", expense: "RECONCILED"})
+        self.assertEqual(self.store.conn.execute(
+            "SELECT COUNT(*) FROM bank_reconciliations").fetchone()[0], 1)
+        self.assertEqual(self.store.conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE action='BANK_RECONCILE_CANCEL'"
+        ).fetchone()[0], 0)
+
     def test_cancel_rejects_legacy_missing_evidence_and_corrupt_snapshot(self):
         txn = self.add("income", "1")
         bank.match_transaction(self.store.conn, txn, "A", "2026-10-31")
