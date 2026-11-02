@@ -43,5 +43,7 @@ class T(unittest.TestCase):
   self.assertRaises(ValueError,m.custom_tax_depreciation_schedule,"100",{2026:50,"2026":50})
  def test_main_syntax(self):
   p=Path(__file__).resolve().parents[1]/"products/us-freelance-ledger/main.py"
-  compile(p.read_text(encoding="utf-8"),str(p),"exec")
+  source=p.read_text(encoding="utf-8")
+  compile(source,str(p),"exec")
+  self.assertIn("does not automatically shift income or expense recognition dates",source)
 if __name__=="__main__":unittest.main()
