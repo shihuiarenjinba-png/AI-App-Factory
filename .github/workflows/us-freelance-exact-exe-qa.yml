@@ -43,7 +43,8 @@ jobs:
           $expected = 'ffbff04f642634093468cbf7267facd6a075ddb3'
           $actual = (git -C source rev-parse HEAD).Trim()
           if ($actual -ne $expected) { throw "PR80 exact HEAD drift: $actual" }
-          if ((git -C source status --porcelain -- products/us-freelance-ledger).Trim()) { throw 'Dirty product source' }
+          $dirty = @(git -C source status --porcelain -- products/us-freelance-ledger) -join ''
+          if ($dirty) { throw 'Dirty product source' }
           if (!(Test-Path source/products/us-freelance-ledger/manifest.json)) { throw 'Product manifest missing' }
           $m = Get-Content source/products/us-freelance-ledger/manifest.json -Raw | ConvertFrom-Json
           if ($m.slug -ne 'us-freelance-ledger' -or $m.market -ne 'US' -or $m.entry -ne 'main.py') { throw 'Wrong product manifest' }
