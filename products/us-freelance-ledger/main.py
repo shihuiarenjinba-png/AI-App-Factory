@@ -8,6 +8,7 @@ from core import CATEGORIES,DOCUMENT_TYPES,METHODS,LedgerError,Store,suggest_cat
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
 from receipt_queue import enqueue_receipts, list_receipts, link_receipt
 from bank_reconcile import BankReviewError, match_transaction, unmatch_transaction, match_statuses, statement_preview, finalize_statement, cancel_statement
+from bank_report import export_bank_report
 
 # Keep the confirmation aligned with cancel_statement: no blanket promise of undo.
 BANK_FINALIZE_WARNING = (
@@ -97,6 +98,7 @@ class App(tk.Tk):
         ttk.Button(bank_actions,text="Check statement",command=self.check_bank).grid(row=0,column=1,sticky="ew",padx=(4,0),pady=2)
         ttk.Button(bank_actions,text="Undo match",command=self.unmatch_bank).grid(row=1,column=0,sticky="ew",padx=(0,4),pady=2)
         ttk.Button(bank_actions,text="Undo checked",command=self.cancel_bank).grid(row=1,column=1,sticky="ew",padx=(4,0),pady=2)
+        ttk.Button(bank_actions,text="Export bank check report",command=self.export_bank_check).grid(row=2,column=0,columnspan=2,sticky="ew",pady=2)
         bank_actions.columnconfigure(0,weight=1)
         bank_actions.columnconfigure(1,weight=1)
         cols=("date","kind","amount","category","party","memo","bank");self.tree=ttk.Treeview(r,columns=cols,show="headings")
@@ -230,6 +232,32 @@ class App(tk.Tk):
             "Bank check reopened — REVIEW REQUIRED",
             f'{len(result["transaction_ids"])} entries returned to Matched. '
             "Review the actual statement, check the difference is zero, and finalize again."
+        )
+
+
+    def export_bank_check(self):
+        """Export a checked statement or an audited historical undo, never silently overwrite."""
+        account=simpledialog.askstring("Export bank check","Bank account label:",parent=self)
+        if account is None:return
+        statement_day=simpledialog.askstring("Export bank check","Statement ending date (YYYY-MM-DD):",parent=self)
+        if statement_day is None:return
+        target=filedialog.asksaveasfilename(
+            parent=self,title="Save bank check CSV (a matching .txt report is also created)",
+            defaultextension=".csv",filetypes=[("CSV report","*.csv")]
+        )
+        if not target:return
+        try:receipt=export_bank_report(self.store.conn,account,statement_day,target)
+        except (BankReviewError,OSError) as exc:
+            messagebox.showerror("Bank report NOT saved",str(exc))
+            return
+        messagebox.showinfo(
+            "Bank check report saved — REVIEW REQUIRED",
+            f'Status: {receipt["status"]}\n'
+            f'Entries: {len(receipt["transaction_ids"])}\n'
+            f'Difference: USD {receipt["difference_cents"]/100:.2f}\n'
+            f'CSV: {receipt["csv_path"]}\n'
+            f'Readable report: {receipt["text_path"]}\n\n'
+            "Compare with your actual bank statement. Not bank or tax certification."
         )
 
     def change_method(self):
