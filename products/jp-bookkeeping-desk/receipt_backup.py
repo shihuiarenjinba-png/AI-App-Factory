@@ -133,6 +133,8 @@ def _inspect(archive):
                 _hold("ARCHIVE_TOO_LARGE")
             if "manifest.json" not in names or "books.sqlite3" not in names:
                 _hold("MANIFEST_OR_DATABASE_MISSING")
+            if z.getinfo("manifest.json").file_size > 1024 * 1024:
+                _hold("MANIFEST_TOO_LARGE")
             raw = z.read("manifest.json")
             if len(raw) > 1024 * 1024:
                 _hold("MANIFEST_TOO_LARGE")
@@ -202,6 +204,8 @@ def create_backup(store, target):
         finally:
             conn.close()
         ledger_id, originals, count = _book_rows(snapshot)
+        if {p.name for p in root.iterdir()} != set(originals):
+            _hold("ORPHAN_OR_UNEXPECTED_ORIGINAL")
         files = {"books.sqlite3": _regular_bytes(snapshot, MAX_DB)}
         for name, record in originals.items():
             payload = _regular_bytes(root / name, MAX_ORIGINAL)
