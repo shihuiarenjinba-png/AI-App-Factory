@@ -271,7 +271,7 @@ LABELS["ja"]["lang_save_failed"] = "この画面では言語を変更しまし�
 
 class Desk:
     def __init__(self,root):
-        self.root=root;self.language=load_language();self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False;self.comparison_window=None;self.last_html_report_path=None
+        self.root=root;self.language=load_language();self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False;self.comparison_window=None;self.last_html_report_path=None;self.comparison_open_report_button=None;self.comparison_report_path_label=None
         root.geometry("1024x768");root.minsize(850,600)
         body=ttk.Frame(root,padding=10);body.pack(fill="both",expand=True)
         header=ttk.Frame(body);header.pack(fill="x")
@@ -401,13 +401,25 @@ class Desk:
         for k in ("path","format","dimensions","bytes","check"):self.tree.heading(k,text=self.t(k))
 
     def _update_saved_report_ui(self):
-        button=getattr(self,"open_report_button",None)
-        label=getattr(self,"report_path_label",None)
         path=getattr(self,"last_html_report_path",None)
-        if button is not None:
-            button.configure(state="normal" if path is not None else "disabled")
-        if label is not None:
-            label.configure(text=(self.t("saved_html_location")+" "+path.name+" — "+str(path.parent)) if path else "")
+        text=(self.t("saved_html_location")+" "+path.name+" — "+str(path.parent)) if path else ""
+        for button_name in ("open_report_button","comparison_open_report_button"):
+            button=getattr(self,button_name,None)
+            if button is not None:
+                try:
+                    if button.winfo_exists():
+                        button.configure(state="normal" if path is not None else "disabled")
+                except (AttributeError,tk.TclError):
+                    # Unit-test stubs and already-destroyed comparison windows are harmless.
+                    button.configure(state="normal" if path is not None else "disabled")
+        for label_name in ("report_path_label","comparison_report_path_label"):
+            label=getattr(self,label_name,None)
+            if label is not None:
+                try:
+                    if label.winfo_exists():
+                        label.configure(text=text)
+                except (AttributeError,tk.TclError):
+                    label.configure(text=text)
 
     def _clear_saved_report(self):
         self.last_html_report_path=None
@@ -594,6 +606,8 @@ class Desk:
     def close_comparison_window(self):
         window=self.comparison_window
         self.comparison_window=None
+        self.comparison_open_report_button=None
+        self.comparison_report_path_label=None
         if window is not None and window.winfo_exists():
             window.destroy()
 
@@ -618,8 +632,14 @@ class Desk:
         actions.pack(fill="x",pady=(0,7))
         ttk.Button(actions,text=self.t("snap_html"),
                    command=self.export_delivery_html).pack(side="left",padx=(0,8))
+        self.comparison_open_report_button=ttk.Button(
+            actions,text=self.t("open_saved_html"),command=self.open_saved_report,state="disabled")
+        self.comparison_open_report_button.pack(side="left",padx=(0,8))
         ttk.Button(actions,text=("Save TXT" if self.language=="en" else "TXTを保存"),
                    command=self.export_delivery_summary).pack(side="left",padx=(0,8))
+        self.comparison_report_path_label=ttk.Label(frame,wraplength=830,justify="left")
+        self.comparison_report_path_label.pack(anchor="w",fill="x",pady=(0,7))
+        self._update_saved_report_ui()
         advanced_actions=ttk.Frame(frame);advanced_actions.pack(fill="x",pady=(0,7))
         ttk.Button(advanced_actions,text=("Export CSV / JSON" if self.language=="en" else "CSV / JSONを保存"),
                    command=self.export_evidence).pack(side="left",padx=(0,8))
