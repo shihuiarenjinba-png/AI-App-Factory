@@ -57,6 +57,20 @@ def image_hashes(root):
             for p in sorted(root.rglob("*.png"))}
 
 
+def verify_fixture_inventory(folder, expected_names):
+    """Reject extra files, nested folders and links before hashing buyer fixtures.
+
+    Hashing only *.png would otherwise miss an added JPG or a directory
+    containing alternate samples, making the five-person task non-identical.
+    """
+    if not folder.is_dir() or folder.is_symlink():
+        raise AssertionError("SOURCE_IMAGES_MODIFIED: fixture folder missing or linked")
+    entries = list(folder.iterdir())
+    if (set(p.name for p in entries) != set(expected_names)
+            or any(p.is_symlink() or not p.is_file() for p in entries)):
+        raise AssertionError("SOURCE_IMAGES_MODIFIED: fixture inventory changed")
+
+
 def prepare(out, exe, source_sha):
     out = Path(out).resolve()
     exe = Path(exe).resolve()
@@ -135,6 +149,11 @@ def verify(out):
     if (manifest.get("journey_protocol") != "UNCOACHED_DELIVERY_JOURNEY_V1"
             or manifest.get("required_phases") != list(PHASES)):
         raise AssertionError("Buyer journey protocol mismatch")
+    for name in ("baseline", "delivery", "read-error"):
+        expected_names = set(manifest[name.replace("-", "_") + "_sha256"])
+        if name == "read-error":
+            expected_names.add("invalid.png")
+        verify_fixture_inventory(out / name, expected_names)
     if image_hashes(out / "baseline") != manifest["baseline_sha256"]:
         raise AssertionError("SOURCE_IMAGES_MODIFIED: baseline")
     if image_hashes(out / "delivery") != manifest["delivery_sha256"]:
