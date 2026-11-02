@@ -7,9 +7,8 @@ All event times are UTC; the requested month-end boundary is Asia/Tokyo.
 import calendar
 import sqlite3
 from datetime import date, datetime, timedelta, timezone
-from zoneinfo import ZoneInfo
 
-JST = ZoneInfo("Asia/Tokyo")
+JST = timezone(timedelta(hours=9), "JST")
 UTC = timezone.utc
 
 
