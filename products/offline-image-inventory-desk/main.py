@@ -77,6 +77,23 @@ LABELS["ja"].update({
  "snap_demo_title":"見本 — 画像の変更結果（お客様の画像ではありません）"
 })
 
+LABELS["en"].update({
+ "delivery_tab":"Delivery report", "inventory_tab":"Image list & advanced checks",
+ "step_record":"Step 1 — Record the original folder",
+ "step_compare":"Step 2 — Compare the delivered folder",
+ "step_deliver":"Step 3 — Save the customer report",
+ "snap_hint":"New here? Try the sample first. For a real delivery, save the original folder record, then compare the revised folder.",
+ "delivery_note":"Images are never changed. After comparing, review the changes and save a readable TXT report. CSV/JSON is available for detailed evidence."
+})
+LABELS["ja"].update({
+ "delivery_tab":"納品レポート", "inventory_tab":"画像一覧・詳細検査",
+ "step_record":"手順1 — 変更前のフォルダを記録",
+ "step_compare":"手順2 — 納品後のフォルダを比較",
+ "step_deliver":"手順3 — お客様向けレポートを保存",
+ "snap_hint":"初めての方は見本から試せます。実際の納品では変更前を記録し、変更後のフォルダと比較してください。",
+ "delivery_note":"画像は変更しません。比較結果を確認し、読みやすいTXTを保存できます。詳細記録はCSV/JSONで出力できます。"
+})
+
 def jpeg_dimensions(data):
     if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
     i=2
@@ -230,52 +247,114 @@ class Desk:
     def __init__(self,root):
         self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False;self.comparison_window=None
         root.geometry("1024x768");root.minsize(850,600)
-        body=ttk.Frame(root,padding=12);body.pack(fill="both",expand=True)
-        self.heading=ttk.Label(body,font=("Segoe UI",18,"bold"));self.heading.pack(anchor="w")
-        self.intro=ttk.Label(body,wraplength=950);self.intro.pack(anchor="w",pady=8)
-        bar=ttk.Frame(body);bar.pack(fill="x",pady=6)
-        self.buttons={}
-        for key,fn in (("add",self.add),("remove",self.remove),("clear",self.clear),("save",self.save),("open",self.open),("export",self.export)):
-            b=ttk.Button(bar,command=fn);b.pack(side="left",padx=(0,5));self.buttons[key]=b
-        self.lang=ttk.Button(bar,command=self.toggle);self.lang.pack(side="right")
-        snapshotbar=ttk.Frame(body);snapshotbar.pack(fill="x",pady=(2,3))
+        body=ttk.Frame(root,padding=10);body.pack(fill="both",expand=True)
+        header=ttk.Frame(body);header.pack(fill="x")
+        self.heading=ttk.Label(header,font=("Segoe UI",18,"bold"))
+        self.heading.pack(side="left",anchor="w")
+        self.lang=ttk.Button(header,command=self.toggle)
+        self.lang.pack(side="right",padx=(8,0))
+        self.intro=ttk.Label(body,wraplength=720,justify="left")
+        self.intro.pack(anchor="w",fill="x",pady=(7,8))
+
+        # First-run delivery workflow stays on the first tab; the legacy image
+        # inventory and technical screenshot checks remain available separately.
+        self.notebook=ttk.Notebook(body)
+        self.notebook.pack(fill="both",expand=True)
+        self.delivery_tab=ttk.Frame(self.notebook,padding=12)
+        self.inventory_tab=ttk.Frame(self.notebook,padding=10)
+        self.notebook.add(self.delivery_tab,text="Delivery report")
+        self.notebook.add(self.inventory_tab,text="Image inventory")
+
+        self.snapshot_intro=ttk.Label(self.delivery_tab,wraplength=680,justify="left")
+        self.snapshot_intro.pack(anchor="w",fill="x",pady=(0,10))
+        demo_row=ttk.Frame(self.delivery_tab);demo_row.pack(fill="x",pady=(0,10))
+        self.demo_button=ttk.Button(demo_row,command=self.try_demo)
+        self.demo_button.pack(side="left")
+
         self.snapshot_buttons={}
-        for key,fn in (("snap_new",self.new_snapshot),("snap_open",self.open_snapshot),
-                       ("snap_compare",self.compare_folder),("snap_export",self.export_evidence)):
-            button=ttk.Button(snapshotbar,command=fn)
-            button.pack(side="left",padx=(0,6));self.snapshot_buttons[key]=button
-        summarybar=ttk.Frame(body);summarybar.pack(fill="x",pady=(0,3))
-        self.summary_button=ttk.Button(summarybar,command=self.export_delivery_summary)
-        self.summary_button.pack(side="left")
-        self.demo_button=ttk.Button(summarybar,command=self.try_demo)
-        self.demo_button.pack(side="left",padx=(12,0))
-        self.snapshot_intro=ttk.Label(body,wraplength=950)
-        self.snapshot_intro.pack(anchor="w",pady=(0,3))
-        checkbar=ttk.Frame(body);checkbar.pack(fill="x",pady=(2,4))
+        step1=ttk.LabelFrame(self.delivery_tab,padding=10)
+        step1.pack(fill="x",pady=(0,9))
+        self.step1=step1
+        for key,fn in (("snap_new",self.new_snapshot),("snap_open",self.open_snapshot)):
+            button=ttk.Button(step1,command=fn)
+            button.pack(side="left",padx=(0,8))
+            self.snapshot_buttons[key]=button
+
+        step2=ttk.LabelFrame(self.delivery_tab,padding=10)
+        step2.pack(fill="x",pady=(0,9))
+        self.step2=step2
+        button=ttk.Button(step2,command=self.compare_folder)
+        button.pack(side="left")
+        self.snapshot_buttons["snap_compare"]=button
+
+        step3=ttk.LabelFrame(self.delivery_tab,padding=10)
+        step3.pack(fill="x",pady=(0,9))
+        self.step3=step3
+        self.summary_button=ttk.Button(step3,command=self.export_delivery_summary)
+        self.summary_button.pack(side="left",padx=(0,8))
+        button=ttk.Button(step3,command=self.export_evidence)
+        button.pack(side="left")
+        self.snapshot_buttons["snap_export"]=button
+        self.delivery_note=ttk.Label(self.delivery_tab,wraplength=680,justify="left")
+        self.delivery_note.pack(anchor="w",fill="x",pady=(4,0))
+
+        self.inventory_intro=ttk.Label(self.inventory_tab,wraplength=700,justify="left")
+        self.inventory_intro.pack(anchor="w",fill="x",pady=(0,8))
+        self.buttons={}
+        # Two short rows replace the former six-button horizontal toolbar.
+        for group in (("add","remove","clear"),("save","open","export")):
+            bar=ttk.Frame(self.inventory_tab)
+            bar.pack(fill="x",pady=(0,5))
+            actions={"add":self.add,"remove":self.remove,"clear":self.clear,
+                     "save":self.save,"open":self.open,"export":self.export}
+            for key in group:
+                b=ttk.Button(bar,command=actions[key])
+                b.pack(side="left",padx=(0,6))
+                self.buttons[key]=b
+        checkbar=ttk.Frame(self.inventory_tab);checkbar.pack(fill="x",pady=(2,4))
         self.preflight_box=ttk.Checkbutton(checkbar,variable=self.preflight,command=self.toggle_preflight)
         self.preflight_box.pack(side="left",padx=(0,12))
         self.issues_box=ttk.Checkbutton(checkbar,variable=self.issues,command=self.refresh)
         self.issues_box.pack(side="left",padx=(0,12))
         self.check_export_button=ttk.Button(checkbar,command=self.export_check)
         self.check_export_button.pack(side="left")
-        self.notice=ttk.Label(body,wraplength=950);self.notice.pack(anchor="w")
-        frame=ttk.Frame(body);frame.pack(fill="both",expand=True,pady=6)
+        self.notice=ttk.Label(self.inventory_tab,wraplength=700,justify="left")
+        self.notice.pack(anchor="w",fill="x")
+        frame=ttk.Frame(self.inventory_tab)
+        frame.pack(fill="both",expand=True,pady=6)
         self.tree=ttk.Treeview(frame,columns=("path","format","dimensions","bytes","check"),show="headings",selectmode="extended")
         for k,width in (("path",395),("format",85),("dimensions",125),("bytes",100),("check",210)):
             self.tree.column(k,width=width,stretch=k=="path")
         scroll=ttk.Scrollbar(frame,orient="vertical",command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
         self.tree.pack(side="left",fill="both",expand=True);scroll.pack(side="right",fill="y")
-        ttk.Label(body,textvariable=self.status,wraplength=950).pack(anchor="w",pady=4)
+        self.status_label=ttk.Label(body,textvariable=self.status,wraplength=720,justify="left")
+        self.status_label.pack(anchor="w",fill="x",pady=(7,0))
+        body.bind("<Configure>",self._fit_labels,add="+")
         self.localize();self.status.set(self.t("ready"))
         root.bind("<Destroy>",self._cleanup_demo,add="+")
+
+    def _fit_labels(self,event=None):
+        # Adapt line wrapping to a 1024x768 viewport at 100/125/150% DPI.
+        width=max(240,self.root.winfo_width()-90)
+        for label in (self.intro,self.snapshot_intro,self.delivery_note,
+                      self.inventory_intro,self.notice,self.status_label):
+            label.configure(wraplength=width)
+
     def t(self,key):return LABELS[self.language][key]
     def localize(self):
         self.root.title(self.t("title"));self.heading.configure(text=self.t("title"))
-        self.intro.configure(text=self.t("help"));self.lang.configure(text=self.t("lang"))
+        self.intro.configure(text=self.t("snap_intro"));self.lang.configure(text=self.t("lang"))
+        self.notebook.tab(self.delivery_tab,text=self.t("delivery_tab"))
+        self.notebook.tab(self.inventory_tab,text=self.t("inventory_tab"))
+        self.step1.configure(text=self.t("step_record"))
+        self.step2.configure(text=self.t("step_compare"))
+        self.step3.configure(text=self.t("step_deliver"))
+        self.snapshot_intro.configure(text=self.t("snap_hint"))
+        self.delivery_note.configure(text=self.t("delivery_note"))
+        self.inventory_intro.configure(text=self.t("help"))
         for k,b in self.buttons.items():b.configure(text=self.t(k))
         for k,b in self.snapshot_buttons.items():b.configure(text=self.t(k))
-        self.snapshot_intro.configure(text=self.t("snap_intro"))
         self.summary_button.configure(text=self.t("snap_summary"))
         self.demo_button.configure(text=self.t("snap_demo"))
         self.preflight_box.configure(text=self.t("preflight"))
@@ -283,6 +362,7 @@ class Desk:
         self.check_export_button.configure(text=self.t("check_export"))
         self.notice.configure(text=self.t("notice") if self.preflight.get() else "")
         for k in ("path","format","dimensions","bytes","check"):self.tree.heading(k,text=self.t(k))
+
     def toggle(self):
         self.language="ja" if self.language=="en" else "en";self.localize()
         if self.demo_mode:self.status.set(self.t("snap_demo_done"))
