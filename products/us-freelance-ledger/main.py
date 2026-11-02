@@ -252,11 +252,11 @@ class App(tk.Tk):
             return
         messagebox.showinfo(
             "Bank check report saved — REVIEW REQUIRED",
-            f'Status: {receipt["status"]}\\n'
-            f'Entries: {len(receipt["transaction_ids"])}\\n'
-            f'Difference: USD {receipt["difference_cents"]/100:.2f}\\n'
-            f'CSV: {receipt["csv_path"]}\\n'
-            f'Readable report: {receipt["text_path"]}\\n\\n'
+            f'Status: {receipt["status"]}\n'
+            f'Entries: {len(receipt["transaction_ids"])}\n'
+            f'Difference: USD {receipt["difference_cents"]/100:.2f}\n'
+            f'CSV: {receipt["csv_path"]}\n'
+            f'Readable report: {receipt["text_path"]}\n\n'
             "Compare with your actual bank statement. Not bank or tax certification."
         )
 
