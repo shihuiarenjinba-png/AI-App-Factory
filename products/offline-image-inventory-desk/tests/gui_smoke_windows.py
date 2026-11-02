@@ -89,6 +89,7 @@ def run(out, exe, source_sha):
         saved = rootdir / "baseline.json"
         csv_path, json_path, txt_path = (out / "changes.csv", out / "changes.json",
                                          out / "delivery-summary-ja.txt")
+        html_path = out / "delivery-client-ja.html"
         root = tk.Tk()
         try:
             desk = app.Desk(root)
@@ -119,7 +120,8 @@ def run(out, exe, source_sha):
                 assert not desk.preflight_box.winfo_viewable(), "Technical checks exposed on novice tab"
                 assert all(button.winfo_viewable() for button in desk.snapshot_buttons.values())
                 for key, widget in {**desk.snapshot_buttons, "demo": desk.demo_button,
-                                    "summary": desk.summary_button, "note": desk.delivery_note}.items():
+                                    "summary": desk.summary_button, "html": desk.html_button,
+                                    "note": desk.delivery_note}.items():
                     x = widget.winfo_rootx() - root.winfo_rootx()
                     y = widget.winfo_rooty() - root.winfo_rooty()
                     if x < 0 or y < 0 or x + widget.winfo_width() > root.winfo_width() - 2 or y + widget.winfo_height() > root.winfo_height() - 2:
@@ -160,12 +162,16 @@ def run(out, exe, source_sha):
             screenshots["04_japanese"] = screenshot(root, out / "04_japanese.png")
             with patch.object(app.filedialog, "asksaveasfilename", return_value=str(txt_path)):
                 desk.summary_button.invoke()
+            with patch.object(app.filedialog, "asksaveasfilename", return_value=str(html_path)):
+                desk.html_button.invoke()
+            assert "data:image/png;base64," in html_path.read_text(encoding="utf-8")
+            assert "納品画像の確認レポート" in html_path.read_text(encoding="utf-8")
             assert all(marker in txt_path.read_text(encoding="utf-8") for marker in
                        ("日時の限界", "お客様への確認ポイント", "次の操作:"))
             assert json.loads(json_path.read_text(encoding="utf-8"))["summary"]["MODIFIED"] == 1
             with csv_path.open(encoding="utf-8", newline="") as stream:
                 assert len(list(csv.DictReader(stream))) == 4
-            logs.append("CSV, JSON and Japanese TXT exported via GUI")
+            logs.append("CSV, JSON, TXT and standalone Japanese HTML with verified previews exported via GUI")
         finally:
             for child in root.winfo_children():
                 if isinstance(child, tk.Toplevel):
@@ -237,7 +243,7 @@ def run(out, exe, source_sha):
             "exe_bytes": exe.stat().st_size,
             "source_images_untouched": True,
             "fixture_input_sha256": initial,
-            "evidence_sha256": {p.name: sha(p) for p in (saved, csv_path, json_path, txt_path)},
+            "evidence_sha256": {p.name: sha(p) for p in (saved, csv_path, json_path, txt_path, html_path)},
             "screenshots": screenshots,
             "checks": logs,
             "market_fit": "MARKET_FIT_HOLD",
@@ -256,7 +262,8 @@ def record_ui_layout(root, desk, out):
     root.update_idletasks()
     root.update()
     widgets = dict(desk.snapshot_buttons)
-    widgets.update({"summary": desk.summary_button, "demo": desk.demo_button, "lang": desk.lang})
+    widgets.update({"summary": desk.summary_button, "html": desk.html_button,
+                    "demo": desk.demo_button, "lang": desk.lang})
     coords = {}
     for name, widget in widgets.items():
         if not widget.winfo_viewable():
@@ -303,6 +310,7 @@ def run_packaged(out, exe, source_sha, calibration):
         csv_path = out / "packaged-changes.csv"
         json_path = out / "packaged-changes.json"
         txt_path = out / "packaged-summary-ja.txt"
+        html_path = out / "packaged-client-ja.html"
         process = None
         window = None
 
@@ -448,7 +456,8 @@ def run_packaged(out, exe, source_sha, calibration):
                 raise AssertionError("Packaged EXE did not switch to Japanese")
             capture("04_exe_japanese")
             action("summary", txt_path)
-            if not all(p.is_file() for p in (csv_path, json_path, txt_path)):
+            action("html", html_path)
+            if not all(p.is_file() for p in (csv_path, json_path, txt_path, html_path)):
                 raise AssertionError("Packaged EXE exports missing")
             report = json.loads(json_path.read_text(encoding="utf-8"))
             if report["summary"] != expected:
@@ -460,7 +469,13 @@ def run_packaged(out, exe, source_sha, calibration):
             if any(marker not in customer_report for marker in
                    ("日時の限界", "お客様への確認ポイント", "次の操作:", "名前変更")):
                 raise AssertionError("Packaged Japanese TXT customer guidance missing")
+            client_html = html_path.read_text(encoding="utf-8")
+            if "納品画像の確認レポート" not in client_html or "data:image/png;base64," not in client_html:
+                raise AssertionError("Packaged standalone client HTML missing verified previews")
+            if "<script" in client_html or "src=\"http" in client_html:
+                raise AssertionError("Client HTML contains unsafe active or remote content")
             log.append("packaged CSV/JSON/TXT contents validated")
+            log.append("packaged HTML local customer previews validated")
             stop()
             start()
             action("snap_open", snapshot)
