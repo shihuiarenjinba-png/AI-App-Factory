@@ -121,6 +121,7 @@ def run(out, exe, source_sha):
                 assert all(button.winfo_viewable() for button in desk.snapshot_buttons.values())
                 for key, widget in {**desk.snapshot_buttons, "demo": desk.demo_button,
                                     "summary": desk.summary_button, "html": desk.html_button,
+                                    "open_saved": desk.open_report_button,
                                     "note": desk.delivery_note}.items():
                     x = widget.winfo_rootx() - root.winfo_rootx()
                     y = widget.winfo_rooty() - root.winfo_rooty()
@@ -166,6 +167,13 @@ def run(out, exe, source_sha):
                 desk.html_button.invoke()
             assert "data:image/png;base64," in html_path.read_text(encoding="utf-8")
             assert "納品画像の確認レポート" in html_path.read_text(encoding="utf-8")
+            assert str(desk.open_report_button.cget("state")) == "normal"
+            assert html_path.name in desk.report_path_label.cget("text")
+            with patch.object(app.webbrowser, "open", return_value=True) as browser:
+                desk.open_report_button.invoke()
+            assert browser.call_args.args[0] == html_path.resolve().as_uri()
+            screenshots["04b_saved_report_ja"] = screenshot(root, out / "04b_saved_report_ja.png")
+            logs.append("Open saved report enabled only after verified HTML save; file URI local")
             assert all(marker in txt_path.read_text(encoding="utf-8") for marker in
                        ("日時の限界", "お客様への確認ポイント", "次の操作:"))
             assert json.loads(json_path.read_text(encoding="utf-8"))["summary"]["MODIFIED"] == 1
@@ -181,6 +189,7 @@ def run(out, exe, source_sha):
         root = tk.Tk()
         try:
             desk = app.Desk(root)
+            assert str(desk.open_report_button.cget("state")) == "disabled", "Restart reused stale success"
             with patch.object(app.filedialog, "askopenfilename", return_value=str(saved)):
                 desk.snapshot_buttons["snap_open"].invoke()
             assert desk.baseline is not None
@@ -199,6 +208,7 @@ def run(out, exe, source_sha):
                  patch.object(app.messagebox, "showerror", side_effect=lambda *a, **kw: errors.append(str(a))):
                 invoke_with_dialog(desk.snapshot_buttons["snap_compare"], "askdirectory", delivery)
             assert errors and desk.comparison is None, "Read error did not invalidate old evidence"
+            assert str(desk.open_report_button.cget("state")) == "disabled", "Old HTML report re-enabled"
             assert "No comparison was created" in errors[0], "Actionable read-error guidance missing"
             assert desk.status.get() == desk.t("snap_failed"), "Error not visible to user"
             screenshots["06_read_error"] = screenshot(root, out / "06_read_error.png")
@@ -209,6 +219,15 @@ def run(out, exe, source_sha):
                 desk.summary_button.invoke()
             assert desk.comparison is None, "Stale summary export re-enabled"
             logs.append("read error visible; stale comparison invalidated; no false export")
+            # Recovery must require a fresh successful comparison and a new HTML save.
+            invoke_with_dialog(desk.snapshot_buttons["snap_compare"], "askdirectory", delivery)
+            assert desk.comparison is not None
+            assert str(desk.open_report_button.cget("state")) == "disabled"
+            recovered = out / "recovered-client-en.html"
+            with patch.object(app.filedialog, "asksaveasfilename", return_value=str(recovered)):
+                desk.html_button.invoke()
+            assert recovered.is_file() and str(desk.open_report_button.cget("state")) == "normal"
+            logs.append("read-denied -> recompare -> fresh HTML save restored open action")
         finally:
             for child in root.winfo_children():
                 if isinstance(child, tk.Toplevel):
