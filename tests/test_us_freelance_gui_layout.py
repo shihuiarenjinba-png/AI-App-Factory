@@ -34,6 +34,17 @@ class FirstRunLayoutTests(unittest.TestCase):
             with self.subTest(area=area), self.assertRaises(ValueError):
                 ui._window_bounds(area)
 
+    def test_windows_work_area_api_failure_reserves_taskbar_margins(self):
+        root = SimpleNamespace(winfo_screenwidth=lambda: 1024,
+                               winfo_screenheight=lambda: 768)
+        with patch.object(ui.sys, "platform", "win32"), \
+             patch.object(ui.ctypes, "windll", None, create=True):
+            self.assertEqual(ui._work_area(root), (64, 64, 896, 640))
+            geometry, minimum_width, minimum_height = ui._window_bounds(
+                ui._work_area(root))
+            self.assertEqual(geometry, "872x616+76+76")
+            self.assertEqual((minimum_width, minimum_height), (872, 616))
+
     def test_bank_actions_two_rows_with_primary_flow_visible(self):
         tree = ast.parse((PRODUCT / "main.py").read_text(encoding="utf-8"))
         buttons = {}
