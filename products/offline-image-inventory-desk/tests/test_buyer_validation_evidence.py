@@ -86,6 +86,35 @@ class BuyerEvidenceTests(unittest.TestCase):
             self.assertEqual(list(reader), [])
         self.assertEqual(kit.verify(self.out)["response_rows"], 0)
 
+    def test_extra_non_png_or_nested_fixture_refused(self):
+        self.make()
+        extra = self.out / "delivery" / "alternate.jpg"
+        extra.write_bytes(b"untracked alternate image")
+        with self.assertRaisesRegex(AssertionError, "SOURCE_IMAGES_MODIFIED"):
+            kit.verify(self.out)
+        extra.unlink()
+        nested = self.out / "baseline" / "other-samples"
+        nested.mkdir()
+        with self.assertRaisesRegex(AssertionError, "SOURCE_IMAGES_MODIFIED"):
+            kit.verify(self.out)
+        nested.rmdir()
+        self.assertTrue(kit.verify(self.out)["source_unchanged"])
+
+    def test_fixture_symlink_cannot_reuse_same_bytes(self):
+        self.make()
+        target = self.out / "baseline" / "same.png"
+        original = target.read_bytes()
+        target.unlink()
+        try:
+            target.symlink_to(self.out / "baseline" / "modified.png")
+        except (OSError, NotImplementedError):
+            self.skipTest("Symlink creation not permitted on this runner")
+        with self.assertRaisesRegex(AssertionError, "SOURCE_IMAGES_MODIFIED"):
+            kit.verify(self.out)
+        target.unlink()
+        target.write_bytes(original)
+        self.assertTrue(kit.verify(self.out)["source_unchanged"])
+
     def test_rejects_unverified_input(self):
         with self.assertRaisesRegex(ValueError, "Exact 40"):
             kit.prepare(self.out, self.exe, "not-a-sha")
