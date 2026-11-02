@@ -70,6 +70,15 @@ def verify(exe, exe_receipt, evidence_dir, source_sha, artifact_id, run_id):
     report = (evidence_dir / "packaged-summary-ja.txt").read_text(encoding="utf-8")
     _require(all(x in report for x in ("日時の限界", "お客様への確認ポイント", "次の操作:", "名前変更")),
              "CUSTOMER_TXT_INCOMPLETE")
+    client_html_path = evidence_dir / "packaged-client-ja.html"
+    client_html = client_html_path.read_text(encoding="utf-8")
+    _require("納品画像の確認レポート" in client_html
+             and "data:image/png;base64," in client_html
+             and "default-src 'none'" in client_html
+             and "<script" not in client_html
+             and 'src="http' not in client_html, "CUSTOMER_HTML_INCOMPLETE")
+    _require(packaged.get("client_html_sha256") == _sha(client_html_path),
+             "CUSTOMER_HTML_SHA_MISMATCH")
     shots = packaged.get("screenshots", {})
     for key in ("01_exe_initial_en", "04_exe_japanese", "05_exe_restarted",
                 "06_exe_read_error", "07_exe_read_denied"):
@@ -84,6 +93,8 @@ def verify(exe, exe_receipt, evidence_dir, source_sha, artifact_id, run_id):
              "READ_DENIAL_LOG_MISSING")
     _require(any("packaged CSV/JSON/TXT contents validated" in x for x in checks),
              "EXPORT_LOG_MISSING")
+    _require(any("packaged HTML local customer previews validated" in x for x in checks),
+             "CUSTOMER_HTML_LOG_MISSING")
     _require(any("packaged EXE process started" in x for x in checks),
              "PACKAGED_LAUNCH_LOG_MISSING")
     _require(isinstance(artifact_id, int) and artifact_id > 0
@@ -93,7 +104,7 @@ def verify(exe, exe_receipt, evidence_dir, source_sha, artifact_id, run_id):
         "artifact_id": artifact_id, "artifact_run_id": run_id,
         "source_sha": source_sha, "exe_sha256": digest,
         "checks": ["pinned_exe_hash", "four_changes", "ja_en_1024x768",
-                   "csv_json_txt", "restart", "malformed_read_fail_closed",
+                   "csv_json_txt_html", "restart", "malformed_read_fail_closed",
                    "real_read_denied_fail_closed", "source_images_sha_unchanged"],
         "human_buyers_observed": 0, "why_pay_verified": False,
         "market_score": 64, "market_fit": "MARKET_FIT_HOLD",
