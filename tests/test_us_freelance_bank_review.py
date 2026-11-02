@@ -1,4 +1,5 @@
 """Headless US bank review tests: no IRS tax treatment is inferred."""
+import ast
 import importlib.util
 import sys
 import tempfile
@@ -221,6 +222,40 @@ class BankReviewTests(unittest.TestCase):
             bank.cancel_statement(self.store.conn, "A", "2026-10-31")
         self.assertEqual(bank.match_statuses(self.store.conn)[txn], "RECONCILED")
 
+
+    def test_finalize_confirmation_matches_actual_cancel_contract(self):
+        # Inspect the real UI call without creating a Tk window on CI runners.
+        # Backend fixtures above cover successful undo, restart, legacy,
+        # later-month, changed amounts and missing membership evidence.
+        tree = ast.parse((PRODUCT / "main.py").read_text(encoding="utf-8"))
+        warning = next(
+            ast.literal_eval(node.value)
+            for node in tree.body
+            if isinstance(node, ast.Assign)
+            and any(isinstance(t, ast.Name) and t.id == "BANK_FINALIZE_WARNING"
+                    for t in node.targets)
+        )
+        self.assertNotIn("cannot be undone in this version", warning)
+        for phrase in ("latest", "evidence", "Legacy", "changed",
+                       "later checked month", "REVIEW REQUIRED",
+                       "ledger amounts unchanged", "audit record"):
+            with self.subTest(phrase=phrase):
+                self.assertIn(phrase, warning)
+        dialogs = [
+            node for node in ast.walk(tree)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and node.func.attr == "askyesno"
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and node.args[0].value == "Finalize bank statement"
+        ]
+        self.assertEqual(len(dialogs), 1)
+        self.assertTrue(any(isinstance(node, ast.Name)
+                            and node.id == "BANK_FINALIZE_WARNING"
+                            for node in ast.walk(dialogs[0])))
+        self.assertIn("cancel_statement(self.store.conn,account,statement_day)",
+                      (PRODUCT / "main.py").read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":
