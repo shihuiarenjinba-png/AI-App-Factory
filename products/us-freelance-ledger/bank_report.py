@@ -61,10 +61,18 @@ def _read_receipt(conn: sqlite3.Connection, account: str, statement_date: str) -
         if not snapshots:
             raise BankReviewError("No verified reconciliation membership; legacy records require manual review")
         source, snapshot = snapshots[-1]
-        rid = int(source[2])
-        required = ("opening_cents", "closing_cents", "movement_cents", "transaction_ids", "members")
-        if any(key not in snapshot for key in required):
-            raise BankReviewError("Reconciliation evidence is incomplete; REVIEW REQUIRED")
+        if type(source[2]) is not int or source[2] <= 0:
+            raise BankReviewError("Reconciliation audit ID is damaged; REVIEW REQUIRED")
+        rid = source[2]
+        expected_keys = {
+            "account", "statement_date", "opening_cents", "closing_cents",
+            "movement_cents", "transaction_ids", "members"
+        }
+        if set(snapshot) != expected_keys or any(
+            type(snapshot[key]) is not int for key in
+            ("opening_cents", "closing_cents", "movement_cents")
+        ):
+            raise BankReviewError("Reconciliation evidence is incomplete or altered; REVIEW REQUIRED")
         ids = snapshot["transaction_ids"]
         members = snapshot["members"]
         if (not isinstance(ids, list) or not ids or
@@ -86,7 +94,11 @@ def _read_receipt(conn: sqlite3.Connection, account: str, statement_date: str) -
             m["amount_cents"] * (1 if m["kind"] == "income" else -1) for m in members
         ) != movement:
             raise BankReviewError("Reconciliation totals do not match saved evidence; REVIEW REQUIRED")
-        reconciled = [e for e in history if e[1] == "BANK_RECONCILE" and e[2] == rid and e[0] < source[0]]
+        reconciled = [
+            e for e in history
+            if e[1] == "BANK_RECONCILE" and e[2] == rid and e[0] < source[0]
+            and e[3] == f"{account}|{statement_date}|{closing}"
+        ]
         cancellations = [e for e in history if e[1] == "BANK_RECONCILE_CANCEL" and e[2] == rid and e[0] > source[0]]
         if not reconciled:
             raise BankReviewError("Reconciliation audit is missing; REVIEW REQUIRED")
