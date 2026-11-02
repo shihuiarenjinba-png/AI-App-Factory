@@ -36,6 +36,10 @@ class App(tk.Tk):
   self.receipt_summary=tk.StringVar(value="未処理証憑を確認しています")
   ttk.Label(receipt_card,textvariable=self.receipt_summary,wraplength=650,justify="left").pack(anchor="w")
   ttk.Button(receipt_card,text="未処理証憑の一覧・処理状態を見る",command=self.view_receipts).pack(anchor="w",pady=(5,0))
+  backup_actions=ttk.Frame(receipt_card);backup_actions.pack(anchor="w",pady=(6,0))
+  ttk.Button(backup_actions,text="バックアップを作成",command=self.backup_receipts).pack(side="left",padx=(0,5))
+  ttk.Button(backup_actions,text="復元前の確認",command=self.inspect_receipt_backup).pack(side="left",padx=(0,5))
+  ttk.Button(backup_actions,text="別の帳簿として復元",command=self.restore_receipt_backup).pack(side="left")
   self.report=tk.Text(r,font=("Consolas",10),state="disabled");self.report.pack(fill="both",expand=True)
  def refresh_accounts(self):
   vals=[f'{a["code"]} {a["name"]}' for a in self.s.accounts()]
@@ -79,6 +83,50 @@ class App(tk.Tk):
    f"確認が必要：{custody['review_required']}件。"
    "対象月末時点の件数は月末レポートで確認します。"
    "古いデータや記録欠損は要確認です。処理状態は仕訳・税務上の経費承認を意味しません。")
+ def backup_receipts(self):
+  path=filedialog.asksaveasfilename(title="証憑と帳簿のバックアップ保存先",defaultextension=".zip",
+                                    filetypes=[("バックアップ ZIP","*.zip")])
+  if not path:return
+  try:
+   result=self.s.create_receipt_backup(path)
+   messagebox.showinfo("バックアップを作成",
+    f'帳簿と原本 {result["receipt_count"]}件を照合して保存しました。\\n保存先: {result["path"]}\\n'
+    "別のドライブにもコピーしてください。税務上の適合や経費承認を保証しません。")
+  except BookError as e:
+   messagebox.showwarning("バックアップを作成できません",
+    f"確認が必要なデータがあります。保存は中止しました。\\n理由: {e}\\n原本の保存状態を確認してください。")
+ def inspect_receipt_backup(self):
+  path=filedialog.askopenfilename(title="復元前にバックアップを確認",filetypes=[("バックアップ ZIP","*.zip")])
+  if not path:return
+  try:
+   info=self.s.inspect_receipt_backup(path)
+   messagebox.showinfo("復元前の確認",
+    f'照合できました。原本 {info["receipt_count"]}件。\\n'
+    "復元時は新しい帳簿を作成します。現在の帳簿は上書きしません。\\n"
+    "原本の外部ファイル参照は復元後に再確認が必要な場合があります。")
+  except BookError as e:
+   messagebox.showwarning("復旧できない理由",
+    f"バックアップの照合に失敗しました。復元しません。\\n理由: {e}")
+ def restore_receipt_backup(self):
+  path=filedialog.askopenfilename(title="復元するバックアップを選択",filetypes=[("バックアップ ZIP","*.zip")])
+  if not path:return
+  try:info=self.s.inspect_receipt_backup(path)
+  except BookError as e:
+   messagebox.showwarning("復旧できない理由",f"復元前の照合に失敗しました。\\n理由: {e}");return
+  if not messagebox.askyesno("復元前の確認",
+   f'原本 {info["receipt_count"]}件を確認しました。\\n'
+   "現在の帳簿を上書きせず、新しいフォルダーに復元します。続けますか？"):return
+  parent=filedialog.askdirectory(title="復元先の親フォルダーを選択（新しい帳簿を作成）")
+  if not parent:return
+  try:
+   restored=self.s.restore_receipt_backup(path,parent)
+   messagebox.showinfo("新しい帳簿へ復元",
+    f'復元しました。原本 {restored["receipt_count"]}件。\\n'
+    f'新しい帳簿: {restored["database"]}\\n'
+    "現在開いている帳簿は変更していません。復元した帳簿の原本参照は再確認してください。")
+  except BookError as e:
+   messagebox.showwarning("復旧できない理由",
+    f"復元を中止しました。現在の帳簿は変更していません。\\n理由: {e}")
  def view_receipts(self):
   win=tk.Toplevel(self);win.title("証憑の確認・処理状態");win.geometry("760x440");win.minsize(640,350)
   ttk.Label(win,text="原本を確認してから状態を変更してください。処理済みでも仕訳登録・税務上の経費認定はされません。",
