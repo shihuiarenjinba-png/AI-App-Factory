@@ -19,6 +19,8 @@ def desk_stub():
     desk.error = MagicMock()
     desk.open_report_button = MagicMock()
     desk.report_path_label = MagicMock()
+    desk.comparison_open_report_button = MagicMock()
+    desk.comparison_report_path_label = MagicMock()
     desk.close_comparison_window = MagicMock()
     desk.t = lambda key: app.LABELS[desk.language][key]
     return desk
@@ -36,7 +38,9 @@ class SavedReportTests(unittest.TestCase):
                 desk.export_delivery_html()
             self.assertEqual(desk.last_html_report_path, report)
             desk.open_report_button.configure.assert_called_with(state="normal")
+            desk.comparison_open_report_button.configure.assert_called_with(state="normal")
             self.assertIn(report.name, desk.report_path_label.configure.call_args.kwargs["text"])
+            self.assertIn(report.name, desk.comparison_report_path_label.configure.call_args.kwargs["text"])
             with patch.object(app.webbrowser, "open", return_value=True) as opener:
                 desk.open_saved_report()
             uri = opener.call_args.args[0]
@@ -50,6 +54,7 @@ class SavedReportTests(unittest.TestCase):
             desk.open_saved_report()
             self.assertIsNone(desk.last_html_report_path)
             desk.open_report_button.configure.assert_called_with(state="disabled")
+            desk.comparison_open_report_button.configure.assert_called_with(state="disabled")
             self.assertIn("見つからない", desk.status.set.call_args.args[0])
 
     def test_failed_write_clears_previous_success_and_comparison(self):
