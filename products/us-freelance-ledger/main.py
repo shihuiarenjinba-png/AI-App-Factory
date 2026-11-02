@@ -43,8 +43,14 @@ def _window_bounds(area):
     x, y, available_width, available_height = area
     if available_width <= 0 or available_height <= 0:
         raise ValueError("Invalid desktop work area")
-    width = min(1100, max(1, available_width - 24))
-    height = min(720, max(1, available_height - 24))
+    # Tk geometry sizes the client area, not the outer decorated window.
+    # On hosted Windows a 1000x696 client at +12,+12 measured as an outer
+    # 1016x735 window, crossing the 1024x720 taskbar-safe work area.
+    # Reserve space for borders/title bar and DPI-dependent decorations.
+    horizontal_reserve = 64 if sys.platform == "win32" else 24
+    vertical_reserve = 96 if sys.platform == "win32" else 24
+    width = min(1100, max(1, available_width - horizontal_reserve))
+    height = min(720, max(1, available_height - vertical_reserve))
     left = x + max(0, (available_width - width) // 2)
     top = y + max(0, (available_height - height) // 2)
     return f"{width}x{height}+{left}+{top}", min(900, width), min(620, height)
