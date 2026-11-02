@@ -104,9 +104,11 @@ class BuyerEvidenceTests(unittest.TestCase):
         self.make()
         target = self.out / "baseline" / "same.png"
         original = target.read_bytes()
+        identical = self.root / "identical-copy.png"
+        identical.write_bytes(original)
         target.unlink()
         try:
-            target.symlink_to(self.out / "baseline" / "modified.png")
+            target.symlink_to(identical)
         except (OSError, NotImplementedError):
             self.skipTest("Symlink creation not permitted on this runner")
         with self.assertRaisesRegex(AssertionError, "SOURCE_IMAGES_MODIFIED"):
