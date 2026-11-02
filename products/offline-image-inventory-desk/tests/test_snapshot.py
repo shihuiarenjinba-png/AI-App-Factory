@@ -129,7 +129,10 @@ class SnapshotTests(unittest.TestCase):
         else:
             with self.assertRaises(ValueError):snap.compare_snapshots(old,self.capture())
         source=Path(app.__file__).read_text(encoding="utf-8")
-        self.assertIn('root.geometry("1024x768")',source)
+        self.assertIn('fit_window_to_work_area(root)',source)
+        self.assertIn('self.delivery_canvas=tk.Canvas(self.delivery_tab',source)
+        self.assertEqual(app.window_geometry_for_work_area(0, 0, 1024, 720),
+                         "1008x664+0+0")
         self.assertIn('self.notebook=ttk.Notebook(body)',source)
         self.assertIn('self.step3=step3',source)
         self.assertIn('self.inventory_tab=ttk.Frame(self.notebook',source)
