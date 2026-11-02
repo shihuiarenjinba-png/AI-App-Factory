@@ -79,6 +79,15 @@ def verify(exe, exe_receipt, evidence_dir, source_sha, artifact_id, run_id):
              and 'src="http' not in client_html, "CUSTOMER_HTML_INCOMPLETE")
     _require(packaged.get("client_html_sha256") == _sha(client_html_path),
              "CUSTOMER_HTML_SHA_MISMATCH")
+    # 1024x768 is the *desktop*, not the client screenshot: the taskbar
+    # reserves 48px and Windows chrome consumes more. Requiring a 768px
+    # client screenshot would reward an inaccessible window under the taskbar.
+    _require(packaged.get("display_pixels") == [1024, 768],
+             "DISPLAY_NOT_1024x768")
+    _require(packaged.get("actual_windows_work_area") == [0, 0, 1024, 720],
+             "WORK_AREA_NOT_1024x720")
+    _require(packaged.get("source_tk_dpi_simulation_not_os_dpi") is True,
+             "DPI_EVIDENCE_MISCLASSIFIED")
     shots = packaged.get("screenshots", {})
     for key in ("01_exe_initial_en", "04_exe_japanese", "05_exe_restarted",
                 "06_exe_read_error", "07_exe_read_denied"):
@@ -86,8 +95,9 @@ def verify(exe, exe_receipt, evidence_dir, source_sha, artifact_id, run_id):
         path = evidence_dir / (key + ".png")
         _require(path.is_file() and record.get("sha256") == _sha(path),
                  "SCREENSHOT_MISMATCH_" + key)
-        _require(record.get("width", 0) >= 1024 and record.get("height", 0) >= 768,
-                 "SCREENSHOT_BELOW_1024x768_" + key)
+        _require(850 <= record.get("width", 0) <= 1024
+                 and 600 <= record.get("height", 0) <= 720,
+                 "SCREENSHOT_OUTSIDE_1024x720_WORK_AREA_" + key)
     checks = packaged.get("checks", [])
     _require(any("real Windows exclusive-file read denial fail-closed" in x for x in checks),
              "READ_DENIAL_LOG_MISSING")
@@ -95,20 +105,21 @@ def verify(exe, exe_receipt, evidence_dir, source_sha, artifact_id, run_id):
              "EXPORT_LOG_MISSING")
     _require(any("packaged HTML local customer previews validated" in x for x in checks),
              "CUSTOMER_HTML_LOG_MISSING")
-    _require(any("packaged EXE process started" in x for x in checks),
-             "PACKAGED_LAUNCH_LOG_MISSING")
+    _require(any("packaged EXE fits real Windows usable work area" in x for x in checks),
+             "PACKAGED_WORK_AREA_LOG_MISSING")
     _require(isinstance(artifact_id, int) and artifact_id > 0
              and isinstance(run_id, int) and run_id > 0, "ARTIFACT_ID_MISSING")
     return {
         "classification": "PINNED_ARTIFACT_CLOUD_WINDOWS_BUYER_TASK_QA",
         "artifact_id": artifact_id, "artifact_run_id": run_id,
         "source_sha": source_sha, "exe_sha256": digest,
-        "checks": ["pinned_exe_hash", "four_changes", "ja_en_1024x768",
+        "checks": ["pinned_exe_hash", "four_changes", "packaged_1024x768_screen_1024x720_work_area",
                    "csv_json_txt_html", "restart", "malformed_read_fail_closed",
                    "real_read_denied_fail_closed", "source_images_sha_unchanged"],
         "human_buyers_observed": 0, "why_pay_verified": False,
         "market_score": 64, "market_fit": "MARKET_FIT_HOLD",
-        "not_local_gui_pass": True, "not_msix": True, "not_store_certified": True,
+        "not_local_gui_pass": True, "os_dpi_125_150_not_proven": True,
+        "not_msix": True, "not_store_certified": True,
     }
 
 
