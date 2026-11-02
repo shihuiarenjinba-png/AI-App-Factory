@@ -41,6 +41,37 @@ class T(unittest.TestCase):
    with self.subTest(use=use):
     self.assertRaises(ValueError,m.custom_tax_depreciation_schedule,"100",{2026:100},use)
   self.assertRaises(ValueError,m.custom_tax_depreciation_schedule,"100",{2026:50,"2026":50})
+ def test_2026_mileage_date_boundaries_are_review_only(self):
+  for day,rate in (("2026-01-01","0.725"),("2026-06-30","0.725"),
+                   ("2026-07-01","0.76"),("2026-12-31","0.76")):
+   with self.subTest(day=day):
+    r=m.business_mileage_2026_review(day,"100","business")
+    self.assertEqual(str(r["rate_usd_per_mile"]),rate)
+    self.assertEqual(str(r["estimate_usd"]),"72.50" if day<"2026-07-01" else "76.00")
+    self.assertEqual(r["status"],"REVIEW_REQUIRED")
+    self.assertTrue(r["review_required"])
+    self.assertFalse(r["auto_post"])
+    self.assertFalse(r["deduction_approved"])
+    self.assertTrue(r["source_url"].startswith("https://www.irs.gov/"))
+ def test_mileage_tax_year_and_purpose_must_not_inherit_business_rate(self):
+  for day,purpose in (("2025-12-31","business"),("2027-01-01","business"),
+                      ("2026-07-01","medical"),("2026-06-30","commuting"),
+                      ("2026-07-01","charity")):
+   with self.subTest(day=day,purpose=purpose):
+    r=m.business_mileage_2026_review(day,"100",purpose)
+    self.assertEqual(r["status"],"REVIEW_REQUIRED")
+    self.assertIsNone(r["rate_usd_per_mile"])
+    self.assertIsNone(r["estimate_usd"])
+    self.assertFalse(r["auto_post"])
+    self.assertFalse(r["deduction_approved"])
+ def test_mileage_invalid_dates_and_distances_fail_closed(self):
+  for day,miles in (("2026-02-30","10"),("20260701","10"),
+                    ("2026-07-01","NaN"),("2026-07-01","Infinity"),
+                    ("2026-07-01","-1"),("2026-07-01","10000001")):
+   with self.subTest(day=day,miles=miles):
+    with self.assertRaises(ValueError):
+     m.business_mileage_2026_review(day,miles)
+  self.assertEqual(str(m.business_mileage_2026_review("2026-07-01","1.5")["estimate_usd"]),"1.14")
  def test_main_syntax(self):
   p=Path(__file__).resolve().parents[1]/"products/us-freelance-ledger/main.py"
   source=p.read_text(encoding="utf-8")
