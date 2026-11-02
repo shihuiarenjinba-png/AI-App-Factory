@@ -151,6 +151,12 @@ def save_review_report(preview, destination):
         raise BankCSVError("Save the review copy as a .txt file")
     if not path.parent.is_dir():
         raise BankCSVError("Choose an existing destination folder")
+    try:
+        current_hash = hashlib.sha256(Path(preview["source"]).read_bytes()).hexdigest()
+    except OSError as exc:
+        raise BankCSVError("Original CSV is unavailable; preview again before saving") from exc
+    if current_hash != preview["source_sha256"]:
+        raise BankCSVError("Original CSV changed since preview; preview again before saving")
     lines = [
         "US BANK CSV REVIEW — NOT POSTED — REVIEW REQUIRED",
         "Source: " + _safe_cell(preview["source"]),
