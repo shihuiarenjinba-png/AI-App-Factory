@@ -119,5 +119,86 @@ class BankReviewTests(unittest.TestCase):
                                    "A", "2026-10-31")
 
 
+    def test_cancel_last_statement_reopens_only_matches_with_audit_and_restart(self):
+        income = self.add("income", "100.25")
+        expense = self.add("expense", "20.10")
+        before = self.store.monthly(2026, 10)
+        for txn in (income, expense):
+            bank.match_transaction(self.store.conn, txn, "Checking", "2026-10-31")
+        bank.finalize_statement(self.store.conn, "Checking", "2026-10-31",
+                                "50.00", "130.15")
+        result = bank.cancel_statement(self.store.conn, "Checking", "2026-10-31")
+        self.assertEqual(result["transaction_ids"], [income, expense])
+        self.assertTrue(result["review_required"])
+        self.assertEqual(bank.match_statuses(self.store.conn),
+                         {income: "CLEARED", expense: "CLEARED"})
+        self.assertEqual(self.store.monthly(2026, 10), before)
+        self.assertEqual(self.store.conn.execute(
+            "SELECT COUNT(*) FROM bank_reconciliations").fetchone()[0], 0)
+        self.assertEqual(self.store.conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE action='BANK_RECONCILE_CANCEL'"
+        ).fetchone()[0], 1)
+        with self.assertRaises(bank.BankReviewError):
+            bank.cancel_statement(self.store.conn, "Checking", "2026-10-31")
+        self.store.close()
+        self.store = core.Store(Path(self.tmp.name) / "book.sqlite3", "cash")
+        self.assertEqual(bank.match_statuses(self.store.conn)[income], "CLEARED")
+        bank.finalize_statement(self.store.conn, "Checking", "2026-10-31",
+                                "50.00", "130.15")
+        self.assertEqual(bank.match_statuses(self.store.conn)[income], "RECONCILED")
+
+    def test_cancel_latest_first_preserves_month_to_month_balance(self):
+        oct_txn = self.add("income", "10.00")
+        nov_txn = self.add("expense", "2.00", "2026-11-02")
+        bank.match_transaction(self.store.conn, oct_txn, "Checking", "2026-10-31")
+        bank.finalize_statement(self.store.conn, "Checking", "2026-10-31", "0", "10")
+        bank.match_transaction(self.store.conn, nov_txn, "Checking", "2026-11-30")
+        bank.finalize_statement(self.store.conn, "Checking", "2026-11-30", "10", "8")
+        with self.assertRaises(bank.BankReviewError):
+            bank.cancel_statement(self.store.conn, "Checking", "2026-10-31")
+        self.assertEqual(bank.match_statuses(self.store.conn)[oct_txn], "RECONCILED")
+        bank.cancel_statement(self.store.conn, "Checking", "2026-11-30")
+        bank.cancel_statement(self.store.conn, "Checking", "2026-10-31")
+        self.assertEqual(bank.match_statuses(self.store.conn)[nov_txn], "CLEARED")
+
+    def test_cancel_rejects_corrupt_membership_and_does_not_lose_statement(self):
+        first = self.add("income", "10")
+        second = self.add("expense", "10")
+        for txn in (first, second):
+            bank.match_transaction(self.store.conn, txn, "Checking", "2026-10-31")
+        bank.finalize_statement(self.store.conn, "Checking", "2026-10-31", "5", "5")
+        # Removing a zero-net pair would pass a movement-only integrity check.
+        self.store.conn.execute("DELETE FROM bank_matches WHERE transaction_id=?", (first,))
+        self.store.conn.execute("DELETE FROM bank_matches WHERE transaction_id=?", (second,))
+        self.store.conn.commit()
+        with self.assertRaises(bank.BankReviewError):
+            bank.cancel_statement(self.store.conn, "Checking", "2026-10-31")
+        self.assertEqual(self.store.conn.execute(
+            "SELECT COUNT(*) FROM bank_reconciliations").fetchone()[0], 1)
+        self.assertEqual(self.store.conn.execute(
+            "SELECT COUNT(*) FROM audit_log WHERE action='BANK_RECONCILE_CANCEL'"
+        ).fetchone()[0], 0)
+
+    def test_cancel_rejects_legacy_missing_evidence_and_corrupt_snapshot(self):
+        txn = self.add("income", "1")
+        bank.match_transaction(self.store.conn, txn, "A", "2026-10-31")
+        bank.finalize_statement(self.store.conn, "A", "2026-10-31", "0", "1")
+        self.store.conn.execute(
+            "UPDATE audit_log SET detail='not json' "
+            "WHERE action='BANK_RECONCILE_MEMBERS'"
+        )
+        self.store.conn.commit()
+        with self.assertRaises(bank.BankReviewError):
+            bank.cancel_statement(self.store.conn, "A", "2026-10-31")
+        self.store.conn.execute(
+            "DELETE FROM audit_log WHERE action='BANK_RECONCILE_MEMBERS'"
+        )
+        self.store.conn.commit()
+        with self.assertRaises(bank.BankReviewError):
+            bank.cancel_statement(self.store.conn, "A", "2026-10-31")
+        self.assertEqual(bank.match_statuses(self.store.conn)[txn], "RECONCILED")
+
+
+
 if __name__ == "__main__":
     unittest.main()
