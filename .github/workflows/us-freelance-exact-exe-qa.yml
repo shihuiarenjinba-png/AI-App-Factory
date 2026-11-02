@@ -5,7 +5,7 @@ on:
     branches:
       - codex/us-freelance-taskbar-exe-qa-20261103
     paths:
-      - .github/workflows/us-freelance-taskbar-exe-qa.yml
+      - .github/workflows/us-freelance-exact-exe-qa.yml
       - products/us-freelance-ledger/qa/hosted_exe_qa.py
 
 permissions:
