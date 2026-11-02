@@ -124,6 +124,9 @@ class FirstRunLayoutTests(unittest.TestCase):
                 app = ui.App()
                 try:
                     app.update_idletasks()
+                    app.update()  # Process the actual Tk window-map events.
+                    if not app.winfo_ismapped():
+                        self.skipTest("Windows runner has no mapped GUI desktop; physical GUI remains unverified")
                     self.assertLessEqual(app.winfo_width(), 1024)
                     self.assertLessEqual(app.winfo_height(), 720)
                     buttons = {}
