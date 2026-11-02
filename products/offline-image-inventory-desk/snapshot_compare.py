@@ -281,3 +281,13 @@ def write_comparison(path,report,atomic_writer):
         content=output.getvalue()
     else:raise ValueError("Use CSV or JSON")
     atomic_writer(target,content)
+
+
+def write_html_delivery(path, report, atomic_writer, language="en"):
+    """Standalone customer report; no source writes, network or stale previews."""
+    target = safe_output(path, [report["old_root"], report["new_root"]])
+    if target.suffix.lower() != ".html":
+        raise ValueError("Use HTML")
+    from html_delivery import render_html_delivery
+    content = render_html_delivery(report, language, destination=target)
+    atomic_writer(target, content)
