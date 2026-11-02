@@ -19,17 +19,19 @@ spec.loader.exec_module(ui)
 
 class FirstRunLayoutTests(unittest.TestCase):
     def test_taskbar_work_area_1024x720_never_starts_offscreen(self):
-        geometry, minimum_width, minimum_height = ui._window_bounds((0, 0, 1024, 720))
-        self.assertEqual(geometry, "1000x696+12+12")
+        with patch.object(ui.sys, "platform", "win32"):
+            geometry, minimum_width, minimum_height = ui._window_bounds((0, 0, 1024, 720))
+        self.assertEqual(geometry, "960x624+32+48")
         self.assertEqual((minimum_width, minimum_height), (900, 620))
-        self.assertLessEqual(12 + 1000, 1024)
-        self.assertLessEqual(12 + 696, 720)
+        self.assertLessEqual(32 + 960 + 16, 1024)
+        self.assertLessEqual(48 + 624 + 39, 720)
         self.assertNotIn("1100x720", geometry)
 
     def test_offset_work_area_restart_and_invalid_dimensions(self):
-        for _ in range(2):
-            self.assertEqual(ui._window_bounds((0, 48, 1024, 720))[0],
-                             "1000x696+12+60")
+        with patch.object(ui.sys, "platform", "win32"):
+            for _ in range(2):
+                self.assertEqual(ui._window_bounds((0, 48, 1024, 720))[0],
+                                 "960x624+32+96")
         for area in ((0, 0, 1024, 0), (0, 0, -1, 720)):
             with self.subTest(area=area), self.assertRaises(ValueError):
                 ui._window_bounds(area)
@@ -42,8 +44,8 @@ class FirstRunLayoutTests(unittest.TestCase):
             self.assertEqual(ui._work_area(root), (64, 64, 896, 640))
             geometry, minimum_width, minimum_height = ui._window_bounds(
                 ui._work_area(root))
-            self.assertEqual(geometry, "872x616+76+76")
-            self.assertEqual((minimum_width, minimum_height), (872, 616))
+            self.assertEqual(geometry, "832x544+96+112")
+            self.assertEqual((minimum_width, minimum_height), (832, 544))
 
     def test_bank_actions_two_rows_with_primary_flow_visible(self):
         tree = ast.parse((PRODUCT / "main.py").read_text(encoding="utf-8"))
