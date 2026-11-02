@@ -100,11 +100,16 @@ def get_work_area():
 def find_window(pid):
     from ctypes import wintypes
     found = []
+    import psutil
+    try:
+        accepted = {pid} | {child.pid for child in psutil.Process(pid).children(recursive=True)}
+    except psutil.Error:
+        accepted = {pid}
     callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     def callback(hwnd, unused):
         owner = wintypes.DWORD()
         windows().GetWindowThreadProcessId(hwnd, ctypes.byref(owner))
-        if owner.value == pid and windows().IsWindowVisible(hwnd):
+        if owner.value in accepted and windows().IsWindowVisible(hwnd):
             title = ctypes.create_unicode_buffer(256)
             windows().GetWindowTextW(hwnd, title, len(title))
             if "Freelance Ledger US" in title.value:
@@ -131,7 +136,9 @@ def launch_exe(exe, appdata, output, label):
                 break
             time.sleep(0.5)
         if not match:
-            raise RuntimeError("No visible packaged EXE window")
+            return {"status": "HOLD_NO_VISIBLE_PACKAGED_WINDOW",
+                    "process_alive": proc.poll() is None,
+                    "reason": "Hosted runner desktop or packaged child window not observable"}
         hwnd, bounds = match
         if bounds[2] <= bounds[0] or bounds[3] <= bounds[1]:
             raise RuntimeError("Invalid EXE window geometry")
@@ -307,7 +314,11 @@ def gui(source, output):
         evidence["steps"]["packaged_initial"] = launch_exe(exe, appdata, output, "initial")
         evidence["steps"]["tk_workflow"] = tk_workflow(source, appdata, output)
         evidence["steps"]["packaged_restart"] = launch_exe(exe, appdata, output, "restart")
-        evidence["status"] = "PASS_HOSTED_PACKAGED_LAUNCH_AND_TK_WORKFLOW"
+        if (evidence["steps"]["packaged_initial"].get("status") or
+                evidence["steps"]["packaged_restart"].get("status")):
+            evidence["status"] = "HOLD_PACKAGED_WINDOW_UNVERIFIED_TK_WORKFLOW_TESTED"
+        else:
+            evidence["status"] = "PASS_HOSTED_PACKAGED_LAUNCH_AND_TK_WORKFLOW"
     except Exception as exc:
         evidence["status"] = "GUI_HOLD"
         evidence["error"] = type(exc).__name__ + ": " + str(exc)[:300]
