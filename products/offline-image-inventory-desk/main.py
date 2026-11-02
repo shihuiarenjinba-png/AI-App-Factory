@@ -1,5 +1,6 @@
 """Private offline image-header inventory. No image writes or network."""
-import csv, io, json, os, shutil, stat, struct, tempfile
+import csv, io, json, os, shutil, stat, struct, tempfile, webbrowser
+from urllib.parse import urlsplit
 from pathlib import Path
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox
@@ -84,7 +85,10 @@ LABELS["en"].update({
  "step_deliver":"Step 3 — Save the customer report",
  "snap_hint":"New here? Try the sample first. For a real delivery, save the original folder record, then compare the revised folder.",
  "delivery_note":"Images stay unchanged. Save a self-contained HTML report with verified image previews for your client. TXT/CSV/JSON remain available.",
- "snap_html":"Save client HTML with previews", "snap_html_done":"Client HTML saved at:", "snap_html_failed":"HTML was not saved. Compare the folder again."
+ "snap_html":"Save client HTML with previews", "snap_html_done":"Client HTML saved at:", "snap_html_failed":"HTML was not saved. Compare the folder again.",
+ "open_saved_html":"Open saved report", "saved_html_location":"Saved report:",
+ "saved_html_missing":"The saved report is missing or unsafe. Save it again after comparing.",
+ "saved_html_open_failed":"Could not open the local report. Check the file and try again."
 })
 LABELS["ja"].update({
  "delivery_tab":"納品レポート", "inventory_tab":"画像一覧・詳細検査",
@@ -93,8 +97,24 @@ LABELS["ja"].update({
  "step_deliver":"手順3 — お客様向けレポートを保存",
  "snap_hint":"初めての方は見本から試せます。実際の納品では変更前を記録し、変更後のフォルダと比較してください。",
  "delivery_note":"元画像は変更しません。画像見本付きHTMLを納品先へ保存できます。TXT/CSV/JSONも引き続き利用できます。",
- "snap_html":"画像付きHTML納品書を保存", "snap_html_done":"HTMLを保存しました：", "snap_html_failed":"HTMLは保存できませんでした。フォルダを再比較してください。"
+ "snap_html":"画像付きHTML納品書を保存", "snap_html_done":"HTMLを保存しました：", "snap_html_failed":"HTMLは保存できませんでした。フォルダを再比較してください。",
+ "open_saved_html":"保存したレポートを開く", "saved_html_location":"保存先：",
+ "saved_html_missing":"保存したレポートが見つからないか、安全に開けません。再比較して保存し直してください。",
+ "saved_html_open_failed":"ローカルのレポートを開けませんでした。ファイルを確認してください。"
 })
+
+def local_report_uri(path):
+    """Only open an existing regular local HTML file; reject UNC/network and links."""
+    p = Path(path).absolute()
+    if p.suffix.lower() != ".html" or p.is_symlink() or not p.is_file():
+        raise ValueError("Missing or unsafe local HTML report")
+    resolved = p.resolve(strict=True)
+    uri = resolved.as_uri()
+    parsed = urlsplit(uri)
+    if parsed.scheme != "file" or parsed.netloc or not uri.startswith("file:///"):
+        raise ValueError("Only local file URLs are allowed")
+    return uri
+
 
 def jpeg_dimensions(data):
     if not data.startswith(b"\xff\xd8"): raise ValueError("Invalid JPEG")
@@ -247,7 +267,7 @@ def comparison_view_rows(report, language, changes_only=False):
 
 class Desk:
     def __init__(self,root):
-        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False;self.comparison_window=None
+        self.root=root;self.language="en";self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False;self.comparison_window=None;self.last_html_report_path=None
         root.geometry("1024x768");root.minsize(850,600)
         body=ttk.Frame(root,padding=10);body.pack(fill="both",expand=True)
         header=ttk.Frame(body);header.pack(fill="x")
@@ -292,8 +312,13 @@ class Desk:
         step3=ttk.LabelFrame(self.delivery_tab,padding=10)
         step3.pack(fill="x",pady=(0,9))
         self.step3=step3
-        self.html_button=ttk.Button(step3,command=self.export_delivery_html)
-        self.html_button.pack(anchor="w",pady=(0,7))
+        step3_primary=ttk.Frame(step3);step3_primary.pack(fill="x",pady=(0,7))
+        self.html_button=ttk.Button(step3_primary,command=self.export_delivery_html)
+        self.html_button.pack(side="left",padx=(0,8))
+        self.open_report_button=ttk.Button(step3_primary,command=self.open_saved_report,state="disabled")
+        self.open_report_button.pack(side="left")
+        self.report_path_label=ttk.Label(step3,wraplength=650,justify="left")
+        self.report_path_label.pack(anchor="w",fill="x")
         step3_details=ttk.Frame(step3);step3_details.pack(fill="x")
         self.summary_button=ttk.Button(step3_details,command=self.export_delivery_summary)
         self.summary_button.pack(side="left",padx=(0,8))
@@ -343,7 +368,7 @@ class Desk:
         # Adapt line wrapping to a 1024x768 viewport at 100/125/150% DPI.
         width=max(240,self.root.winfo_width()-90)
         for label in (self.intro,self.snapshot_intro,self.delivery_note,
-                      self.inventory_intro,self.notice,self.status_label):
+                      self.inventory_intro,self.notice,self.status_label,self.report_path_label):
             label.configure(wraplength=width)
 
     def t(self,key):return LABELS[self.language][key]
@@ -361,6 +386,8 @@ class Desk:
         for k,b in self.buttons.items():b.configure(text=self.t(k))
         for k,b in self.snapshot_buttons.items():b.configure(text=self.t(k))
         self.html_button.configure(text=self.t("snap_html"))
+        self.open_report_button.configure(text=self.t("open_saved_html"))
+        self._update_saved_report_ui()
         self.summary_button.configure(text=self.t("snap_summary"))
         self.demo_button.configure(text=self.t("snap_demo"))
         self.preflight_box.configure(text=self.t("preflight"))
@@ -368,6 +395,37 @@ class Desk:
         self.check_export_button.configure(text=self.t("check_export"))
         self.notice.configure(text=self.t("notice") if self.preflight.get() else "")
         for k in ("path","format","dimensions","bytes","check"):self.tree.heading(k,text=self.t(k))
+
+    def _update_saved_report_ui(self):
+        button=getattr(self,"open_report_button",None)
+        label=getattr(self,"report_path_label",None)
+        path=getattr(self,"last_html_report_path",None)
+        if button is not None:
+            button.configure(state="normal" if path is not None else "disabled")
+        if label is not None:
+            label.configure(text=(self.t("saved_html_location")+" "+path.name+" — "+str(path.parent)) if path else "")
+
+    def _clear_saved_report(self):
+        self.last_html_report_path=None
+        self._update_saved_report_ui()
+
+    def open_saved_report(self):
+        path=self.last_html_report_path
+        if path is None:
+            return
+        try:
+            uri=local_report_uri(path)
+        except (OSError,ValueError) as exc:
+            self._clear_saved_report()
+            self.status.set(self.t("saved_html_missing"))
+            self.error(exc)
+            return
+        try:
+            if not webbrowser.open(uri,new=2):
+                raise OSError(self.t("saved_html_open_failed"))
+        except (OSError,ValueError) as exc:
+            self.status.set(self.t("saved_html_open_failed"))
+            self.error(exc)
 
     def toggle(self):
         self.language="ja" if self.language=="en" else "en";self.localize()
@@ -445,6 +503,7 @@ class Desk:
     def try_demo(self):
         """Demonstrate the exact three-step flow with synthetic temporary files."""
         self.close_comparison_window()
+        self._clear_saved_report()
         self.comparison=None  # Never allow export of a stale real comparison.
         temp=tempfile.TemporaryDirectory(prefix="offline-image-demo-")
         try:
@@ -476,6 +535,7 @@ class Desk:
         folder=filedialog.askdirectory(parent=self.root,title=self.t("snap_new"))
         if not folder:return
         self.close_comparison_window()
+        self._clear_saved_report()
         self.comparison=None
         try:
             baseline=snapshots.capture_folder(folder,inspect_image)
@@ -492,6 +552,7 @@ class Desk:
         path=filedialog.askopenfilename(parent=self.root,filetypes=[("JSON","*.json")],title=self.t("snap_open"))
         if not path:return
         self.close_comparison_window()
+        self._clear_saved_report()
         self.comparison=None
         try:
             baseline=snapshots.load_snapshot(path)
@@ -506,6 +567,7 @@ class Desk:
         if not folder:return
         # Never display or export a previous success after a later comparison fails.
         self.close_comparison_window()
+        self._clear_saved_report()
         self.comparison=None
         try:
             current=snapshots.capture_folder(folder,inspect_image)
@@ -577,9 +639,14 @@ class Desk:
         path=filedialog.asksaveasfilename(parent=self.root,defaultextension=".html",
                 filetypes=[("HTML","*.html")],title=self.t("snap_html"))
         if not path or not self.confirm(path):return
+        # A failed write must never leave a previous report marked as the latest.
+        self._clear_saved_report()
         try:
             snapshots.write_html_delivery(path,self.comparison,atomic_write,self.language)
-            self.status.set(self.t("snap_html_done")+" "+str(Path(path).absolute()))
+            local_report_uri(path)
+            self.last_html_report_path=Path(path).absolute()
+            self._update_saved_report_ui()
+            self.status.set(self.t("snap_html_done")+" "+str(self.last_html_report_path))
         except (OSError,ValueError,UnicodeError,TypeError) as exc:
             # A changed or unreadable source invalidates the prior success.
             self.comparison=None
