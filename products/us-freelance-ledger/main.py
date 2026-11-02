@@ -1,4 +1,6 @@
 import tkinter as tk
+import ctypes
+import sys
 from datetime import date
 from pathlib import Path
 from tkinter import filedialog,messagebox,simpledialog,ttk
@@ -15,9 +17,43 @@ BANK_FINALIZE_WARNING = (
     "Undo leaves ledger amounts unchanged, returns matches to review, and saves an audit record."
 )
 
+def _work_area(root):
+    """Return Tk-coordinate desktop work area; exclude the Windows taskbar."""
+    if sys.platform == "win32":
+        try:
+            from ctypes import wintypes
+            area = wintypes.RECT()
+            if ctypes.windll.user32.SystemParametersInfoW(
+                48, 0, ctypes.byref(area), 0
+            ) and area.right > area.left and area.bottom > area.top:
+                return area.left, area.top, area.right - area.left, area.bottom - area.top
+        except (AttributeError, OSError, ValueError):
+            pass
+    width, height = root.winfo_screenwidth(), root.winfo_screenheight()
+    if sys.platform == "win32":
+        # SPI failure is not evidence that the taskbar is absent. Keep a
+        # conservative inset on all four sides rather than hiding controls.
+        return 64, 64, max(1, width - 128), max(1, height - 128)
+    return 0, 0, width, height
+
+
+def _window_bounds(area):
+    """Fit the first window within the available work area, including margins."""
+    x, y, available_width, available_height = area
+    if available_width <= 0 or available_height <= 0:
+        raise ValueError("Invalid desktop work area")
+    width = min(1100, max(1, available_width - 24))
+    height = min(720, max(1, available_height - 24))
+    left = x + max(0, (available_width - width) // 2)
+    top = y + max(0, (available_height - height) // 2)
+    return f"{width}x{height}+{left}+{top}", min(900, width), min(620, height)
+
+
 class App(tk.Tk):
     def __init__(self):
-        super().__init__();self.title("Freelance Ledger US");self.geometry("1100x720");self.minsize(900,620)
+        super().__init__();self.title("Freelance Ledger US")
+        geometry, min_width, min_height = _window_bounds(_work_area(self))
+        self.geometry(geometry);self.minsize(min_width, min_height)
         self.store=Store();self.protocol("WM_DELETE_WINDOW",self.close)
         self.v={k:tk.StringVar() for k in ["date","kind","amount","category","party","doctype","docpath","memo","method"]}
         self.v["date"].set(date.today().isoformat());self.v["kind"].set("income");self.v["category"].set(CATEGORIES[0]);self.v["doctype"].set(DOCUMENT_TYPES[0]);self.v["method"].set(self.store.accounting_method)
@@ -53,12 +89,16 @@ class App(tk.Tk):
         ttk.Button(receipt_actions,text="Add receipts / PDFs",command=self.add_receipts).pack(side="left",padx=(0,6))
         ttk.Button(receipt_actions,text="Review receipt queue",command=self.review_receipts).pack(side="left",padx=(0,6))
         ttk.Label(r,textvariable=self.receipt_summary).pack(anchor="w")
-        ttk.Label(r,text="Bank check: 1. Select a transaction  2. Match to statement  3. Check opening/closing balances. Manual review only.",wraplength=650).pack(anchor="w",pady=(5,1))
+        bank_hint=ttk.Label(r,text="Bank check: 1. Select a row → Match selected  2. Check statement (difference 0)  3. Undo checked (latest only). REVIEW REQUIRED.",wraplength=420)
+        bank_hint.pack(anchor="w",fill="x",pady=(5,1))
+        r.bind("<Configure>",lambda event:bank_hint.configure(wraplength=max(220,event.width-24)),add="+")
         bank_actions=ttk.Frame(r);bank_actions.pack(fill="x",pady=3)
-        ttk.Button(bank_actions,text="Match selected",command=self.match_bank).pack(side="left",padx=(0,5))
-        ttk.Button(bank_actions,text="Undo match",command=self.unmatch_bank).pack(side="left",padx=(0,5))
-        ttk.Button(bank_actions,text="Check statement",command=self.check_bank).pack(side="left")
-        ttk.Button(bank_actions,text="Undo checked",command=self.cancel_bank).pack(side="left",padx=(6,0))
+        ttk.Button(bank_actions,text="Match selected",command=self.match_bank).grid(row=0,column=0,sticky="ew",padx=(0,4),pady=2)
+        ttk.Button(bank_actions,text="Check statement",command=self.check_bank).grid(row=0,column=1,sticky="ew",padx=(4,0),pady=2)
+        ttk.Button(bank_actions,text="Undo match",command=self.unmatch_bank).grid(row=1,column=0,sticky="ew",padx=(0,4),pady=2)
+        ttk.Button(bank_actions,text="Undo checked",command=self.cancel_bank).grid(row=1,column=1,sticky="ew",padx=(4,0),pady=2)
+        bank_actions.columnconfigure(0,weight=1)
+        bank_actions.columnconfigure(1,weight=1)
         cols=("date","kind","amount","category","party","memo","bank");self.tree=ttk.Treeview(r,columns=cols,show="headings")
         for c,t in zip(cols,["Date","Type","Amount","Category","Payer / payee","Memo","Bank check"]):
             self.tree.heading(c,text=t);self.tree.column(c,width=90 if c in ("date","kind","amount","bank") else 110)
