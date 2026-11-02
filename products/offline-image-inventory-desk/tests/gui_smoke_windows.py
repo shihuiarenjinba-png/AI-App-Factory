@@ -72,6 +72,9 @@ def run(out, exe, source_sha):
     screenshots = {}
     with tempfile.TemporaryDirectory(prefix="image-gui-smoke-") as temp:
         rootdir = Path(temp)
+        # Isolate hosted QA preferences from the runner's real user profile.
+        os.environ["OFFLINE_IMAGE_INVENTORY_CONFIG_DIR"] = str(rootdir / "user-settings")
+        app.save_language("en")
         baseline = rootdir / "baseline"
         delivery = rootdir / "delivery"
         baseline.mkdir()
@@ -104,9 +107,19 @@ def run(out, exe, source_sha):
             logs.append("in-app 3-step synthetic sample demonstrated in EN/JA without editing photos")
         finally:
             root.destroy()
+        # Restart the actual Tk window: JA must survive without a session file.
+        root = tk.Tk()
+        try:
+            desk = app.Desk(root)
+            assert desk.language == "ja", "Japanese preference lost after restart"
+            screenshots["01d_restart_ja"] = screenshot(root, out / "01d_restart_ja.png")
+            logs.append("Japanese language selection persisted across Tk restart")
+        finally:
+            root.destroy()
         # Hosted Windows screenshots at simulated 125% and 150% Tk font scaling.
         # Assert novice controls are visible inside 1024x768, not merely created.
         for factor, language in ((1.25, "en"), (1.50, "ja")):
+            app.save_language("en")
             root = tk.Tk()
             try:
                 default_scaling = float(root.tk.call("tk", "scaling"))
@@ -140,6 +153,7 @@ def run(out, exe, source_sha):
                 root.destroy()
 
         # Drive baseline/compare/export in a fresh real Tk session.
+        app.save_language("en")
         root = tk.Tk()
         try:
             desk = app.Desk(root)
@@ -189,6 +203,7 @@ def run(out, exe, source_sha):
         root = tk.Tk()
         try:
             desk = app.Desk(root)
+            assert desk.language == "ja", "Saved Japanese language lost after delivery restart"
             assert str(desk.open_report_button.cget("state")) == "disabled", "Restart reused stale success"
             with patch.object(app.filedialog, "askopenfilename", return_value=str(saved)):
                 desk.snapshot_buttons["snap_open"].invoke()
@@ -196,7 +211,9 @@ def run(out, exe, source_sha):
             invoke_with_dialog(desk.snapshot_buttons["snap_compare"], "askdirectory", delivery)
             assert desk.comparison is not None
             screenshots["05_restarted"] = screenshot(root, out / "05_restarted.png")
-            logs.append("restart, open baseline and recompare PASS")
+            desk.lang.invoke()
+            assert desk.language == "en", "Could not switch back to English after restart"
+            logs.append("restart preserved JA, switched to EN, opened baseline and recompare PASS")
             # Close the comparison overlay before capturing the main-window error state.
             for child in root.winfo_children():
                 if isinstance(child, tk.Toplevel):
@@ -332,10 +349,12 @@ def run_packaged(out, exe, source_sha, calibration):
         html_path = out / "packaged-client-ja.html"
         process = None
         window = None
+        isolated_env = {**os.environ,
+                        "OFFLINE_IMAGE_INVENTORY_CONFIG_DIR": str(folder / "user-settings")}
 
         def start():
             nonlocal process, window
-            process = subprocess.Popen([str(exe)], cwd=str(folder))
+            process = subprocess.Popen([str(exe)], cwd=str(folder), env=isolated_env)
             # PyInstaller onefile uses a parent bootloader and child GUI PID.
             deadline = time.monotonic() + 45
             match = None
@@ -344,10 +363,11 @@ def run_packaged(out, exe, source_sha, calibration):
                     allowed = {process.pid} | {child.pid for child in psutil.Process(process.pid).children(recursive=True)}
                 except psutil.Error:
                     allowed = {process.pid}
-                candidates = Desktop(backend="win32").windows(
-                    title="Offline Image Inventory Desk", visible_only=True)
+                candidates = Desktop(backend="win32").windows(visible_only=True)
+                titles = {"Offline Image Inventory Desk", "オフライン画像一覧デスク"}
                 match = next((candidate for candidate in candidates
-                              if candidate.process_id() in allowed), None)
+                              if candidate.process_id() in allowed
+                              and candidate.window_text() in titles), None)
                 if match:
                     break
                 time.sleep(0.35)
@@ -450,7 +470,9 @@ def run_packaged(out, exe, source_sha, calibration):
         def close_comparison():
             # The comparison table is a distinct Tk Toplevel, not a file dialog.
             for w in Desktop(backend="win32").windows(process=window.process_id(), visible_only=True):
-                if w.handle != window.handle and "delivery changes" in w.window_text().lower():
+                if (w.handle != window.handle
+                        and ("delivery changes" in w.window_text().lower()
+                             or "納品" in w.window_text())):
                     w.close()
                     time.sleep(0.5)
 
@@ -497,10 +519,16 @@ def run_packaged(out, exe, source_sha, calibration):
             log.append("packaged HTML local customer previews validated")
             stop()
             start()
+            if "オフライン画像一覧デスク" not in win32gui.GetWindowText(window.handle):
+                raise AssertionError("Packaged EXE did not preserve Japanese on restart")
+            log.append("exact packaged EXE preserved JA preference after process restart")
             action("snap_open", snapshot)
             action("snap_compare", delivery)
             close_comparison()
             capture("05_exe_restarted")
+            click("lang")
+            if "Offline Image Inventory Desk" not in win32gui.GetWindowText(window.handle):
+                raise AssertionError("Packaged EXE could not switch back to English")
             # Malformed image forces a real parser read error without admin symlink rights.
             (delivery / "unreadable.png").write_bytes(b"malformed image fixture")
             expected_files = {"baseline": hashes(baseline), "delivery": hashes(delivery)}
