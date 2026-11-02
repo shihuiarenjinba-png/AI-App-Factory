@@ -109,6 +109,7 @@ class BankCSVPreviewTests(unittest.TestCase):
         before = self.fingerprint()
         self.store.close()
         self.store = Store(self.database)
+        self.addCleanup(self.store.close)
         result = self.preview()
         self.assertEqual(result["rows"][0]["ledger_candidate_ids"], [self.tid])
         self.assertEqual(self.fingerprint(), before)
