@@ -16,7 +16,7 @@ import time
 import zipfile
 import zlib
 
-PINNED = "97beffedec6f5657a4c3a66439e90ce68637ba53"
+PINNED = "19f0bee05322d7e347513092e2e56d4d8a5a45d3"
 SOURCE_BRANCH = "codex/us-freelance-taskbar-bounds-20261103"
 SLUG = "us-freelance-ledger"
 
