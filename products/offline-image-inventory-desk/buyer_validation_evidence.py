@@ -22,10 +22,13 @@ FIELDS = ("participant_id", "role", "existing_tool", "monthly_deliveries",
           "time_product_sec", "clicks_free", "clicks_product",
           "assisted_steps", "critical_errors", "client_accepts_txt",
           "source_unchanged", "willingness_to_pay_JPY", "reason_to_pay",
-          "reason_not_to_pay", "interview_date", "consent")
+          "reason_not_to_pay", "interview_date", "consent",
+          "first_30sec_goal_understood", "recipient_can_identify_changes",
+          "recipient_can_explain_limits", "recipient_feedback")
 EXPECTED = {"same.png": "UNCHANGED", "modified.png": "MODIFIED",
             "removed.png": "REMOVED", "added.png": "ADDED"}
-PHASES = ("free", "product", "restart", "read_error")
+PHASES = ("free", "first_30sec", "product", "delivery",
+          "recipient_review", "restart", "read_error")
 
 
 def digest(path):
@@ -91,6 +94,8 @@ def prepare(out, exe, source_sha):
         "source_sha": source_sha,
         "exe_sha256": digest(out / "offline-image-inventory-desk.exe"),
         "fixture_expected": EXPECTED,
+        "journey_protocol": "UNCOACHED_DELIVERY_JOURNEY_V1",
+        "required_phases": list(PHASES),
         "baseline_sha256": image_hashes(base),
         "delivery_sha256": image_hashes(revised),
         "read_error_sha256": image_hashes(error_folder),
@@ -106,10 +111,13 @@ def prepare(out, exe, source_sha):
         "Use 1024x768 Windows; run packaged EXE, not main.py. Test EN and JA.\n"
         "Unprompted task: You received a revised image folder. Produce a client-readable\n"
         "change record without altering original images. Compare free tool first.\n"
-        "Record baseline, compare delivery, export CSV/JSON/TXT, restart, reopen,\n"
-        "then compare read-error/ (invalid.png) and ensure stale\n"
-        "results cannot be exported. Record click count, elapsed time, errors,\n"
-        "assistance, free alternative, exact purchase answer, and consent.\n"
+        "Compare the free/current tool first. Observe the first 30 seconds of\n"
+        "uncoached product use; then record baseline, compare delivery and save\n"
+        "client HTML with previews. Hand HTML to an uncoached recipient and\n"
+        "record what they understood. Restart/reopen, then compare read-error/\n"
+        "(invalid.png); stale results must not export. Optional TXT/CSV/JSON.\n"
+        "Log free, first_30sec, product, delivery, recipient_review, restart,\n"
+        "read_error phases in that order; record clicks/errors, real answers.\n"
         "Use event command to time phases. Log real responses in CSV only after test.\n"
         "Run verify after every session to check original image SHA-256.\n"
         "Never upload client images, identifiable responses or paid-test records to GitHub.\n"
@@ -124,6 +132,9 @@ def verify(out):
     manifest = json.loads((out / "manifest.json").read_text(encoding="utf-8"))
     if manifest["fixture_expected"] != EXPECTED:
         raise AssertionError("Unexpected fixture contract")
+    if (manifest.get("journey_protocol") != "UNCOACHED_DELIVERY_JOURNEY_V1"
+            or manifest.get("required_phases") != list(PHASES)):
+        raise AssertionError("Buyer journey protocol mismatch")
     if image_hashes(out / "baseline") != manifest["baseline_sha256"]:
         raise AssertionError("SOURCE_IMAGES_MODIFIED: baseline")
     if image_hashes(out / "delivery") != manifest["delivery_sha256"]:

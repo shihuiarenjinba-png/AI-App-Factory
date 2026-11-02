@@ -15,6 +15,9 @@ from buyer_validation_evidence import FIELDS, PHASES, verify
 
 PARTICIPANTS = frozenset("P%02d" % n for n in range(1, 6))
 ACTIONS = frozenset(("start", "stop", "error"))
+OBSERVED_YES_NO_FIELDS = ("first_30sec_goal_understood",
+                          "recipient_can_identify_changes",
+                          "recipient_can_explain_limits")
 
 
 def audit(out):
@@ -49,7 +52,7 @@ def audit(out):
         if stamp.tzinfo is None or stamp.utcoffset() is None:
             raise ValueError("Timezone-free event timestamp")
         key = (event["participant"], event["phase"])
-        state = phases.setdefault(key, {"start": None, "stop": None, "errors": 0})
+        state = phases.setdefault(key, {"start": None, "stop": None, "stop_at": None, "errors": 0})
         action = event["action"]
         if action == "start":
             if state["start"] is not None:
@@ -70,15 +73,29 @@ def audit(out):
             if abs(actual - elapsed) > 1.0:
                 raise ValueError("Event elapsed time disagrees with timestamps")
             state["stop"] = {"elapsed_sec": elapsed, "clicks": clicks, "errors": errors}
+            state["stop_at"] = stamp
         event_count += 1
 
     sessions = {}
     for pid in sorted(PARTICIPANTS):
         recorded = {phase: phases.get((pid, phase), {}).get("stop") for phase in PHASES}
         if pid in responses or any((pid, phase) in phases for phase in PHASES):
+            complete = all(value is not None for value in recorded.values())
+            ordered = complete and all(
+                phases[(pid, later)]["start"] >= phases[(pid, earlier)]["stop_at"]
+                for earlier, later in zip(PHASES, PHASES[1:]))
+            observed = (pid in responses
+                        and all(responses[pid][field].strip().lower() in ("yes", "no")
+                                for field in OBSERVED_YES_NO_FIELDS)
+                        and bool(responses[pid]["recipient_feedback"].strip()))
+            consent = pid in responses and responses[pid]["consent"].strip().lower() in ("yes", "true", "1")
+            purchase = pid in responses and bool(responses[pid]["willingness_to_pay_JPY"].strip())
             sessions[pid] = {
                 "phases": recorded,
-                "all_phases_complete": all(value is not None for value in recorded.values()),
+                "all_phases_complete": complete,
+                "phase_order_valid": ordered,
+                "recipient_observations_recorded": observed,
+                "manual_journey_complete": bool(ordered and observed and consent and purchase),
                 "response_recorded": pid in responses,
                 "consent_recorded": pid in responses and responses[pid]["consent"].strip().lower() in ("yes", "true", "1"),
                 "purchase_answer_recorded": pid in responses and bool(responses[pid]["willingness_to_pay_JPY"].strip()),
@@ -90,6 +107,8 @@ def audit(out):
         "response_rows": len(responses),
         "event_count": event_count,
         "complete_observed_phase_sets": sum(s["all_phases_complete"] for s in sessions.values()),
+        "complete_ordered_phase_sets": sum(s["phase_order_valid"] for s in sessions.values()),
+        "complete_manual_journey_sets": sum(s["manual_journey_complete"] for s in sessions.values()),
         "sessions": sessions,
         "timing_source": "MANUALLY_LOGGED_NOT_INDEPENDENTLY_ATTESTED",
         "market_score": 64,

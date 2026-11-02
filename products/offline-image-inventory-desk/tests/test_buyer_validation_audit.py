@@ -40,6 +40,26 @@ class BuyerAuditTests(unittest.TestCase):
         self.assertFalse(result["sessions"]["P01"]["all_phases_complete"])
         self.assertFalse(result["why_pay_verified"])
 
+    def test_complete_synthetic_event_journey_is_not_buyer_validation(self):
+        for phase in kit.PHASES:
+            kit.record_event(self.out, "P01", phase, "start")
+            kit.record_event(self.out, "P01", phase, "stop", 1, 0)
+        result = auditor.audit(self.out)
+        self.assertEqual(result["complete_ordered_phase_sets"], 1)
+        self.assertEqual(result["complete_manual_journey_sets"], 0)
+        self.assertFalse(result["sessions"]["P01"]["recipient_observations_recorded"])
+        self.assertEqual(result["market_fit"], "MARKET_FIT_HOLD")
+        self.assertFalse(result["why_pay_verified"])
+
+    def test_out_of_order_journey_cannot_be_complete(self):
+        for phase in reversed(kit.PHASES):
+            kit.record_event(self.out, "P01", phase, "start")
+            kit.record_event(self.out, "P01", phase, "stop", 1, 0)
+        result = auditor.audit(self.out)
+        self.assertEqual(result["complete_observed_phase_sets"], 1)
+        self.assertEqual(result["complete_ordered_phase_sets"], 0)
+        self.assertEqual(result["complete_manual_journey_sets"], 0)
+
     def test_duplicate_participant_rejected(self):
         with (self.out / "participant-responses.csv").open("a", newline="", encoding="utf-8") as f:
             writer = csv.writer(f)

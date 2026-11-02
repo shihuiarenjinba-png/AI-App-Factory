@@ -74,6 +74,18 @@ class BuyerEvidenceTests(unittest.TestCase):
             kit.record_event(self.out, "P01", "product", "stop", 9, 1)
         self.assertEqual(kit.verify(self.out)["response_rows"], 0)
 
+    def test_uncoached_journey_contract_has_no_fake_answers(self):
+        manifest = self.make()
+        self.assertEqual(manifest["journey_protocol"], "UNCOACHED_DELIVERY_JOURNEY_V1")
+        self.assertEqual(tuple(manifest["required_phases"]), kit.PHASES)
+        self.assertIn("first_30sec", kit.PHASES)
+        self.assertIn("recipient_review", kit.PHASES)
+        with (self.out / "participant-responses.csv").open(newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            self.assertIn("recipient_can_identify_changes", reader.fieldnames)
+            self.assertEqual(list(reader), [])
+        self.assertEqual(kit.verify(self.out)["response_rows"], 0)
+
     def test_rejects_unverified_input(self):
         with self.assertRaisesRegex(ValueError, "Exact 40"):
             kit.prepare(self.out, self.exe, "not-a-sha")
