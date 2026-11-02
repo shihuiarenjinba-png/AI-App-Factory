@@ -2,15 +2,48 @@ import tkinter as tk
 from datetime import date
 from pathlib import Path
 from tkinter import filedialog,messagebox,simpledialog,ttk
-from core import TYPES,BookError,Store,suggest_entry
+from core import TYPES,BookError,Store,suggest_entry,pth
+from book_selection import active_book,remember_book,reset_book,BookSelectionError
 from monthly_close import export_month_end_package
 from tax_assets import JP_CONSUMPTION_TAX_PRESETS,consumption_tax_from_net,jp_depreciation_schedule
 from budget_ui import open_budget_window
 from cash_movement_ui import open_cash_movement_window
 class App(tk.Tk):
  def __init__(self):
-  super().__init__();self.title("複式簿記デスク 日本版");self.geometry("1180x760");self.minsize(980,650);self.s=Store();self.protocol("WM_DELETE_WINDOW",self.close)
+  super().__init__();self.title("複式簿記デスク 日本版");self.geometry("1180x760");self.minsize(980,650);self.s=Store(self.start_book());self.protocol("WM_DELETE_WINDOW",self.close)
   self.d=tk.StringVar(value=date.today().isoformat());self.desc=tk.StringVar();self.lines=[];self.build();self.refresh_accounts();self.refresh()
+ def start_book(self):
+  default=pth()
+  try:return active_book(default)
+  except BookSelectionError as e:
+   if messagebox.askyesno("前回の帳簿を開けません",
+      f"前回の復元帳簿を確認できません。\\n理由: {e}\\n元の帳簿を開きますか？",parent=self):
+    reset_book(default);return default
+   self.destroy();raise SystemExit("BOOK_SELECTION_REVIEW_REQUIRED")
+ def switch_book(self,database):
+  try:
+   candidate=Store(database)
+   remember_book(pth(),database)
+  except (BookSelectionError,BookError,OSError) as e:
+   if "candidate" in locals():candidate.close()
+   messagebox.showwarning("帳簿を開けません",f"帳簿の切替を中止しました。\\n理由: {e}");return
+  old=self.s;self.s=candidate;old.close()
+  for a,b,c,_ in self.lines:a.set("");b.set("");c.set("")
+  self.desc.set("");self.refresh_accounts();self.refresh()
+  messagebox.showinfo("帳簿を切り替えました","復元した帳簿を開きました。次回起動時もこの帳簿を開きます。")
+ def back_to_original(self):
+  default=pth()
+  if not messagebox.askyesno("元の帳簿に戻る",
+    "現在の帳簿を閉じ、元の帳簿を開きますか？復元帳簿は削除されません。"):return
+  try:
+   candidate=Store(default)
+   reset_book(default)
+  except (BookSelectionError,BookError,OSError) as e:
+   if "candidate" in locals():candidate.close()
+   messagebox.showwarning("元の帳簿に戻れません",f"切替を中止しました。\\n理由: {e}");return
+  old=self.s;self.s=candidate;old.close()
+  for a,b,c,_ in self.lines:a.set("");b.set("");c.set("")
+  self.desc.set("");self.refresh_accounts();self.refresh()
  def build(self):
   ttk.Label(self,text="複式簿記デスク 日本版",font=("Yu Gothic UI",18,"bold")).pack(anchor="w",padx=14,pady=(14,2));ttk.Label(self,text="日本国内向け・円建て。仕訳帳→総勘定元帳→試算表→貸借対照表・損益計算書の流れをローカルで管理します。").pack(anchor="w",padx=14)
   p=ttk.Panedwindow(self,orient="horizontal");p.pack(fill="both",expand=True,padx=14,pady=10);f=ttk.Labelframe(p,text="仕訳入力",padding=10);p.add(f,weight=2)
@@ -40,6 +73,7 @@ class App(tk.Tk):
   ttk.Button(backup_actions,text="バックアップを作成",command=self.backup_receipts).pack(side="left",padx=(0,5))
   ttk.Button(backup_actions,text="復元前の確認",command=self.inspect_receipt_backup).pack(side="left",padx=(0,5))
   ttk.Button(backup_actions,text="別の帳簿として復元",command=self.restore_receipt_backup).pack(side="left")
+  ttk.Button(receipt_card,text="元の帳簿に戻る",command=self.back_to_original).pack(anchor="w",pady=(5,0))
   self.report=tk.Text(r,font=("Consolas",10),state="disabled");self.report.pack(fill="both",expand=True)
  def refresh_accounts(self):
   vals=[f'{a["code"]} {a["name"]}' for a in self.s.accounts()]
@@ -124,6 +158,8 @@ class App(tk.Tk):
     f'復元しました。原本 {restored["receipt_count"]}件。\n'
     f'新しい帳簿: {restored["database"]}\n'
     "現在開いている帳簿は変更していません。復元した帳簿の原本参照は再確認してください。")
+   if messagebox.askyesno("復元した帳簿を開く","復元した帳簿を今開き、次回起動時も使いますか？"):
+    self.switch_book(restored["database"])
   except BookError as e:
    messagebox.showwarning("復旧できない理由",
     f"復元を中止しました。現在の帳簿は変更していません。\n理由: {e}")
