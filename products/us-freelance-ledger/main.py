@@ -317,7 +317,8 @@ class App(tk.Tk):
             for row in report["rows"][:100]:
                 listing.insert("","end",values=(row["line"],row["date"],row["direction"],
                     row["amount_cents"] if row["amount_cents"] is not None else "INVALID",
-                    ",".join(map(str,row["ledger_candidate_ids"])),
+                    ",".join(map(str,row["ledger_candidate_ids"])) or
+                    ",".join(f'{x["transaction_id"]}:{x["difference_cents"]:+d}c' for x in row["difference_candidates"]),
                     row["status"] + (": "+",".join(row["issues"]) if row["issues"] else "")))
             status.set(f'{len(report["rows"])} bank rows; {report["review_required"]} require review. '
                        'Showing first 100; possible ledger matches are NOT confirmed. '
