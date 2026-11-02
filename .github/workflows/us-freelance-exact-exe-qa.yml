@@ -40,7 +40,7 @@ jobs:
       - name: Refuse source drift, uncommitted changes, or wrong product
         shell: pwsh
         run: |
-          $expected = '97beffedec6f5657a4c3a66439e90ce68637ba53'
+          $expected = '19f0bee05322d7e347513092e2e56d4d8a5a45d3'
           $actual = (git -C source rev-parse HEAD).Trim()
           if ($actual -ne $expected) { throw "PR82 exact HEAD drift: $actual" }
           $dirty = @(git -C source status --porcelain -- products/us-freelance-ledger) -join ''
