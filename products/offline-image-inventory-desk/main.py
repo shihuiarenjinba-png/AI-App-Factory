@@ -269,10 +269,36 @@ def comparison_view_rows(report, language, changes_only=False):
 LABELS["en"]["lang_save_failed"] = "Language changed for this session, but the preference could not be saved."
 LABELS["ja"]["lang_save_failed"] = "この画面では言語を変更しましたが、次回起動用の設定を保存できませんでした。"
 
+def window_geometry_for_work_area(left, top, right, bottom):
+    """Conservatively fit the outer Windows frame inside the usable desktop.
+
+    The reserved 16px horizontal / 56px vertical margin covers window chrome
+    and rounding at common Windows DPI scales; content itself is scrollable.
+    """
+    width, height = right - left, bottom - top
+    if width < 866 or height < 656:
+        raise ValueError("Desktop work area too small for the supported layout")
+    return f"{min(1024, width - 16)}x{min(768, height - 56)}+{left}+{top}"
+
+
+def fit_window_to_work_area(root):
+    if os.name == "nt":
+        import ctypes
+        from ctypes import wintypes
+        rect = wintypes.RECT()
+        if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):
+            root.geometry(window_geometry_for_work_area(
+                rect.left, rect.top, rect.right, rect.bottom))
+            return
+    # Conservative fallback for non-Windows and unavailable work-area APIs.
+    root.geometry(window_geometry_for_work_area(
+        0, 0, root.winfo_screenwidth(), max(656, root.winfo_screenheight() - 72)))
+
+
 class Desk:
     def __init__(self,root):
         self.root=root;self.language=load_language();self.rows=[];self.status=tk.StringVar();self.preflight=tk.BooleanVar(value=False);self.issues=tk.BooleanVar(value=False);self.baseline=None;self.comparison=None;self.demo_temp=None;self.demo_mode=False;self.comparison_window=None;self.last_html_report_path=None;self.comparison_open_report_button=None;self.comparison_report_path_label=None
-        root.geometry("1024x768");root.minsize(850,600)
+        fit_window_to_work_area(root);root.minsize(850,600)
         body=ttk.Frame(root,padding=10);body.pack(fill="both",expand=True)
         header=ttk.Frame(body);header.pack(fill="x")
         self.heading=ttk.Label(header,font=("Segoe UI",18,"bold"))
@@ -286,19 +312,35 @@ class Desk:
         # inventory and technical screenshot checks remain available separately.
         self.notebook=ttk.Notebook(body)
         self.notebook.pack(fill="both",expand=True)
-        self.delivery_tab=ttk.Frame(self.notebook,padding=12)
+        self.delivery_tab=ttk.Frame(self.notebook)
         self.inventory_tab=ttk.Frame(self.notebook,padding=10)
         self.notebook.add(self.delivery_tab,text="Delivery report")
         self.notebook.add(self.inventory_tab,text="Image inventory")
 
-        self.snapshot_intro=ttk.Label(self.delivery_tab,wraplength=680,justify="left")
+        # A 1024x768 display has less than 768px of usable height once the
+        # Windows taskbar and window chrome are excluded. Never hide step 3.
+        self.delivery_canvas=tk.Canvas(self.delivery_tab,highlightthickness=0,borderwidth=0)
+        self.delivery_scroll=ttk.Scrollbar(self.delivery_tab,orient="vertical",
+                                           command=self.delivery_canvas.yview)
+        self.delivery_canvas.configure(yscrollcommand=self.delivery_scroll.set)
+        self.delivery_scroll.pack(side="right",fill="y")
+        self.delivery_canvas.pack(side="left",fill="both",expand=True)
+        self.delivery_content=ttk.Frame(self.delivery_canvas,padding=12)
+        self.delivery_canvas_window=self.delivery_canvas.create_window(
+            (0,0),window=self.delivery_content,anchor="nw")
+        self.delivery_content.bind("<Configure>",lambda event:
+            self.delivery_canvas.configure(scrollregion=self.delivery_canvas.bbox("all")))
+        self.delivery_canvas.bind("<Configure>",lambda event:
+            self.delivery_canvas.itemconfigure(self.delivery_canvas_window,width=event.width))
+
+        self.snapshot_intro=ttk.Label(self.delivery_content,wraplength=680,justify="left")
         self.snapshot_intro.pack(anchor="w",fill="x",pady=(0,10))
-        demo_row=ttk.Frame(self.delivery_tab);demo_row.pack(fill="x",pady=(0,10))
+        demo_row=ttk.Frame(self.delivery_content);demo_row.pack(fill="x",pady=(0,10))
         self.demo_button=ttk.Button(demo_row,command=self.try_demo)
         self.demo_button.pack(side="left")
 
         self.snapshot_buttons={}
-        step1=ttk.LabelFrame(self.delivery_tab,padding=10)
+        step1=ttk.LabelFrame(self.delivery_content,padding=10)
         step1.pack(fill="x",pady=(0,9))
         self.step1=step1
         for key,fn in (("snap_new",self.new_snapshot),("snap_open",self.open_snapshot)):
@@ -306,14 +348,14 @@ class Desk:
             button.pack(side="left",padx=(0,8))
             self.snapshot_buttons[key]=button
 
-        step2=ttk.LabelFrame(self.delivery_tab,padding=10)
+        step2=ttk.LabelFrame(self.delivery_content,padding=10)
         step2.pack(fill="x",pady=(0,9))
         self.step2=step2
         button=ttk.Button(step2,command=self.compare_folder)
         button.pack(side="left")
         self.snapshot_buttons["snap_compare"]=button
 
-        step3=ttk.LabelFrame(self.delivery_tab,padding=10)
+        step3=ttk.LabelFrame(self.delivery_content,padding=10)
         step3.pack(fill="x",pady=(0,9))
         self.step3=step3
         step3_primary=ttk.Frame(step3);step3_primary.pack(fill="x",pady=(0,7))
@@ -329,7 +371,7 @@ class Desk:
         button=ttk.Button(step3_details,command=self.export_evidence)
         button.pack(side="left")
         self.snapshot_buttons["snap_export"]=button
-        self.delivery_note=ttk.Label(self.delivery_tab,wraplength=680,justify="left")
+        self.delivery_note=ttk.Label(self.delivery_content,wraplength=680,justify="left")
         self.delivery_note.pack(anchor="w",fill="x",pady=(4,0))
 
         self.inventory_intro=ttk.Label(self.inventory_tab,wraplength=700,justify="left")
