@@ -4,6 +4,7 @@ import importlib.util
 import sys
 import tempfile
 import tkinter as tk
+from tkinter import ttk
 import unittest
 from pathlib import Path
 from unittest.mock import patch
@@ -77,7 +78,7 @@ class FirstRunLayoutTests(unittest.TestCase):
                     buttons = {}
                     def visit(widget):
                         for child in widget.winfo_children():
-                            if isinstance(child, tk.ttk.Button):
+                            if isinstance(child, ttk.Button):
                                 buttons[child.cget("text")] = child
                             visit(child)
                     visit(app)
