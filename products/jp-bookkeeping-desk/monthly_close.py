@@ -84,6 +84,20 @@ def export_month_end_package(store,year,month,out_dir):
     receipt_as_of_label=(f"{receipt_as_of}件（記録済み履歴から検証）"
                          if receipt_history["status"]=="VERIFIED_HISTORY_ONLY"
                          else "算出不可（履歴不足・要確認）")
+    custody=store.receipt_custody_summary()
+    # Custody is distinct from queue history and from any tax eligibility decision.
+    originals=[{"id":r["id"],
+                "file_name":Path(str(r["file_path"]).replace(chr(92),"/")).name,
+                "status":r["status"],"reason":r.get("reason"),
+                "sha256":r.get("sha256"),"size_bytes":r.get("size_bytes"),
+                "captured_utc":r.get("captured_utc")}
+               for r in custody["details"]]
+    custody_rows="".join(
+        f"<tr><td>{int(r['id'])}</td><td>{html.escape(r['file_name'])}</td>"
+        f"<td>{'原本を確認できる' if r['status']=='VERIFIED' else '確認が必要'}</td>"
+        f"<td>{html.escape(str(r['reason'] or 'SHA-256・容量一致'))}</td></tr>"
+        for r in originals
+    ) or "<tr><td colspan='4'>証憑はまだありません</td></tr>"
     pending_rows=[r for r in store.receipts() if r["status"]!="POSTED"]
     receipt_detail_rows="".join(
         f"<tr><td>{int(r['id'])}</td><td>{html.escape(Path(str(r['file_path']).replace(chr(92),'/')).name)}</td>"
@@ -129,6 +143,10 @@ def export_month_end_package(store,year,month,out_dir):
           "receipt_history_status":receipt_history["status"],
           "receipt_history_reason":receipt_history.get("reason"),
           "receipt_history_scope":receipt_history["scope"],
+          "original_custody_verified":custody["verified"],
+          "original_custody_review_required":custody["review_required"],
+          "original_custody_status":"VERIFIED" if not custody["review_required"] else "REVIEW_REQUIRED",
+          "receipt_originals":originals,
           "tax_filing_or_deduction_approved":False}
     json_path=out/f"{stem}_月次締め.json";json_path.write_text(json.dumps(data,ensure_ascii=False,indent=2),encoding="utf-8")
     jrows="".join(
@@ -184,6 +202,10 @@ def export_month_end_package(store,year,month,out_dir):
 <p><strong>{cutoff} 月末時点の未処理証憑：{receipt_as_of_label}</strong>。旧データや履歴が欠けた証憑がある場合は推測せず要確認とします。</p>
 <p><a href="#receipt-details">現在の未処理証憑の詳細を見る</a>。証憑原本・事業用途・私用按分・固定資産判定は人が確認してください。処理済み表示も仕訳登録・税務認定を意味しません。</p></section>
 <section id="receipt-details"><h3>現在の未処理証憑一覧</h3><table><tr><th>ID</th><th>ファイル名</th><th>状態</th></tr>{receipt_detail_rows}</table></section>
+<section id="original-custody"><h3>原本ファイルの確認</h3>
+<p>原本を確認できる：{custody['verified']}件 / 確認が必要：{custody['review_required']}件。旧データは自動復元しません。</p>
+<p>原本のコピーと元ファイルのSHA-256・容量を照合します。原本の欠落・変更は要確認です。税務・電子帳簿保存の適合を保証しません。</p>
+<table><tr><th>ID</th><th>ファイル名</th><th>確認</th><th>理由</th></tr>{custody_rows}</table></section>
 <h2>この数字の根拠を見る</h2><p>下の科目リンクから元仕訳を確認できます。損益の当月・当年累計と、貸借の月末累計は対象期間が異なります。これは会計確認用で税務上の必要経費を認定しません。</p>\n<h2>損益科目の内訳</h2><table><tr><th>科目と元仕訳</th><th>区分</th><th>当月</th><th>当年累計</th></tr>{pnl_account_rows}</table>\n<h2>月末時点の試算表</h2><table><tr><th>コードと元仕訳</th><th>科目</th><th>借方</th><th>貸方</th></tr>{trows}</table>\n<h2>勘定科目ごとの元仕訳</h2>{source_html}
 <h2>当月仕訳</h2><table><tr><th>日付</th><th>摘要</th><th>科目</th><th>借方</th><th>貸方</th></tr>{jrows}</table>
 <p>電子取引で受領した証憑は元データも保存してください。この帳票は確認・共有用です。</p>
