@@ -17,7 +17,7 @@ class App(tk.Tk):
   try:return active_book(default)
   except BookSelectionError as e:
    if messagebox.askyesno("前回の帳簿を開けません",
-      f"前回の復元帳簿を確認できません。\\n理由: {e}\\n元の帳簿を開きますか？",parent=self):
+      f"前回の復元帳簿を確認できません。\n理由: {e}\n元の帳簿を開きますか？",parent=self):
     reset_book(default);return default
    self.destroy();raise SystemExit("BOOK_SELECTION_REVIEW_REQUIRED")
  def switch_book(self,database):
@@ -26,7 +26,7 @@ class App(tk.Tk):
    remember_book(pth(),database)
   except (BookSelectionError,BookError,OSError) as e:
    if "candidate" in locals():candidate.close()
-   messagebox.showwarning("帳簿を開けません",f"帳簿の切替を中止しました。\\n理由: {e}");return
+   messagebox.showwarning("帳簿を開けません",f"帳簿の切替を中止しました。\n理由: {e}");return
   old=self.s;self.s=candidate;old.close()
   for a,b,c,_ in self.lines:a.set("");b.set("");c.set("")
   self.desc.set("");self.refresh_accounts();self.refresh()
@@ -40,7 +40,7 @@ class App(tk.Tk):
    reset_book(default)
   except (BookSelectionError,BookError,OSError) as e:
    if "candidate" in locals():candidate.close()
-   messagebox.showwarning("元の帳簿に戻れません",f"切替を中止しました。\\n理由: {e}");return
+   messagebox.showwarning("元の帳簿に戻れません",f"切替を中止しました。\n理由: {e}");return
   old=self.s;self.s=candidate;old.close()
   for a,b,c,_ in self.lines:a.set("");b.set("");c.set("")
   self.desc.set("");self.refresh_accounts();self.refresh()
