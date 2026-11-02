@@ -45,6 +45,7 @@ class ExactReplayEvidenceTests(unittest.TestCase):
             "market_score": 64, "why_pay_verified": False,
             "checks": ["packaged EXE process started PID=42",
                        "packaged CSV/JSON/TXT contents validated",
+                       "packaged HTML local customer previews validated",
                        "real Windows exclusive-file read denial fail-closed; stale export blocked"]
         }
         for name in ("01_exe_initial_en", "04_exe_japanese", "05_exe_restarted",
@@ -64,6 +65,12 @@ class ExactReplayEvidenceTests(unittest.TestCase):
                 writer.writerow([key])
         (self.evidence / "packaged-summary-ja.txt").write_text(
             "日時の限界 お客様への確認ポイント 次の操作: 名前変更", encoding="utf-8")
+        html_path = self.evidence / "packaged-client-ja.html"
+        html_path.write_text(
+            '<meta content="default-src \'none\'"><h1>納品画像の確認レポート</h1>'
+            '<img src="data:image/png;base64,AAAA">', encoding="utf-8")
+        self.packaged["client_html_sha256"] = hashlib.sha256(
+            html_path.read_bytes()).hexdigest()
         self.save()
 
     def save(self):
@@ -115,6 +122,12 @@ class ExactReplayEvidenceTests(unittest.TestCase):
     def test_missing_output_rejected(self):
         (self.evidence / "packaged-changes.csv").unlink()
         with self.assertRaises(FileNotFoundError):
+            self.check()
+
+    def test_html_tamper_rejected(self):
+        (self.evidence / "packaged-client-ja.html").write_text(
+            "<script>evil()</script>", encoding="utf-8")
+        with self.assertRaisesRegex(EvidenceError, "CUSTOMER_HTML_INCOMPLETE"):
             self.check()
 
     def test_missing_negative_screenshot_rejected(self):
