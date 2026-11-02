@@ -1,14 +1,34 @@
 from __future__ import annotations
-from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP, ROUND_UP
+from decimal import Decimal, InvalidOperation, ROUND_DOWN, ROUND_HALF_UP, ROUND_UP
 from datetime import date
+from urllib.parse import urlsplit
 
 ROUNDING = {"floor":ROUND_DOWN,"nearest":ROUND_HALF_UP,"ceil":ROUND_UP}
 
+def _finite(value, label):
+    try:
+        result=Decimal(str(value))
+    except (InvalidOperation,ValueError,TypeError) as exc:
+        raise ValueError(f"Invalid {label}") from exc
+    if not result.is_finite():
+        raise ValueError(f"Invalid {label}")
+    return result
+
+def _percent(value, label):
+    result=_finite(value,label)
+    if not Decimal("0") <= result <= Decimal("100"):
+        raise ValueError(f"{label} must be between 0 and 100")
+    return result
+
 def manual_sales_tax(amount_before_tax, rate_percent, rounding="nearest"):
-    amount=Decimal(str(amount_before_tax)); rate=Decimal(str(rate_percent))/Decimal("100")
-    if amount < 0 or rate < 0: raise ValueError("Amount and rate must be non-negative")
-    tax=(amount*rate).quantize(Decimal("0.01"),rounding=ROUNDING.get(rounding,ROUND_HALF_UP))
-    return {"net":amount,"tax":tax,"gross":amount+tax,"rate_percent":Decimal(str(rate_percent))}
+    amount=_finite(amount_before_tax,"amount")
+    rate=_percent(rate_percent,"sales tax rate")
+    if amount < 0:
+        raise ValueError("Amount must be non-negative")
+    if rounding not in ROUNDING:
+        raise ValueError("Unknown rounding mode")
+    tax=(amount*rate/Decimal("100")).quantize(Decimal("0.01"),rounding=ROUNDING[rounding])
+    return {"net":amount,"tax":tax,"gross":amount+tax,"rate_percent":rate}
 
 def months_in_service(first_use_date: str, year: int) -> int:
     d=date.fromisoformat(first_use_date)
@@ -17,10 +37,11 @@ def months_in_service(first_use_date: str, year: int) -> int:
     return 12
 
 def straight_line_book_schedule(cost, first_use_date, useful_life_years, salvage_value=0, business_use_percent=100, through_year=None):
-    cost=Decimal(str(cost)); salvage=Decimal(str(salvage_value)); life=int(useful_life_years)
+    cost=_finite(cost,"cost"); salvage=_finite(salvage_value,"salvage value"); life=int(useful_life_years)
+    use=_percent(business_use_percent,"Business use")/Decimal("100")
     if cost <= 0 or life <= 0 or salvage < 0 or salvage >= cost: raise ValueError("Check asset values")
-    first=date.fromisoformat(first_use_date); through_year=int(through_year or first.year+life+2)
-    use=Decimal(str(business_use_percent))/Decimal("100")
+    first=date.fromisoformat(first_use_date); through_year=int(through_year) if through_year is not None else first.year+life+2
+    if through_year < first.year: raise ValueError("Through year cannot precede first use")
     depreciable=cost-salvage
     annual=depreciable/Decimal(life)
     rows=[]; accumulated=Decimal("0")
@@ -90,8 +111,14 @@ def retrospective_adjustment(schedule, posted_by_year, tax_mode=False):
     }
 
 def require_tax_profile(source_url, tax_year, method_name):
-    if not source_url or "irs.gov" not in source_url.lower():
+    if not isinstance(source_url,str):
         raise ValueError("Tax profile requires an IRS source URL")
+    parsed=urlsplit(source_url)
+    host=parsed.hostname
+    if parsed.scheme!="https" or not host or not (host=="irs.gov" or host.endswith(".irs.gov")):
+        raise ValueError("Tax profile requires an HTTPS IRS source URL")
+    if parsed.username is not None or parsed.password is not None:
+        raise ValueError("Tax profile source URL must not contain credentials")
     if int(tax_year) < 2000: raise ValueError("Tax year is invalid")
-    if not method_name.strip(): raise ValueError("Method name is required")
-    return {"source_url":source_url,"tax_year":int(tax_year),"method_name":method_name,"review_required":True}
+    if not isinstance(method_name,str) or not method_name.strip(): raise ValueError("Method name is required")
+    return {"source_url":source_url,"tax_year":int(tax_year),"method_name":method_name.strip(),"review_required":True}
