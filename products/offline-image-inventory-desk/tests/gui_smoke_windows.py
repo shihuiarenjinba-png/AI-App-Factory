@@ -564,6 +564,7 @@ def run_packaged(out, exe, source_sha, calibration):
             "exe_bytes": exe.stat().st_size,
             "source_images_untouched": True,
             "read_denied_fail_closed": True,
+            "client_html_sha256": sha(html_path),
             "fixture_sha256_before": originals,
             "fixture_sha256_after": {"baseline": hashes(baseline), "delivery": hashes(delivery)},
             "screenshots": shots,
