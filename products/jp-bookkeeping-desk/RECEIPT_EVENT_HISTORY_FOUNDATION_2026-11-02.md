@@ -1,6 +1,6 @@
 # Receipt status event history — staged foundation (2026-11-02 JST)
 
-**Stage:** REVIEW-ONLY / NOT YET IN MONTH-END UI. No migration or automatic historical reconstruction is claimed.
+**Stage:** REVIEW-ONLY / STAGED INTEGRATION (2026-11-02 10:00 JST). New Store enqueue/manual status writes and month-end HTML/JSON are wired; no legacy migration, no physical Windows GUI QA, and no automatic historical reconstruction are claimed.
 
 ## Why this stage exists
 
@@ -12,7 +12,9 @@ The new opt-in `receipt_event_history.py` creates an append-only table with `rec
 
 `tests/test_jp_receipt_event_history.py` covers January/February and March replay, future-dated receipts, JST midnight boundary, reopen after processing, repeated replay/idempotency, legacy rows, bypassed inserts/status updates, missing source row, append-only protection, and invalid/backdated timestamps.
 
-**Integration intentionally deferred:** The existing `Store.enqueue_receipts` and GUI still bypass the opt-in history writer. Until they are wired and end-to-end fixtures pass, the month-end HTML/JSON must continue to show **現在の未処理証憑（全期間）** separately from **対象月末時点の未処理証憑（履歴未検証・算出不可）**. Never expose the new replay count as verified from a legacy database.
+**Integration stage (2026-11-02 10:00 JST):** `Store.enqueue_receipts` now calls `ReceiptHistory.add`; the new `Store.set_receipt_status` calls `ReceiptHistory.transition`. The receipt list/dialog offers explicit manual status changes only, without posting a journal entry or approving a deduction. The report tab displays a beginner-facing **現在の未処理（全期間）** card and opens the receipt list. Month-end HTML/JSON uses `replay(year,month)` and separately shows the current queue and **対象月末時点の未処理**. For legacy/unlogged/invalid history the as-of field stays `null`, with `receipt_history_status=HOLD` and a plain-language **算出不可・要確認** label. Verified history is limited to new fully event-covered databases. No synthetic or old receipt status is silently backfilled.
+
+The new `tests/test_jp_receipt_history_integration.py` covers Store writes, duplicate enqueue, manual post/reopen, January/February cutoff, future events, restart, month-end JSON/HTML, legacy database, bypassed changes and missing source. The test is not a claim of observed Windows GUI usability. Real client documents stay local; month-end HTML shows only receipt filenames, not full source paths. This implementation does **not** claim electronic-record legal compliance, OCR precision, or tax eligibility.
 
 ## Official primary-source design check (accessed 2026-11-02)
 
@@ -20,3 +22,10 @@ The new opt-in `receipt_event_history.py` creates an append-only table with `rec
 - [国税庁 電子帳簿保存の取組紹介](https://www.nta.go.jp/about/introduction/torikumi/week/dennsityoubo.htm): 電子取引で受領した請求書等は元の電子データを保存する必要がある。HTML/PDFの月次レポートだけでは代替しない。
 
 This is bookkeeping evidence infrastructure, **not** OCR accuracy, deductible-expense approval, tax filing automation, or a claim of electronic-books-law compliance. No Identity, MSIX, Store or central Windows ledger changes.
+
+
+## Primary-source verification for this integration (2026-11-02 JST)
+
+- [NTA No.2080 白色申告者の記帳・帳簿等保存制度](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2080.htm), 令和8年4月1日現在法令等: daily transaction records and original documents must be preserved; a report cannot substitute for source evidence.
+- [NTA No.6496 仕入税額控除のための帳簿及び請求書等](https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6496.htm), 令和8年4月1日現在法令等: retaining evidence and tax eligibility are separate; receipt status is never a deduction decision.
+- [NTA 電子帳簿保存の取組紹介](https://www.nta.go.jp/about/introduction/torikumi/week/dennsityoubo.htm): received electronic transaction data must be retained, not replaced by a printed monthly HTML/PDF report; 2027-only preferential rules are not inferred for 2026.
