@@ -5,7 +5,7 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,METHODS,LedgerError,Store,suggest_category,review_requirements
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
 from receipt_queue import enqueue_receipts, list_receipts, link_receipt
-from bank_reconcile import BankReviewError, match_transaction, unmatch_transaction, match_statuses, statement_preview, finalize_statement
+from bank_reconcile import BankReviewError, match_transaction, unmatch_transaction, match_statuses, statement_preview, finalize_statement, cancel_statement
 
 class App(tk.Tk):
     def __init__(self):
@@ -50,6 +50,7 @@ class App(tk.Tk):
         ttk.Button(bank_actions,text="Match selected",command=self.match_bank).pack(side="left",padx=(0,5))
         ttk.Button(bank_actions,text="Undo match",command=self.unmatch_bank).pack(side="left",padx=(0,5))
         ttk.Button(bank_actions,text="Check statement",command=self.check_bank).pack(side="left")
+        ttk.Button(bank_actions,text="Undo checked",command=self.cancel_bank).pack(side="left",padx=(6,0))
         cols=("date","kind","amount","category","party","memo","bank");self.tree=ttk.Treeview(r,columns=cols,show="headings")
         for c,t in zip(cols,["Date","Type","Amount","Category","Payer / payee","Memo","Bank check"]):
             self.tree.heading(c,text=t);self.tree.column(c,width=90 if c in ("date","kind","amount","bank") else 110)
@@ -160,6 +161,28 @@ class App(tk.Tk):
         except BankReviewError as exc:messagebox.showerror("Statement check",str(exc));return
         self.refresh()
         messagebox.showinfo("Statement checked","Matched entries were finalized locally. This is not a tax or bank certification.")
+
+    def cancel_bank(self):
+        account=simpledialog.askstring("Undo checked statement","Bank account label:",parent=self)
+        if account is None:return
+        statement_day=simpledialog.askstring("Undo checked statement","Statement ending date (YYYY-MM-DD):",parent=self)
+        if statement_day is None:return
+        if not messagebox.askyesno(
+            "Review required — undo bank check",
+            "1. Check the original bank statement.\n"
+            "2. Only the latest checked statement can be undone.\n"
+            "3. The matches will return to 'Matched' for review; your ledger amounts "
+            "and tax treatment will NOT change.\n\n"
+            "Undo this bank check and keep an audit record?"
+        ):return
+        try:result=cancel_statement(self.store.conn,account,statement_day)
+        except BankReviewError as exc:messagebox.showerror("Cannot undo bank check",str(exc));return
+        self.refresh()
+        messagebox.showinfo(
+            "Bank check reopened — REVIEW REQUIRED",
+            f'{len(result["transaction_ids"])} entries returned to Matched. '
+            "Review the actual statement, check the difference is zero, and finalize again."
+        )
 
     def change_method(self):
         if not messagebox.askyesno(
