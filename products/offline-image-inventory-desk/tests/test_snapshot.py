@@ -174,6 +174,34 @@ class SnapshotTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             snap.describe_scan_errors(errors,"fr")
 
+    def test_raised_read_error_replaces_stale_success_and_allows_retry(self):
+        """An exception (not just a scan error list) must clear old success in JA/EN."""
+        from unittest.mock import Mock, patch
+        self.image("a.png")
+        baseline=self.capture()
+        for language in ("en", "ja"):
+            with self.subTest(language=language):
+                fake=Mock()
+                fake.baseline=baseline
+                fake.comparison=snap.compare_snapshots(baseline,baseline)
+                fake.root=object()
+                fake.status=Mock()
+                fake.t=lambda key, lang=language: app.LABELS[lang][key]
+                fake.error=Mock()
+                with patch.object(app.filedialog,"askdirectory",return_value=str(self.folder)), \
+                     patch.object(app.snapshots,"capture_folder",side_effect=PermissionError("denied")):
+                    app.Desk.compare_folder(fake)
+                self.assertIsNone(fake.comparison)
+                fake.status.set.assert_called_with(app.LABELS[language]["snap_failed"])
+                self.assertIn(app.LABELS[language]["snap_failed"],str(fake.error.call_args))
+                self.assertIn("denied",str(fake.error.call_args))
+                self.assertIs(fake.baseline,baseline)  # Original saved baseline preserved.
+                with patch.object(app.filedialog,"askdirectory",return_value=str(self.folder)):
+                    app.Desk.compare_folder(fake)
+                self.assertEqual(fake.comparison["summary"]["UNCHANGED"],1)
+                self.assertEqual(fake.status.set.call_args.args[0],
+                                 app.LABELS[language]["snap_result"].format(**fake.comparison["summary"]))
+
     def test_failed_rescan_clears_previous_exportable_report(self):
         """A prior successful comparison must never be exportable after read failure."""
         from unittest.mock import Mock, patch
