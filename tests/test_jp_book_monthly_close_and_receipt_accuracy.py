@@ -65,10 +65,13 @@ class T(unittest.TestCase):
     data=json.loads(Path(result["json"]).read_text(encoding="utf-8"))
     self.assertEqual(data["unprocessed_receipts"],1)
     self.assertEqual(data["unprocessed_receipts_scope"],"CURRENT_QUEUE_ALL_DATES_NOT_HISTORICAL_AS_OF")
-    self.assertIsNone(data["unprocessed_receipts_as_of_month_end"])
+    # This new receipt has a verified enqueue event after January; a manually
+    # edited legacy created_at must not replace the append-only event timestamp.
+    self.assertEqual(data["unprocessed_receipts_as_of_month_end"],0)
+    self.assertEqual(data["receipt_history_status"],"VERIFIED_HISTORY_ONLY")
     html=Path(result["html"]).read_text(encoding="utf-8")
     self.assertIn("現在の未処理証憑 1件",html)
-    self.assertIn("対象月末時点の履歴件数ではありません",html)
+    self.assertIn("月末時点の未処理証憑：0件",html)
     self.assertTrue(data["balance_check"]["balanced"])
    finally:s.close()
  def test_unsafe_autopost_fails(self):
