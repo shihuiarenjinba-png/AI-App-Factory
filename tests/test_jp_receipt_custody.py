@@ -179,5 +179,178 @@ class ReceiptOriginalCustodyTests(unittest.TestCase):
         self.assertIn("確認が必要", source)
 
 
+class ReceiptBackupRecoveryTests(unittest.TestCase):
+    """Synthetic-only backup, restart, negative archive and no-overwrite tests."""
+
+    def _book(self, root):
+        source = root / "original.pdf"
+        source.write_bytes(b"%PDF-1.4\\nSynthetic local receipt\\n%%EOF\\n")
+        store = core.Store(root / "live" / "books.sqlite3")
+        store.enqueue_receipts([source], at="2026-01-10T09:00:00+09:00",
+                               preserve_source=True)
+        store.post("2026-01-11", "synthetic", [("1100", 800, 0), ("4000", 0, 800)])
+        return store, source
+
+    def test_atomic_backup_preview_new_book_restore_and_restart(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            s, source = self._book(root)
+            archive = root / "backup.zip"
+            try:
+                result = s.create_receipt_backup(archive)
+                self.assertEqual(result["status"], "VERIFIED_BACKUP")
+                self.assertEqual(result["receipt_count"], 1)
+                self.assertEqual(s.inspect_receipt_backup(archive)["ledger_id"],
+                                 result["ledger_id"])
+                self.assertEqual(s.journal()[0]["description"], "synthetic")
+                restore = s.restore_receipt_backup(archive, root / "recovered")
+            except Exception:
+                s.close()
+                raise
+            else:
+                s.close()
+            self.assertEqual(restore["status"], "RESTORED_NEW_BOOK")
+            recovered = core.Store(restore["database"])
+            try:
+                self.assertEqual(recovered.pnl()["利益"], 800)
+                self.assertEqual(recovered.receipt_month_end(2026, 1)
+                                 ["unprocessed_receipts_as_of_month_end"], 1)
+                self.assertEqual(recovered.receipt_custody_summary()["verified"], 1)
+                self.assertEqual(source.read_bytes(),
+                                 next(Path(restore["originals"]).glob("*.bin")).read_bytes())
+            finally:
+                recovered.close()
+            again = core.Store(restore["database"])
+            try:
+                self.assertEqual(again.receipt_custody_summary()["verified"], 1)
+            finally:
+                again.close()
+
+    def test_no_overwrite_and_separate_restore_directory(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            s, _ = self._book(root)
+            try:
+                target = root / "backup.zip"
+                target.write_bytes(b"do-not-overwrite")
+                with self.assertRaises(core.BookError):
+                    s.create_receipt_backup(target)
+                self.assertEqual(target.read_bytes(), b"do-not-overwrite")
+                target.unlink()
+                s.create_receipt_backup(target)
+                with self.assertRaises(core.BookError):
+                    s.create_receipt_backup(target)
+                self.assertEqual(s.inspect_receipt_backup(target)["receipt_count"], 1)
+                recovered_parent = root / "recovered"
+                recovered_parent.mkdir()
+                keep = recovered_parent / "books.sqlite3"
+                keep.write_bytes(b"existing unrelated ledger")
+                result = s.restore_receipt_backup(target, recovered_parent)
+                self.assertEqual(keep.read_bytes(), b"existing unrelated ledger")
+                self.assertNotEqual(Path(result["database"]), keep)
+            finally:
+                s.close()
+
+    def test_corrupt_missing_and_legacy_fail_closed(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            s, _ = self._book(root)
+            try:
+                stored = Path(s.receipt_custody_status(s.receipts()[0]["id"])
+                              ["stored_original"])
+                stored.unlink()
+                with self.assertRaises(core.BookError):
+                    s.create_receipt_backup(root / "missing.zip")
+                self.assertFalse((root / "missing.zip").exists())
+            finally:
+                s.close()
+            legacy = core.Store(root / "legacy" / "books.sqlite3")
+            try:
+                legacy.enqueue_receipts(["legacy.pdf"])
+                with self.assertRaises(core.BookError):
+                    legacy.create_receipt_backup(root / "legacy.zip")
+            finally:
+                legacy.close()
+            corrupt = root / "corrupt.zip"
+            corrupt.write_bytes(b"not a zip")
+            check = core.Store(root / "new" / "books.sqlite3")
+            try:
+                with self.assertRaises(core.BookError):
+                    check.inspect_receipt_backup(corrupt)
+                with self.assertRaises(core.BookError):
+                    check.restore_receipt_backup(corrupt, root)
+            finally:
+                check.close()
+
+    def test_duplicate_traversal_symlink_and_missing_zip_entries_rejected(self):
+        import io
+        import stat
+        import zipfile
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            s, _ = self._book(root)
+            try:
+                archive = root / "valid.zip"
+                s.create_receipt_backup(archive)
+                original = zipfile.ZipFile(archive)
+                with original:
+                    files = [(i, original.read(i.filename)) for i in original.infolist()]
+                for label, bad_entry in (
+                    ("traversal", "../escape.bin"),
+                    ("duplicate", "books.sqlite3"),
+                    ("missing", None),
+                    ("symlink", "receipt-originals/link.bin"),
+                ):
+                    out = root / (label + ".zip")
+                    with zipfile.ZipFile(out, "w") as z:
+                        for info, data in files:
+                            if label == "missing" and info.filename == "books.sqlite3":
+                                continue
+                            z.writestr(info.filename, data)
+                        if bad_entry is not None:
+                            if label == "symlink":
+                                info = zipfile.ZipInfo(bad_entry)
+                                info.create_system = 3
+                                info.external_attr = (stat.S_IFLNK | 0o777) << 16
+                                z.writestr(info, "books.sqlite3")
+                            else:
+                                z.writestr(bad_entry, b"attack")
+                    with self.assertRaises(core.BookError, msg=label):
+                        s.inspect_receipt_backup(out)
+                    self.assertFalse((root / "escape.bin").exists())
+            finally:
+                s.close()
+
+    def test_other_ledger_id_and_novice_controls(self):
+        with tempfile.TemporaryDirectory() as td:
+            root = Path(td)
+            s, _ = self._book(root)
+            other = core.Store(root / "other" / "books.sqlite3")
+            try:
+                archive = root / "valid.zip"
+                s.create_receipt_backup(archive)
+                other_archive = root / "other.zip"
+                other.create_receipt_backup(other_archive)
+                backup = load("jp_receipt_backup_negative", "receipt_backup.py")
+                with self.assertRaises(backup.BackupError):
+                    backup.inspect_backup(archive, expected_ledger_id=
+                                          other.inspect_receipt_backup(other_archive)
+                                          ["ledger_id"])
+                with self.assertRaises(backup.BackupError):
+                    backup.restore_backup(archive, root,
+                                          expected_ledger_id=
+                                          other.inspect_receipt_backup(other_archive)
+                                          ["ledger_id"])
+                self.assertEqual(other.receipts(), [])
+            finally:
+                s.close()
+                other.close()
+        ui = (ROOT / "main.py").read_text(encoding="utf-8")
+        ast.parse(ui)
+        for label in ("バックアップを作成", "復元前の確認",
+                      "復旧できない理由", "別の帳簿として復元"):
+            self.assertIn(label, ui)
+
+
 if __name__ == "__main__":
     unittest.main()
