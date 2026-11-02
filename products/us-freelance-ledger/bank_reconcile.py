@@ -221,8 +221,11 @@ def cancel_statement(conn: sqlite3.Connection, account: str, statement_date: str
     transactions remain unchanged. A legacy reconciliation without a membership
     snapshot is deliberately blocked rather than guessed.
     """
-    _schema(conn)
-    _require_cash_book(conn)
+    try:
+        _schema(conn)
+        _require_cash_book(conn)
+    except sqlite3.DatabaseError as exc:
+        raise BankReviewError("Bank database is unavailable or damaged; no changes saved") from exc
     account, statement_date = _account(account), _day(statement_date)
     if conn.in_transaction:
         raise BankReviewError("Finish the current database operation before cancelling")
@@ -296,6 +299,9 @@ def cancel_statement(conn: sqlite3.Connection, account: str, statement_date: str
         return {"account": account, "statement_date": statement_date,
                 "transaction_ids": expected_ids, "status": "CLEARED",
                 "review_required": True}
+    except sqlite3.DatabaseError as exc:
+        conn.rollback()
+        raise BankReviewError("Bank database is unavailable or damaged; no changes saved") from exc
     except Exception:
         conn.rollback()
         raise
