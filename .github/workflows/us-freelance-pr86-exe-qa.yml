@@ -1,9 +1,9 @@
 name: US Freelance PR86 exact-source unsigned EXE and CSV hosted GUI QA
 
 on:
-  push:
+  pull_request:
     branches:
-      - codex/us-freelance-pr86-exact-exe-20261103
+      - codex/us-freelance-csv-human-review-20261103
     paths:
       - .github/workflows/us-freelance-pr86-exe-qa.yml
       - products/us-freelance-ledger/build_qa/exact_review_exe.py
