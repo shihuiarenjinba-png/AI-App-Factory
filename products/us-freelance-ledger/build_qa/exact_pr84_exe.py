@@ -281,8 +281,10 @@ def csv_flow(source, appdata, output):
             combo.set(column)
         actions["2. Preview candidates"].invoke()
         app.update()
-        require(actions["3. Save review copy (.txt)"].cget("state") ==
-                ("normal" if expected else "disabled"), "INCORRECT_SAVE_STATE")
+        current_state = actions["3. Save review copy (.txt)"].cget("state")
+        require(current_state == ("normal" if expected else "disabled"),
+                "INCORRECT_SAVE_STATE actual=" + repr(current_state) +
+                " expected=" + repr(expected) + " dialogs=" + repr(errors[-3:]))
         return actions
 
     with patch.object(ui, "_work_area", return_value=(0, 0, 1024, 720)), \
