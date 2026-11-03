@@ -245,7 +245,7 @@ class App(tk.Tk):
 
 
     def preview_bank_csv_gui(self):
-        """Three-step bank CSV review. Source and ledger are never modified."""
+        """Four-step bank CSV review. Source and ledger are never modified."""
         win=tk.Toplevel(self)
         win.title("Bank CSV review — USD only — NOT posted")
         win.transient(self)
@@ -255,10 +255,12 @@ class App(tk.Tk):
         status=tk.StringVar(value="Choose a CSV, map four columns, then preview. Nothing is posted.")
         selection={name:tk.StringVar(value="") for name in ("date","amount","direction","currency")}
         state={"source":None,"preview":None}
-        ttk.Label(win,text="1. Choose USD bank CSV  →  2. Map columns and review candidates  →  3. Save review copy",
+        ttk.Label(win,text="1. Choose USD CSV  →  2. Map columns  →  3. Review matches  →  4. Save results",
                   wraplength=680).pack(anchor="w",padx=10,pady=(10,4))
-        ttk.Label(win,text="Read-only: no automatic entries, bank matching, tax decisions or file changes.",
-                  wraplength=680).pack(anchor="w",padx=10)
+        ttk.Label(win,text="Read-only: no posting or tax decisions. CANDIDATE = possible same date/amount; "
+                  "UNMATCHED = no exact entry; DUPLICATE = repeated CSV row; "
+                  "REVIEW REQUIRED = ambiguous, already checked or invalid.",
+                  wraplength=700).pack(anchor="w",padx=10)
         top=ttk.Frame(win);top.pack(fill="x",padx=10,pady=6)
         ttk.Label(top,textvariable=source).pack(side="left",fill="x",expand=True)
         mapping_frame=ttk.Frame(win);mapping_frame.pack(fill="x",padx=10,pady=4)
@@ -280,7 +282,7 @@ class App(tk.Tk):
         listing.pack(fill="both",expand=True,padx=10,pady=(5,2))
         ttk.Label(win,textvariable=status,wraplength=700).pack(anchor="w",padx=10,pady=4)
         actions=ttk.Frame(win);actions.pack(fill="x",padx=10,pady=(2,10))
-        save_button=ttk.Button(actions,text="3. Save review copy (.txt)",state="disabled")
+        save_button=ttk.Button(actions,text="4. Save review copy (.txt)",state="disabled")
         save_button.pack(side="right",padx=3)
         def choose():
             filename=filedialog.askopenfilename(parent=win,title="Choose a USD bank CSV",
@@ -319,10 +321,13 @@ class App(tk.Tk):
                     row["amount_cents"] if row["amount_cents"] is not None else "INVALID",
                     ",".join(map(str,row["ledger_candidate_ids"])) or
                     ",".join(f'{x["transaction_id"]}:{x["difference_cents"]:+d}c' for x in row["difference_candidates"]),
-                    row["status"] + (": "+",".join(row["issues"]) if row["issues"] else "")))
-            status.set(f'{len(report["rows"])} bank rows; {report["review_required"]} require review. '
-                       'Showing first 100; possible ledger matches are NOT confirmed. '
-                       'Save a review copy to see all rows.')
+                    row["review_bucket"] + " — " + row["status"] +
+                    (": "+",".join(row["issues"]) if row["issues"] else "")))
+            buckets=report["buckets"]
+            status.set(f'{len(report["rows"])} rows: {buckets["CANDIDATE"]} candidate, '
+                       f'{buckets["UNMATCHED"]} unmatched, {buckets["DUPLICATE"]} duplicate, '
+                       f'{buckets["REVIEW REQUIRED"]} need review. '
+                       'Showing first 100; NO match is confirmed. Step 4 saves all rows.')
             save_button.configure(state="normal")
         def save():
             report=state["preview"]
@@ -330,14 +335,16 @@ class App(tk.Tk):
             target=filedialog.asksaveasfilename(parent=win,title="Save bank CSV review copy",
                   defaultextension=".txt",filetypes=[("Text review","*.txt")])
             if not target:return
-            try:path=save_review_report(report,target)
+            try:path=save_review_report(report,target,self.store.conn)
             except BankCSVError as exc:
+                status.set("NOT SAVED — " + str(exc))
                 messagebox.showerror("NOT saved",str(exc),parent=win);return
+            status.set("Review saved to: " + path + " — ledger unchanged")
             messagebox.showinfo("Review copy saved — REVIEW REQUIRED",
                 f'Saved to: {path}\nOriginal bank CSV and ledger unchanged. '
                 'Check the actual bank statement before manual matching.',parent=win)
         ttk.Button(top,text="1. Choose CSV",command=choose).pack(side="right",padx=3)
-        ttk.Button(actions,text="2. Preview candidates",command=review).pack(side="left",padx=3)
+        ttk.Button(actions,text="3. Preview candidates",command=review).pack(side="left",padx=3)
         save_button.configure(command=save)
 
     def export_bank_check(self):
