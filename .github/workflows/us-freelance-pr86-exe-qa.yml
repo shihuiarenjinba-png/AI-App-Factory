@@ -1,0 +1,95 @@
+name: US Freelance PR86 exact-source unsigned EXE and CSV hosted GUI QA
+
+on:
+  push:
+    branches:
+      - codex/us-freelance-pr86-exact-exe-20261103
+    paths:
+      - .github/workflows/us-freelance-pr86-exe-qa.yml
+      - products/us-freelance-ledger/build_qa/exact_review_exe.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: us-freelance-pr86-exact-exe
+  cancel-in-progress: false
+
+jobs:
+  exact-pr86-exe:
+    if: github.repository == 'shihuiarenjinba-png/AI-App-Factory'
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout stacked build QA only
+        uses: actions/checkout@v4
+        with:
+          ref: codex/us-freelance-pr86-exact-exe-20261103
+          path: qa
+          persist-credentials: false
+      - name: Checkout immutable PR86 product source (not old PR83 EXE)
+        uses: actions/checkout@v4
+        with:
+          ref: f9405fa12c2418f0ade943d0f41d02ccdc267d63
+          fetch-depth: 0
+          path: source
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Verify exact PR86 source and absence of approved proposal
+        shell: pwsh
+        run: |
+          $expected = 'f9405fa12c2418f0ade943d0f41d02ccdc267d63'
+          $actual = (git -C source rev-parse HEAD).Trim()
+          if ($actual -ne $expected) { throw "STALE_SOURCE: $actual" }
+          $remote = (git -C source ls-remote origin refs/heads/codex/us-freelance-csv-human-review-20261103)
+          if (!$remote -or $remote.Split()[0] -ne $expected) { throw "PR86 branch moved; do not silently rebind" }
+          if (Test-Path source/proposals/us-freelance-ledger.json) { throw 'Unexpected proposal; require manual contract review' }
+          $dirty = @(git -C source status --porcelain -- products/us-freelance-ledger factory/config.json) -join ''
+          if ($dirty) { throw 'Product source dirty' }
+          $manifest = Get-Content source/products/us-freelance-ledger/manifest.json -Raw | ConvertFrom-Json
+          if ($manifest.slug -ne 'us-freelance-ledger' -or $manifest.kind -ne 'app' -or $manifest.market -ne 'US' -or $manifest.currency -ne 'USD') { throw 'Wrong product or market' }
+          Write-Host "PINNED_PR86_PRODUCT_SHA=$expected"
+          Write-Host 'PROPOSAL_ABSENT: independent unsigned QA-only PE; generic preidentity contract unchanged'
+      - name: Run committed source Windows regressions
+        shell: pwsh
+        run: |
+          Push-Location source
+          try {
+            python -m unittest discover -s tests -v
+            if ($LASTEXITCODE -ne 0) { throw 'Factory tests failed' }
+            python -m unittest discover -s products/us-freelance-ledger/tests -v
+            if ($LASTEXITCODE -ne 0) { throw 'US product tests failed' }
+          } finally { Pop-Location }
+      - name: Install pinned Windows PE builder and hosted screen dependencies
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0" "pillow==11.3.0" "psutil==6.1.1"
+      - name: Build new unsigned PR86 Windows EXE (no proposal or Identity inference)
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --noupx --name us-freelance-ledger --paths source/products/us-freelance-ledger --distpath dist/qa --workpath dist/build --specpath dist/spec source/products/us-freelance-ledger/main.py
+          if ($LASTEXITCODE -ne 0) { throw 'EXE build failed' }
+      - name: Bind PE SHA and size to PR86 source; verify manifest and ZIP CRC
+        shell: pwsh
+        run: |
+          python qa/products/us-freelance-ledger/build_qa/exact_review_exe.py package --source source --output dist/qa
+          if ($LASTEXITCODE -ne 0) { throw 'Unsigned PR86 EXE evidence HOLD' }
+      - name: Hosted packaged EXE launch and CSV GUI review, save, restart, negatives
+        shell: pwsh
+        run: |
+          python qa/products/us-freelance-ledger/build_qa/exact_review_exe.py gui --source source --output dist/qa
+          if ($LASTEXITCODE -ne 0) { throw 'PR86 hosted GUI QA HOLD; not human or physical DPI PASS' }
+      - name: Upload new PR86 EXE and byte-level receipts (not Store package)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-freelance-pr86-exact-unsigned-exe
+          path: |
+            dist/qa/us-freelance-ledger.exe
+            dist/qa/us-freelance-pr86-unsigned-exe-qa.zip
+            dist/qa/*.json
+            dist/qa/*.png
+            dist/qa/*.csv
+            dist/qa/*.txt
+          if-no-files-found: warn
+          retention-days: 5
