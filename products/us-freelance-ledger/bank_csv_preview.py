@@ -220,8 +220,8 @@ def preview_bank_csv(source, mapping, conn):
         raise BankCSVError("CSV preview failed; ledger remains unchanged") from exc
 
 
-def save_review_report(preview, destination, conn=None):
-    """Save an explicitly requested review copy without overwriting anything."""
+def save_review_report(preview, destination, conn):
+    """Save a review copy only after re-verifying the live ledger snapshot."""
     path = Path(destination)
     if path.suffix.lower() != ".txt":
         raise BankCSVError("Save the review copy as a .txt file")
@@ -233,12 +233,13 @@ def save_review_report(preview, destination, conn=None):
         raise BankCSVError("Original CSV is unavailable; preview again before saving") from exc
     if current_hash != preview["source_sha256"]:
         raise BankCSVError("Original CSV changed since preview; preview again before saving")
-    if conn is not None:
-        try:
-            if _ledger_snapshot(conn) != preview["ledger_snapshot_sha256"]:
-                raise BankCSVError("Ledger changed since preview; preview again before saving")
-        except sqlite3.DatabaseError as exc:
-            raise BankCSVError("Ledger could not be verified; report NOT saved") from exc
+    if conn is None:
+        raise BankCSVError("Ledger connection is required; report NOT saved")
+    try:
+        if _ledger_snapshot(conn) != preview["ledger_snapshot_sha256"]:
+            raise BankCSVError("Ledger changed since preview; preview again before saving")
+    except sqlite3.DatabaseError as exc:
+        raise BankCSVError("Ledger could not be verified; report NOT saved") from exc
     lines = [
         "US BANK CSV REVIEW — NOT POSTED — REVIEW REQUIRED",
         "Source: " + _safe_cell(preview["source"]),
