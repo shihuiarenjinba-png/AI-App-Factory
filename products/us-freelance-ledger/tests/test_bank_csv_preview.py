@@ -49,7 +49,7 @@ class BankCSVPreviewTests(unittest.TestCase):
         self.assertEqual(result["rows"][0]["amount_cents"], 5025)
         self.assertEqual(result["rows"][0]["status"], "CANDIDATE ONLY")
         path = self.root / "review.txt"
-        self.assertEqual(save_review_report(result, path), str(path.resolve()))
+        self.assertEqual(save_review_report(result, path, self.store.conn), str(path.resolve()))
         self.assertIn("NOT POSTED", path.read_text(encoding="utf-8"))
         self.assertIn("5025", path.read_text(encoding="utf-8"))
         self.assertEqual(self.fingerprint(), before)
@@ -136,11 +136,11 @@ class BankCSVPreviewTests(unittest.TestCase):
         target = self.root / "review.txt"
         target.write_text("keep this", encoding="utf-8")
         with self.assertRaisesRegex(BankCSVError, "overwritten"):
-            save_review_report(result, target)
+            save_review_report(result, target, self.store.conn)
         self.assertEqual(target.read_text(encoding="utf-8"), "keep this")
         self.source.write_text("Posted,USD amount,Flow,CCY\n2026-10-12,50.26,in,USD\n", encoding="utf-8")
         with self.assertRaisesRegex(BankCSVError, "changed"):
-            save_review_report(result, self.root / "new.txt")
+            save_review_report(result, self.root / "new.txt", self.store.conn)
         self.assertFalse((self.root / "new.txt").exists())
 
 
@@ -163,6 +163,14 @@ class BankCSVPreviewTests(unittest.TestCase):
         self.assertEqual(report["rows"][0]["review_bucket"], "REVIEW REQUIRED")
         self.assertEqual(report["rows"][0]["ledger_candidate_ids"], [self.tid, second])
         self.assertEqual(report["buckets"]["CANDIDATE"], 0)
+
+    def test_save_requires_live_ledger_connection(self):
+        self.write_rows([["2026-10-12", "50.25", "credit", "USD"]])
+        report = self.preview()
+        target = self.root / "no-ledger.txt"
+        with self.assertRaisesRegex(BankCSVError, "Ledger connection is required"):
+            save_review_report(report, target, None)
+        self.assertFalse(target.exists())
 
     def test_stale_ledger_cannot_produce_successful_report(self):
         self.write_rows([["2026-10-12", "50.25", "credit", "USD"]])
