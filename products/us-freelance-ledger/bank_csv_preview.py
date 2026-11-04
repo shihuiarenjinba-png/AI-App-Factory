@@ -5,8 +5,9 @@ import csv
 import hashlib
 import io
 import os
+import json
 import sqlite3
-from datetime import date
+from datetime import date, datetime, timezone
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
@@ -76,6 +77,24 @@ def csv_headers(source):
         raise BankCSVError("Cannot read CSV header; use UTF-8 CSV with a header row") from exc
 
 
+def _ledger_snapshot(conn):
+    """Digest the relevant book rows and checked matches without writing to the ledger."""
+    entries = [list(row) for row in conn.execute(
+        "SELECT id,txn_date,kind,amount_cents FROM transactions ORDER BY id"
+    )]
+    matched = []
+    if conn.execute(
+        "SELECT 1 FROM sqlite_master WHERE type='table' AND name='bank_matches'"
+    ).fetchone():
+        matched = [int(row[0]) for row in conn.execute(
+            "SELECT transaction_id FROM bank_matches ORDER BY transaction_id"
+        )]
+    return hashlib.sha256(json.dumps(
+        {"entries": entries, "matched": matched},
+        separators=(",", ":"), ensure_ascii=True
+    ).encode("utf-8")).hexdigest()
+
+
 def preview_bank_csv(source, mapping, conn):
     """Pure preview: no INSERT/UPDATE/DELETE and no transaction changes."""
     headers = csv_headers(source)
@@ -93,12 +112,14 @@ def preview_bank_csv(source, mapping, conn):
             raise BankCSVError("CSV header changed; select the file again")
         ledger = {}
         by_day_kind = {}
+        by_kind_amount = {}
         for item in conn.execute(
             "SELECT id,txn_date,kind,amount_cents FROM transactions ORDER BY id"
         ):
             key = (str(item[1]), str(item[2]), int(item[3]))
             ledger.setdefault(key, []).append(int(item[0]))
             by_day_kind.setdefault(key[:2], []).append((int(item[0]), int(item[3])))
+            by_kind_amount.setdefault((key[1], key[2]), []).append((int(item[0]), key[0]))
         has_matches = conn.execute(
             "SELECT 1 FROM sqlite_master WHERE type='table' AND name='bank_matches'"
         ).fetchone() is not None
@@ -133,29 +154,65 @@ def preview_bank_csv(source, mapping, conn):
                         key=lambda pair: (abs(cents - pair[1]), pair[0])
                     )[:3]
                 ]
-                if key in seen:
-                    issues.append("DUPLICATE_CSV_CANDIDATE")
+                # Mark *all* repeated rows in a second pass; the first one
+                # is also unsafe to treat as an independent candidate.
                 seen.add(key)
+                other_dates = [] if candidates else [
+                    {"transaction_id": tid, "ledger_date": ledger_day}
+                    for tid, ledger_day in by_kind_amount.get((kind, cents), [])
+                    if ledger_day != day
+                ][:3]
                 if not candidates:
                     issues.append("NO_LEDGER_CANDIDATE")
+                    if other_dates:
+                        issues.append("SAME_AMOUNT_DIFFERENT_DATE_REVIEW")
                 elif len(candidates) > 1:
                     issues.append("MULTIPLE_LEDGER_CANDIDATES")
                 if any(x in already_matched for x in candidates):
                     issues.append("LEDGER_ALREADY_MATCHED")
             except BankCSVError as exc:
-                day, cents, kind, candidates, differences = "", None, "", [], []
+                day, cents, kind, candidates, differences, other_dates = "", None, "", [], [], []
                 issues.append("INVALID_ROW: " + str(exc))
             rows.append({
                 "line": index, "date": day, "amount_cents": cents, "direction": kind,
                 "ledger_candidate_ids": candidates, "difference_candidates": differences,
+                "other_date_candidates": other_dates,
                 "status": "REVIEW REQUIRED" if issues else "CANDIDATE ONLY",
                 "issues": issues,
             })
         if not rows:
             raise BankCSVError("CSV has no transaction rows")
+        counts = {}
+        for row in rows:
+            if row["amount_cents"] is not None:
+                key = (row["date"], row["direction"], row["amount_cents"])
+                counts[key] = counts.get(key, 0) + 1
+        buckets = {"CANDIDATE": 0, "UNMATCHED": 0, "DUPLICATE": 0, "REVIEW REQUIRED": 0}
+        for row in rows:
+            issues = row["issues"]
+            if row["amount_cents"] is not None:
+                key = (row["date"], row["direction"], row["amount_cents"])
+                if counts[key] > 1 and "DUPLICATE_CSV_CANDIDATE" not in issues:
+                    issues.insert(0, "DUPLICATE_CSV_CANDIDATE")
+            if any(x.startswith("INVALID_ROW") for x in issues):
+                bucket = "REVIEW REQUIRED"
+            elif "DUPLICATE_CSV_CANDIDATE" in issues:
+                bucket = "DUPLICATE"
+            elif "NO_LEDGER_CANDIDATE" in issues:
+                bucket = "UNMATCHED"
+            elif issues:
+                bucket = "REVIEW REQUIRED"
+            else:
+                bucket = "CANDIDATE"
+            row["review_bucket"] = bucket
+            row["status"] = "CANDIDATE ONLY" if bucket == "CANDIDATE" else "REVIEW REQUIRED"
+            buckets[bucket] += 1
         return {
             "source": str(Path(source).resolve()), "source_sha256": hashlib.sha256(raw).hexdigest(),
             "mapping": dict(mapping), "currency": "USD", "rows": rows,
+            "generated_utc": datetime.now(timezone.utc).isoformat(),
+            "ledger_snapshot_sha256": _ledger_snapshot(conn),
+            "buckets": buckets,
             "review_required": sum(x["status"] == "REVIEW REQUIRED" for x in rows),
             "ledger_unchanged": True,
         }
@@ -163,8 +220,8 @@ def preview_bank_csv(source, mapping, conn):
         raise BankCSVError("CSV preview failed; ledger remains unchanged") from exc
 
 
-def save_review_report(preview, destination):
-    """Save an explicitly requested review copy without overwriting anything."""
+def save_review_report(preview, destination, conn):
+    """Save a review copy only after re-verifying the live ledger snapshot."""
     path = Path(destination)
     if path.suffix.lower() != ".txt":
         raise BankCSVError("Save the review copy as a .txt file")
@@ -176,16 +233,26 @@ def save_review_report(preview, destination):
         raise BankCSVError("Original CSV is unavailable; preview again before saving") from exc
     if current_hash != preview["source_sha256"]:
         raise BankCSVError("Original CSV changed since preview; preview again before saving")
+    if conn is None:
+        raise BankCSVError("Ledger connection is required; report NOT saved")
+    try:
+        if _ledger_snapshot(conn) != preview["ledger_snapshot_sha256"]:
+            raise BankCSVError("Ledger changed since preview; preview again before saving")
+    except sqlite3.DatabaseError as exc:
+        raise BankCSVError("Ledger could not be verified; report NOT saved") from exc
     lines = [
         "US BANK CSV REVIEW — NOT POSTED — REVIEW REQUIRED",
         "Source: " + _safe_cell(preview["source"]),
         "Source SHA256: " + preview["source_sha256"],
+        "Ledger snapshot SHA256: " + preview["ledger_snapshot_sha256"],
+        "Generated UTC: " + preview["generated_utc"],
         "Currency: USD",
         "Rows: " + str(len(preview["rows"])),
         "Rows requiring review: " + str(preview["review_required"]),
+        "Review buckets: " + ", ".join(k + "=" + str(v) for k,v in preview["buckets"].items()),
         "No ledger posting, bank verification, matching or tax certification.",
         "",
-        "LINE | DATE | DIRECTION | USD CENTS | LEDGER CANDIDATES | POSSIBLE DIFFERENCES (BANK MINUS LEDGER CENTS) | STATUS | ISSUES",
+        "LINE | DATE | DIRECTION | USD CENTS | LEDGER CANDIDATES | POSSIBLE DIFFERENCES (BANK MINUS LEDGER CENTS) | OTHER-DATE CANDIDATES | REVIEW BUCKET | STATUS | ISSUES",
     ]
     for row in preview["rows"]:
         lines.append(" | ".join([
@@ -193,7 +260,8 @@ def save_review_report(preview, destination):
             str(row["amount_cents"]) if row["amount_cents"] is not None else "INVALID",
             ",".join(str(i) for i in row["ledger_candidate_ids"]),
             ",".join(str(x["transaction_id"])+":"+str(x["difference_cents"]) for x in row["difference_candidates"]),
-            row["status"], "; ".join(_safe_cell(x) for x in row["issues"]),
+            ",".join(str(x["transaction_id"])+":"+x["ledger_date"] for x in row["other_date_candidates"]),
+            row["review_bucket"], row["status"], "; ".join(_safe_cell(x) for x in row["issues"]),
         ]))
     try:
         with path.open("x", encoding="utf-8", newline="\n") as handle:

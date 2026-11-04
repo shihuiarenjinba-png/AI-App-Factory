@@ -49,7 +49,7 @@ class BankCSVPreviewTests(unittest.TestCase):
         self.assertEqual(result["rows"][0]["amount_cents"], 5025)
         self.assertEqual(result["rows"][0]["status"], "CANDIDATE ONLY")
         path = self.root / "review.txt"
-        self.assertEqual(save_review_report(result, path), str(path.resolve()))
+        self.assertEqual(save_review_report(result, path, self.store.conn), str(path.resolve()))
         self.assertIn("NOT POSTED", path.read_text(encoding="utf-8"))
         self.assertIn("5025", path.read_text(encoding="utf-8"))
         self.assertEqual(self.fingerprint(), before)
@@ -59,7 +59,9 @@ class BankCSVPreviewTests(unittest.TestCase):
                          ["2026-10-12", "50.25", "in", "USD"],
                          ["2026-10-13", "19.01", "out", "USD"]])
         result = self.preview()
-        self.assertEqual(result["review_required"], 2)
+        self.assertEqual(result["review_required"], 3)
+        self.assertEqual([r["review_bucket"] for r in result["rows"]], ["DUPLICATE", "DUPLICATE", "UNMATCHED"])
+        self.assertIn("DUPLICATE_CSV_CANDIDATE", result["rows"][0]["issues"])
         self.assertIn("DUPLICATE_CSV_CANDIDATE", result["rows"][1]["issues"])
         self.assertIn("NO_LEDGER_CANDIDATE", result["rows"][2]["issues"])
 
@@ -134,12 +136,79 @@ class BankCSVPreviewTests(unittest.TestCase):
         target = self.root / "review.txt"
         target.write_text("keep this", encoding="utf-8")
         with self.assertRaisesRegex(BankCSVError, "overwritten"):
-            save_review_report(result, target)
+            save_review_report(result, target, self.store.conn)
         self.assertEqual(target.read_text(encoding="utf-8"), "keep this")
         self.source.write_text("Posted,USD amount,Flow,CCY\n2026-10-12,50.26,in,USD\n", encoding="utf-8")
         with self.assertRaisesRegex(BankCSVError, "changed"):
-            save_review_report(result, self.root / "new.txt")
+            save_review_report(result, self.root / "new.txt", self.store.conn)
         self.assertFalse((self.root / "new.txt").exists())
+
+
+    def test_same_amount_on_different_day_is_unmatched_not_auto_matched(self):
+        self.write_rows([["2026-10-13", "50.25", "credit", "USD"]])
+        before = self.database.read_bytes()
+        report = self.preview()
+        row = report["rows"][0]
+        self.assertEqual(row["review_bucket"], "UNMATCHED")
+        self.assertEqual(row["ledger_candidate_ids"], [])
+        self.assertEqual(row["other_date_candidates"],
+                         [{"transaction_id": self.tid, "ledger_date": "2026-10-12"}])
+        self.assertIn("SAME_AMOUNT_DIFFERENT_DATE_REVIEW", row["issues"])
+        self.assertEqual(self.database.read_bytes(), before)
+
+    def test_multiple_exact_ledger_entries_are_review_required(self):
+        second = self.store.add("2026-10-12", "income", "50.25", "Business income")
+        self.write_rows([["2026-10-12", "50.25", "credit", "USD"]])
+        report = self.preview()
+        self.assertEqual(report["rows"][0]["review_bucket"], "REVIEW REQUIRED")
+        self.assertEqual(report["rows"][0]["ledger_candidate_ids"], [self.tid, second])
+        self.assertEqual(report["buckets"]["CANDIDATE"], 0)
+
+    def test_save_requires_live_ledger_connection(self):
+        self.write_rows([["2026-10-12", "50.25", "credit", "USD"]])
+        report = self.preview()
+        target = self.root / "no-ledger.txt"
+        with self.assertRaisesRegex(BankCSVError, "Ledger connection is required"):
+            save_review_report(report, target, None)
+        self.assertFalse(target.exists())
+
+    def test_stale_ledger_cannot_produce_successful_report(self):
+        self.write_rows([["2026-10-12", "50.25", "credit", "USD"]])
+        report = self.preview()
+        target = self.root / "stale.txt"
+        self.store.add("2026-10-14", "expense", "1.00", "Supplies")
+        with self.assertRaisesRegex(BankCSVError, "Ledger changed"):
+            save_review_report(report, target, self.store.conn)
+        self.assertFalse(target.exists())
+
+    def test_report_records_four_review_buckets_and_source_and_ledger_hash(self):
+        self.write_rows([["2026-10-12", "50.25", "credit", "USD"],
+                         ["2026-10-14", "12.00", "debit", "USD"]])
+        before = self.database.read_bytes()
+        report = self.preview()
+        target = self.root / "evidence.txt"
+        self.assertEqual(report["buckets"]["CANDIDATE"], 1)
+        self.assertEqual(report["buckets"]["UNMATCHED"], 1)
+        save_review_report(report, target, self.store.conn)
+        text = target.read_text(encoding="utf-8")
+        self.assertIn("Ledger snapshot SHA256:", text)
+        self.assertIn("Generated UTC:", text)
+        self.assertIn("CANDIDATE=1", text)
+        self.assertIn("UNMATCHED=1", text)
+        self.assertEqual(self.database.read_bytes(), before)
+
+    def test_large_csv_refused_without_touching_ledger(self):
+        self.source.write_bytes(b"Posted,USD amount,Flow,CCY\\n" + b"x" * (5 * 1024 * 1024 + 1))
+        before = self.fingerprint()
+        with self.assertRaisesRegex(BankCSVError, "5 MiB"):
+            self.preview()
+        self.assertEqual(self.fingerprint(), before)
+
+    def test_2001_rows_refused_and_no_report_created(self):
+        self.write_rows([["2026-10-12", "50.25", "credit", "USD"]] * 2001)
+        with self.assertRaisesRegex(BankCSVError, "2000 records"):
+            self.preview()
+        self.assertFalse((self.root / "review.txt").exists())
 
 
 if __name__ == "__main__":

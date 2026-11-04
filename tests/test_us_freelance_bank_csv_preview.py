@@ -53,6 +53,20 @@ class BankCSVPreviewGuiTests(unittest.TestCase):
                     dialogs = [child for child in app.winfo_children() if isinstance(child, tk.Toplevel)]
                     self.assertEqual(len(dialogs), 1)
                     self.assertIn("NOT posted", dialogs[0].title())
+                    controls = []
+                    labels = []
+                    def visit_dialog(widget):
+                        for child in widget.winfo_children():
+                            if isinstance(child, ttk.Button):
+                                controls.append(child.cget("text"))
+                            if isinstance(child, ttk.Label):
+                                labels.append(str(child.cget("text")))
+                            visit_dialog(child)
+                    visit_dialog(dialogs[0])
+                    self.assertIn("1. Choose CSV", controls)
+                    self.assertIn("3. Preview candidates", controls)
+                    self.assertIn("4. Save review copy (.txt)", controls)
+                    self.assertTrue(any("UNMATCHED" in x and "DUPLICATE" in x for x in labels))
                     dialogs[0].destroy()
                 finally:
                     app.close()
