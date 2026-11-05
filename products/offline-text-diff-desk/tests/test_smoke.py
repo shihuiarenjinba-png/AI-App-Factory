@@ -96,6 +96,20 @@ class DiffTests(unittest.TestCase):
         with self.assertRaises(ValueError): app.save_session(self.left,s)
         self.assertEqual(app.read_text(self.left),"alpha\nbeta\n")
 
+    def test_backup_never_overwrites_source_document(self):
+        # Existing output may be replaced only if its .bak does not point at
+        # either original document. A failed save must preserve both bytewise.
+        source=self.dir/"report.diff.bak"
+        source.write_bytes(b"ORIGINAL SOURCE BYTES\\n")
+        output=self.dir/"report.diff"
+        output.write_bytes(b"OLD REPORT\\n")
+        before_source=source.read_bytes()
+        before_output=output.read_bytes()
+        with self.assertRaisesRegex(ValueError,"Unsafe backup"):
+            app.export_diff(output,app.compare("a\\n","b\\n"),source,self.right)
+        self.assertEqual(source.read_bytes(),before_source)
+        self.assertEqual(output.read_bytes(),before_output)
+
     def test_export_and_bilingual(self):
         result=app.compare("a\n","b\n")
         out=self.dir/"report.diff"

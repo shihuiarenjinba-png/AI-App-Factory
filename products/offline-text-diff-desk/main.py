@@ -84,7 +84,8 @@ def write_atomic(path, content, protected=()):
     if p.exists() and not p.is_file():
         raise ValueError("Output must be a regular file")
     backup=p.with_name(p.name+".bak")
-    if backup.is_symlink() or (backup.exists() and not backup.is_file()):
+    if (backup in {Path(x).absolute() for x in protected} or backup.is_symlink()
+            or (backup.exists() and not backup.is_file())):
         raise ValueError("Unsafe backup")
     if not p.parent.is_dir():
         raise ValueError("Output folder missing")
