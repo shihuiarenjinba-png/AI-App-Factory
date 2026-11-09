@@ -104,6 +104,28 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "unavailable"):
             self.restore(fetch=missing)
 
+    def test_rejects_paginated_approval_history_even_if_first_page_approves(self):
+        def full_page(url):
+            if "/comments?" in url:
+                approved = fake_github(url)[0]
+                return [approved] + [
+                    {"user": {"login": "other"}, "body": "review", "created_at": "2026-11-02T00:00:00Z"}
+                    for _ in range(99)
+                ]
+            return fake_github(url)
+        with self.assertRaisesRegex(ValueError, "history incomplete"):
+            self.restore(fetch=full_page)
+        self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
+
+    def test_rejects_malformed_approval_history(self):
+        def malformed(url):
+            if "/comments?" in url:
+                return {"message": "unexpected response"}
+            return fake_github(url)
+        with self.assertRaisesRegex(ValueError, "history incomplete"):
+            self.restore(fetch=malformed)
+        self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
+
     def test_rejects_unapproved_issue(self):
         def no_approval(url):
             if "/comments?" in url:
