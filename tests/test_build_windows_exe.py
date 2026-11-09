@@ -75,6 +75,15 @@ class PreIdentityWindowsBuildTests(unittest.TestCase):
         self.assertEqual(result["official_identity_status"], "NOT_COLLECTED")
         self.assertNotIn("READY_FOR_STORE", result.values())
 
+    def test_missing_approved_proposal_reports_exact_gate(self):
+        (self.root / "proposals/example-tool.json").unlink()
+        self.git("add", "-A")
+        self.git("commit", "-qm", "fixture: remove approved proposal")
+        sha = self.git("rev-parse", "HEAD")
+        with self.assertRaisesRegex(ValueError, r"required committed APP source missing: proposals/example-tool\\.json"):
+            verify_source(self.root, "example-tool", sha)
+        self.assertFalse((self.root / "proposals/example-tool.json").exists())
+
     def test_wrong_source_sha_rejected(self):
         with self.assertRaisesRegex(ValueError, "source HEAD"):
             verify_source(self.root, "example-tool", "f" * 40)
