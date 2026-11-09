@@ -9,6 +9,7 @@ import json
 import os
 import re
 import sys
+import urllib.request
 from pathlib import Path
 
 SLUG = "us-freelance-ledger"
@@ -16,6 +17,41 @@ FIELDS = ("title", "customer_problem", "audience", "differentiation")
 
 def read_json(path):
     return json.loads(Path(path).read_text(encoding="utf-8"))
+
+def verify_live_evidence(proposal, market, approved_by, fetch=None):
+    """Fail closed unless real GitHub issues contain market context and approval."""
+    if not approved_by or not re.fullmatch(r"[A-Za-z0-9-]{1,39}", approved_by):
+        raise ValueError("trusted approval actor required")
+    if fetch is None:
+        def fetch(url):
+            req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "ledger-recovery"})
+            with urllib.request.urlopen(req, timeout=12) as response:
+                return json.load(response)
+    for url in proposal["evidence_urls"]:
+        match = re.fullmatch(r"https://github\\.com/([^/]+)/([^/]+)/issues/([0-9]+)", url)
+        if not match:
+            raise ValueError("invalid issue URL")
+        owner, repo, number = match.groups()
+        api = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}"
+        try:
+            issue, comments = fetch(api), fetch(api + "/comments?per_page=100")
+        except (OSError, ValueError, TypeError, KeyError) as exc:
+            raise ValueError("live evidence unavailable") from exc
+        if not isinstance(issue, dict) or issue.get("pull_request") or issue.get("html_url") != url:
+            raise ValueError("issue identity mismatch")
+        body = issue.get("body")
+        if not isinstance(body, str) or not any(x in body.lower() for x in ("us freelance ledger", "us-freelance-ledger")):
+            raise ValueError("issue does not identify product")
+        if not any(x in body.lower() for x in ("market", "customer", "demand", "competitor")):
+            raise ValueError("issue lacks market evidence")
+        if not isinstance(comments, list) or not any(
+            isinstance(c, dict) and isinstance(c.get("user"), dict)
+            and c["user"].get("login", "").lower() == approved_by.lower()
+            and c.get("body", "").strip() == "APPROVED MARKET EVIDENCE: us-freelance-ledger"
+            and c.get("created_at") for c in comments
+        ):
+            raise ValueError("trusted approval missing")
+    return True
 
 def validate(root, proposal, market):
     product = root / "products" / SLUG / "manifest.json"
@@ -60,7 +96,7 @@ def validate(root, proposal, market):
         raise ValueError("two distinct repositories required")
     return True
 
-def restore(root, proposal_path, market_path, dry_run=False):
+def restore(root, proposal_path, market_path, dry_run=False, approved_by=None, fetch=None):
     root = Path(root)
     target = root / "proposals" / (SLUG + ".json")
     if target.parent.is_symlink():
@@ -71,6 +107,7 @@ def restore(root, proposal_path, market_path, dry_run=False):
         raise ValueError("symlink input prohibited")
     proposal, market = read_json(proposal_path), read_json(market_path)
     validate(root, proposal, market)
+    verify_live_evidence(proposal, market, approved_by, fetch)
     if dry_run:
         return "VALIDATED_ONLY"
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -90,9 +127,10 @@ def main():
     p.add_argument("--proposal", type=Path, required=True)
     p.add_argument("--market", type=Path, required=True)
     p.add_argument("--dry-run", action="store_true")
+    p.add_argument("--approved-by", required=True)
     args = p.parse_args()
     try:
-        print(restore(args.root, args.proposal, args.market, args.dry_run))
+        print(restore(args.root, args.proposal, args.market, args.dry_run, args.approved_by))
     except (ValueError, OSError, KeyError, TypeError, json.JSONDecodeError) as exc:
         print("HOLD:", exc, file=sys.stderr)
         return 2
