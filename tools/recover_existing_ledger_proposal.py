@@ -63,6 +63,8 @@ def validate(root, proposal, market):
 def restore(root, proposal_path, market_path, dry_run=False):
     root = Path(root)
     target = root / "proposals" / (SLUG + ".json")
+    if target.parent.is_symlink():
+        raise ValueError("symlink proposal directory prohibited")
     if target.exists() or target.is_symlink():
         raise ValueError("existing proposal cannot be overwritten")
     if Path(proposal_path).is_symlink() or Path(market_path).is_symlink():
@@ -72,6 +74,8 @@ def restore(root, proposal_path, market_path, dry_run=False):
     if dry_run:
         return "VALIDATED_ONLY"
     target.parent.mkdir(parents=True, exist_ok=True)
+    if target.parent.is_symlink():
+        raise ValueError("symlink proposal directory prohibited")
     # Exclusive create: even concurrent recovery cannot overwrite existing bytes.
     payload = json.dumps(proposal, ensure_ascii=False, indent=2) + "\n"
     with target.open("x", encoding="utf-8") as output:
