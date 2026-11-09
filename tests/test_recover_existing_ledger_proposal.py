@@ -54,6 +54,14 @@ class RecoveryTests(unittest.TestCase):
         self.assertEqual((self.root / "factory/state.json").read_bytes(), self.state_before)
         self.assertEqual((self.root / "products/us-freelance-ledger/manifest.json").read_bytes(), manifest)
 
+    def test_rejects_symlinked_output_directory(self):
+        external = self.root / "external"
+        external.mkdir()
+        (self.root / "proposals").symlink_to(external, target_is_directory=True)
+        with self.assertRaisesRegex(ValueError, "symlink proposal directory"):
+            mod.restore(self.root, self.proposal, self.market)
+        self.assertFalse((external / "us-freelance-ledger.json").exists())
+
     def test_dry_run_never_writes(self):
         self.assertEqual(mod.restore(self.root, self.proposal, self.market, True), "VALIDATED_ONLY")
         self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
