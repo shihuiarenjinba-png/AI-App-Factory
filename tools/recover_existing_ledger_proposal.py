@@ -57,7 +57,12 @@ def verify_live_evidence(proposal, market, approved_by, fetch=None):
             raise ValueError("market evidence summary not found in issue")
         if not any(x in body.lower() for x in ("market", "customer", "demand", "competitor")):
             raise ValueError("issue lacks market evidence")
-        if not isinstance(comments, list) or not any(
+        # The GitHub comments endpoint is paginated. A full first page is
+        # ambiguous: an unseen later page may contain revocations or changes.
+        # Reject rather than certify approval from an incomplete history.
+        if not isinstance(comments, list) or len(comments) >= 100:
+            raise ValueError("approval history incomplete or invalid")
+        if not any(
             isinstance(c, dict) and isinstance(c.get("user"), dict)
             and c["user"].get("login", "").lower() == approved_by.lower()
             and c.get("body", "").strip() == "APPROVED MARKET EVIDENCE: us-freelance-ledger"
