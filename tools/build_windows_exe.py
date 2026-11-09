@@ -88,9 +88,16 @@ def verify_source(root: Path, slug: str, expected_sha: str) -> Path:
              f"products/{slug}/main.py", f"products/{slug}/tests/test_smoke.py")
     for rel in paths:
         file = root / rel
-        if file.is_symlink() or not file.is_file() or file.stat().st_size > 2 * 1024 * 1024:
-            raise ValueError("required committed APP source missing, linked, or oversized")
-        _git(root, "cat-file", "-e", f"HEAD:{rel}")
+        if file.is_symlink():
+            raise ValueError(f"required APP source is symlink: {rel}")
+        if not file.is_file():
+            raise ValueError(f"required committed APP source missing: {rel}; use approved Factory promote, never synthesize proposal")
+        if file.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError(f"required APP source oversized: {rel}")
+        try:
+            _git(root, "cat-file", "-e", f"HEAD:{rel}")
+        except subprocess.CalledProcessError as exc:
+            raise ValueError(f"required APP source not committed at exact HEAD: {rel}") from exc
     if _git(root, "status", "--porcelain", "--untracked-files=all", "--",
             "factory/config.json", f"proposals/{slug}.json", f"products/{slug}"):
         raise ValueError("APP source differs from pinned Git commit")
