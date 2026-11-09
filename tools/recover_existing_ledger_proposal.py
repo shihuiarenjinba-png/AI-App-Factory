@@ -27,21 +27,34 @@ def verify_live_evidence(proposal, market, approved_by, fetch=None):
             req = urllib.request.Request(url, headers={"Accept": "application/vnd.github+json", "User-Agent": "ledger-recovery"})
             with urllib.request.urlopen(req, timeout=12) as response:
                 return json.load(response)
+    # Never accept a bare URL as a substantive market signal.
+    signals = {item["url"]: item for item in market["signals"]}
     for url in proposal["evidence_urls"]:
         match = re.fullmatch(r"https://github\.com/([^/]+)/([^/]+)/issues/([0-9]+)", url)
         if not match:
             raise ValueError("invalid issue URL")
         owner, repo, number = match.groups()
+        signal = signals[url]
+        summary = signal.get("summary")
+        if not isinstance(summary, str) or len(summary.strip()) < 40:
+            raise ValueError("market evidence summary missing")
+        if not any(word in summary.lower() for word in ("customer", "demand", "competitor", "pricing")):
+            raise ValueError("market evidence summary lacks substance")
         api = f"https://api.github.com/repos/{owner}/{repo}/issues/{number}"
         try:
             issue, comments = fetch(api), fetch(api + "/comments?per_page=100")
+            permission = fetch(f"https://api.github.com/repos/{owner}/{repo}/collaborators/{approved_by}/permission")
         except (OSError, ValueError, TypeError, KeyError) as exc:
             raise ValueError("live evidence unavailable") from exc
+        if not isinstance(permission, dict) or permission.get("permission") not in ("admin", "maintain", "write"):
+            raise ValueError("approver lacks repository write permission")
         if not isinstance(issue, dict) or issue.get("pull_request") or issue.get("html_url") != url:
             raise ValueError("issue identity mismatch")
         body = issue.get("body")
         if not isinstance(body, str) or not any(x in body.lower() for x in ("us freelance ledger", "us-freelance-ledger")):
             raise ValueError("issue does not identify product")
+        if summary.strip().lower() not in body.lower():
+            raise ValueError("market evidence summary not found in issue")
         if not any(x in body.lower() for x in ("market", "customer", "demand", "competitor")):
             raise ValueError("issue lacks market evidence")
         if not isinstance(comments, list) or not any(
