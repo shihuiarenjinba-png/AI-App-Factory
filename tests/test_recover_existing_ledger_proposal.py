@@ -25,6 +25,12 @@ PROPOSAL = {
 }
 MARKET = {"schema": 1, "kind": "app", "signals": [{"url": u} for u in URLS]}
 
+def fake_github(url):
+    issue_url = url.replace("https://api.github.com/repos/", "https://github.com/").replace("/issues/", "/issues/").split("/comments?")[0]
+    if "/comments?" in url:
+        return [{"user": {"login": "trusted-reviewer"}, "body": "APPROVED MARKET EVIDENCE: us-freelance-ledger", "created_at": "2026-11-01T00:00:00Z"}]
+    return {"html_url": issue_url, "body": "US Freelance Ledger customer demand and market competitor analysis"}
+
 class RecoveryTests(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -47,9 +53,39 @@ class RecoveryTests(unittest.TestCase):
         self.proposal.write_text(json.dumps(PROPOSAL if proposal is None else proposal), encoding="utf-8")
         self.market.write_text(json.dumps(MARKET if market is None else market), encoding="utf-8")
 
+    def restore(self, dry_run=False, fetch=fake_github, approved_by="trusted-reviewer"):
+        return mod.restore(self.root, self.proposal, self.market, dry_run, approved_by, fetch)
+
+    def test_rejects_nonexistent_issue(self):
+        def missing(url):
+            raise OSError("404")
+        with self.assertRaisesRegex(ValueError, "unavailable"):
+            self.restore(fetch=missing)
+
+    def test_rejects_unapproved_issue(self):
+        def no_approval(url):
+            if "/comments?" in url:
+                return []
+            return fake_github(url)
+        with self.assertRaisesRegex(ValueError, "approval"):
+            self.restore(fetch=no_approval)
+
+    def test_rejects_irrelevant_issue(self):
+        def irrelevant(url):
+            result = fake_github(url)
+            if isinstance(result, dict):
+                result["body"] = "Unrelated technical bug"
+            return result
+        with self.assertRaisesRegex(ValueError, "product"):
+            self.restore(fetch=irrelevant)
+
+    def test_rejects_missing_trusted_actor(self):
+        with self.assertRaisesRegex(ValueError, "actor"):
+            self.restore(approved_by=None)
+
     def test_restore_preserves_factory_state_and_product(self):
         manifest = (self.root / "products/us-freelance-ledger/manifest.json").read_bytes()
-        target = mod.restore(self.root, self.proposal, self.market)
+        target = self.restore()
         self.assertEqual(Path(target).name, "us-freelance-ledger.json")
         self.assertEqual((self.root / "factory/state.json").read_bytes(), self.state_before)
         self.assertEqual((self.root / "products/us-freelance-ledger/manifest.json").read_bytes(), manifest)
@@ -59,11 +95,11 @@ class RecoveryTests(unittest.TestCase):
         external.mkdir()
         (self.root / "proposals").symlink_to(external, target_is_directory=True)
         with self.assertRaisesRegex(ValueError, "symlink proposal directory"):
-            mod.restore(self.root, self.proposal, self.market)
+            self.restore()
         self.assertFalse((external / "us-freelance-ledger.json").exists())
 
     def test_dry_run_never_writes(self):
-        self.assertEqual(mod.restore(self.root, self.proposal, self.market, True), "VALIDATED_ONLY")
+        self.assertEqual(self.restore(True), "VALIDATED_ONLY")
         self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
 
     def test_refuses_overwrite(self):
@@ -71,19 +107,19 @@ class RecoveryTests(unittest.TestCase):
         target.parent.mkdir()
         target.write_bytes(b"ORIGINAL")
         with self.assertRaisesRegex(ValueError, "overwritten"):
-            mod.restore(self.root, self.proposal, self.market)
+            self.restore()
         self.assertEqual(target.read_bytes(), b"ORIGINAL")
 
     def test_rejects_unverified_market_evidence(self):
         bad = dict(PROPOSAL, evidence_urls=[URLS[0], "https://github.com/fake/repo/issues/1"])
         self.write_inputs(proposal=bad)
         with self.assertRaisesRegex(ValueError, "absent"):
-            mod.restore(self.root, self.proposal, self.market)
+            self.restore()
 
     def test_rejects_wrong_slug(self):
         self.write_inputs(proposal=dict(PROPOSAL, slug="offline-image-inventory-desk"))
         with self.assertRaisesRegex(ValueError, "slug"):
-            mod.restore(self.root, self.proposal, self.market)
+            self.restore()
 
     def test_rejects_single_repository(self):
         other = "https://github.com/example-one/project-a/issues/13"
@@ -92,12 +128,12 @@ class RecoveryTests(unittest.TestCase):
             market={"schema": 1, "kind": "app", "signals": [{"url": URLS[0]}, {"url": other}]},
         )
         with self.assertRaisesRegex(ValueError, "repositories"):
-            mod.restore(self.root, self.proposal, self.market)
+            self.restore()
 
     def test_rejects_missing_market_data(self):
         self.write_inputs(market={"schema": 1, "kind": "app", "signals": []})
         with self.assertRaisesRegex(ValueError, "signals"):
-            mod.restore(self.root, self.proposal, self.market)
+            self.restore()
 
 if __name__ == "__main__":
     unittest.main()
