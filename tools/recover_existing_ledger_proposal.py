@@ -28,7 +28,7 @@ def verify_live_evidence(proposal, market, approved_by, fetch=None):
             with urllib.request.urlopen(req, timeout=12) as response:
                 return json.load(response)
     for url in proposal["evidence_urls"]:
-        match = re.fullmatch(r"https://github\\.com/([^/]+)/([^/]+)/issues/([0-9]+)", url)
+        match = re.fullmatch(r"https://github\.com/([^/]+)/([^/]+)/issues/([0-9]+)", url)
         if not match:
             raise ValueError("invalid issue URL")
         owner, repo, number = match.groups()
