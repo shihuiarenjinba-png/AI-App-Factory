@@ -80,7 +80,7 @@ class PreIdentityWindowsBuildTests(unittest.TestCase):
         self.git("add", "-A")
         self.git("commit", "-qm", "fixture: remove approved proposal")
         sha = self.git("rev-parse", "HEAD")
-        with self.assertRaisesRegex(ValueError, r"required committed APP source missing: proposals/example-tool\\.json"):
+        with self.assertRaisesRegex(ValueError, r"required committed APP source missing: proposals/example-tool\.json"):
             verify_source(self.root, "example-tool", sha)
         self.assertFalse((self.root / "proposals/example-tool.json").exists())
 
