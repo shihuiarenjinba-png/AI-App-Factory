@@ -23,13 +23,16 @@ PROPOSAL = {
     "scope": ["Read-only bank CSV preview", "Manual matching and review report"],
     "evidence_urls": URLS,
 }
-MARKET = {"schema": 1, "kind": "app", "signals": [{"url": u} for u in URLS]}
+SUMMARY = "US Freelance Ledger customer demand for local bank matching and competitor pricing"
+MARKET = {"schema": 1, "kind": "app", "signals": [{"url": u, "summary": SUMMARY} for u in URLS]}
 
 def fake_github(url):
+    if "/collaborators/" in url and url.endswith("/permission"):
+        return {"permission": "write"}
     issue_url = url.replace("https://api.github.com/repos/", "https://github.com/").replace("/issues/", "/issues/").split("/comments?")[0]
     if "/comments?" in url:
         return [{"user": {"login": "trusted-reviewer"}, "body": "APPROVED MARKET EVIDENCE: us-freelance-ledger", "created_at": "2026-11-01T00:00:00Z"}]
-    return {"html_url": issue_url, "body": "US Freelance Ledger customer demand and market competitor analysis"}
+    return {"html_url": issue_url, "body": "US Freelance Ledger customer demand and market competitor analysis. " + SUMMARY}
 
 class RecoveryTests(unittest.TestCase):
     def setUp(self):
@@ -55,6 +58,45 @@ class RecoveryTests(unittest.TestCase):
 
     def restore(self, dry_run=False, fetch=fake_github, approved_by="trusted-reviewer"):
         return mod.restore(self.root, self.proposal, self.market, dry_run, approved_by, fetch)
+
+    def test_rejects_unauthorized_approver(self):
+        def read_only(url):
+            if "/collaborators/" in url:
+                return {"permission": "read"}
+            return fake_github(url)
+        with self.assertRaisesRegex(ValueError, "permission"):
+            self.restore(fetch=read_only)
+        self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
+
+    def test_rejects_missing_permission_response(self):
+        def missing_permission(url):
+            if "/collaborators/" in url:
+                raise OSError("403")
+            return fake_github(url)
+        with self.assertRaisesRegex(ValueError, "unavailable"):
+            self.restore(fetch=missing_permission)
+
+    def test_rejects_empty_market_summary(self):
+        bad = {"schema": 1, "kind": "app", "signals": [
+            {"url": u, "summary": ""} for u in URLS]}
+        self.write_inputs(market=bad)
+        with self.assertRaisesRegex(ValueError, "summary missing"):
+            self.restore()
+
+    def test_rejects_fabricated_market_summary(self):
+        bad = {"schema": 1, "kind": "app", "signals": [
+            {"url": u, "summary": "Fabricated competitor pricing claims without any issue support"} for u in URLS]}
+        self.write_inputs(market=bad)
+        with self.assertRaisesRegex(ValueError, "not found"):
+            self.restore()
+
+    def test_rejects_invalid_market_url(self):
+        bad = {"schema": 1, "kind": "app", "signals": [
+            {"url": "https://example.invalid/fake", "summary": SUMMARY},
+            {"url": URLS[1], "summary": SUMMARY}]}
+        self.write_inputs(market=bad)
+        with self.assertRaisesRegex(ValueError, "invalid GitHub"):
+            self.restore()
 
     def test_rejects_nonexistent_issue(self):
         def missing(url):
