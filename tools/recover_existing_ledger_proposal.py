@@ -46,7 +46,7 @@ def validate(root, proposal, market):
             raise ValueError("invalid market signal")
         url = signal.get("url")
         if not isinstance(url, str) or not re.fullmatch(
-            r"https://github\\.com/[^/\\s]+/[^/\\s]+/issues/[0-9]+", url
+            r"https://github\.com/[^/\s]+/[^/\s]+/issues/[0-9]+", url
         ):
             raise ValueError("invalid GitHub issue evidence URL")
         allowed.add(url)
@@ -73,7 +73,7 @@ def restore(root, proposal_path, market_path, dry_run=False):
         return "VALIDATED_ONLY"
     target.parent.mkdir(parents=True, exist_ok=True)
     # Exclusive create: even concurrent recovery cannot overwrite existing bytes.
-    payload = json.dumps(proposal, ensure_ascii=False, indent=2) + "\\n"
+    payload = json.dumps(proposal, ensure_ascii=False, indent=2) + "\n"
     with target.open("x", encoding="utf-8") as output:
         output.write(payload)
         output.flush()
