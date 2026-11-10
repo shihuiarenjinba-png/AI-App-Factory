@@ -122,6 +122,8 @@ def validate(root, proposal, market):
             r"https://github\.com/[^/\s]+/[^/\s]+/issues/[0-9]+", url
         ):
             raise ValueError("invalid GitHub issue evidence URL")
+        if url in allowed:
+            raise ValueError("duplicate market evidence URL")
         allowed.add(url)
     urls = proposal.get("evidence_urls")
     if not isinstance(urls, list) or len(urls) < 2 or len(set(urls)) < 2:
