@@ -62,13 +62,32 @@ def verify_live_evidence(proposal, market, approved_by, fetch=None):
         # Reject rather than certify approval from an incomplete history.
         if not isinstance(comments, list) or len(comments) >= 100:
             raise ValueError("approval history incomplete or invalid")
-        if not any(
-            isinstance(c, dict) and isinstance(c.get("user"), dict)
-            and c["user"].get("login", "").lower() == approved_by.lower()
-            and c.get("body", "").strip() == "APPROVED MARKET EVIDENCE: us-freelance-ledger"
-            and c.get("created_at") for c in comments
-        ):
+        approvals = [c for c in comments if isinstance(c, dict)
+                     and isinstance(c.get("user"), dict)
+                     and c["user"].get("login", "").lower() == approved_by.lower()
+                     and c.get("body", "").strip() == "APPROVED MARKET EVIDENCE: us-freelance-ledger"
+                     and isinstance(c.get("created_at"), str)]
+        if not approvals:
             raise ValueError("trusted approval missing")
+        # A later issue edit invalidates the prior approval.
+        updated = issue.get("updated_at")
+        if not isinstance(updated, str) or not all(
+            isinstance(c.get("updated_at"), str) for c in approvals
+        ):
+            raise ValueError("approval revision timestamps unavailable")
+        if not any(c["created_at"] >= updated and c["updated_at"] == c["created_at"]
+                   for c in approvals):
+            raise ValueError("market evidence changed after approval")
+        # Explicit withdrawals override earlier approvals.
+        for c in comments:
+            if not isinstance(c, dict) or not isinstance(c.get("user"), dict):
+                raise ValueError("malformed approval history")
+            if (c["user"].get("login", "").lower() == approved_by.lower()
+                and isinstance(c.get("body"), str)
+                and c["body"].strip() == "REVOKED MARKET EVIDENCE: us-freelance-ledger"
+                and isinstance(c.get("created_at"), str)
+                and c["created_at"] >= max(x["created_at"] for x in approvals)):
+                raise ValueError("market approval revoked")
     return True
 
 def validate(root, proposal, market):
