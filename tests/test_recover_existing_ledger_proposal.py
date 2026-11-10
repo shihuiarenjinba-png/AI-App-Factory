@@ -225,6 +225,18 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "repositories"):
             self.restore()
 
+    def test_rejects_duplicate_market_signal_urls_without_writing(self):
+        duplicate = {"schema": 1, "kind": "app", "signals": [
+            {"url": URLS[0], "summary": SUMMARY},
+            {"url": URLS[0], "summary": "Conflicting customer demand and competitor pricing claim"},
+            {"url": URLS[1], "summary": SUMMARY},
+        ]}
+        self.write_inputs(market=duplicate)
+        with self.assertRaisesRegex(ValueError, "duplicate market evidence URL"):
+            self.restore()
+        self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
+        self.assertEqual((self.root / "factory/state.json").read_bytes(), self.state_before)
+
     def test_rejects_missing_market_data(self):
         self.write_inputs(market={"schema": 1, "kind": "app", "signals": []})
         with self.assertRaisesRegex(ValueError, "signals"):
