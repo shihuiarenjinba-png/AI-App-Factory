@@ -31,8 +31,8 @@ def fake_github(url):
         return {"permission": "write"}
     issue_url = url.replace("https://api.github.com/repos/", "https://github.com/").replace("/issues/", "/issues/").split("/comments?")[0]
     if "/comments?" in url:
-        return [{"user": {"login": "trusted-reviewer"}, "body": "APPROVED MARKET EVIDENCE: us-freelance-ledger", "created_at": "2026-11-01T00:00:00Z"}]
-    return {"html_url": issue_url, "body": "US Freelance Ledger customer demand and market competitor analysis. " + SUMMARY}
+        return [{"user": {"login": "trusted-reviewer"}, "body": "APPROVED MARKET EVIDENCE: us-freelance-ledger", "created_at": "2026-11-01T00:00:00Z", "updated_at": "2026-11-01T00:00:00Z"}]
+    return {"html_url": issue_url, "body": "US Freelance Ledger customer demand and market competitor analysis. " + SUMMARY, "updated_at": "2026-10-31T00:00:00Z"}
 
 class RecoveryTests(unittest.TestCase):
     def setUp(self):
@@ -124,6 +124,37 @@ class RecoveryTests(unittest.TestCase):
             return fake_github(url)
         with self.assertRaisesRegex(ValueError, "history incomplete"):
             self.restore(fetch=malformed)
+        self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
+
+    def test_rejects_issue_edited_after_approval(self):
+        def edited(url):
+            result = fake_github(url)
+            if "/comments?" not in url and "/collaborators/" not in url:
+                result["updated_at"] = "2026-11-02T00:00:00Z"
+            return result
+        with self.assertRaisesRegex(ValueError, "changed after approval"):
+            self.restore(fetch=edited)
+        self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
+
+    def test_rejects_approval_comment_edited_after_creation(self):
+        def edited_comment(url):
+            result = fake_github(url)
+            if "/comments?" in url:
+                result[0]["updated_at"] = "2026-11-03T00:00:00Z"
+            return result
+        with self.assertRaisesRegex(ValueError, "changed after approval"):
+            self.restore(fetch=edited_comment)
+
+    def test_rejects_revoked_approval(self):
+        def revoked(url):
+            result = fake_github(url)
+            if "/comments?" in url:
+                result.append({"user": {"login": "trusted-reviewer"},
+                               "body": "REVOKED MARKET EVIDENCE: us-freelance-ledger",
+                               "created_at": "2026-11-02T00:00:00Z"})
+            return result
+        with self.assertRaisesRegex(ValueError, "revoked"):
+            self.restore(fetch=revoked)
         self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
 
     def test_rejects_unapproved_issue(self):
