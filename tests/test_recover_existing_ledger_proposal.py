@@ -98,6 +98,39 @@ class RecoveryTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid GitHub"):
             self.restore()
 
+    def test_rejects_spoofed_github_host_without_writing(self):
+        bad_url = "https://github.com.evil.example/owner/repo/issues/12"
+        self.write_inputs(market={"schema": 1, "kind": "app", "signals": [
+            {"url": bad_url, "summary": SUMMARY},
+            {"url": URLS[1], "summary": SUMMARY},
+        ]})
+        with self.assertRaisesRegex(ValueError, "invalid GitHub"):
+            self.restore()
+        self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
+        self.assertEqual((self.root / "factory/state.json").read_bytes(), self.state_before)
+
+    def test_rejects_issue_identity_mismatch_without_writing(self):
+        def wrong_identity(url):
+            result = fake_github(url)
+            if "/comments?" not in url and "/collaborators/" not in url:
+                result["html_url"] = "https://github.com/other/repo/issues/999"
+            return result
+        with self.assertRaisesRegex(ValueError, "identity mismatch"):
+            self.restore(fetch=wrong_identity)
+        self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
+        self.assertEqual((self.root / "factory/state.json").read_bytes(), self.state_before)
+
+    def test_rejects_approval_by_different_actor_without_writing(self):
+        def wrong_actor(url):
+            result = fake_github(url)
+            if "/comments?" in url:
+                result[0]["user"]["login"] = "untrusted-reviewer"
+            return result
+        with self.assertRaisesRegex(ValueError, "trusted approval missing"):
+            self.restore(fetch=wrong_actor)
+        self.assertFalse((self.root / "proposals/us-freelance-ledger.json").exists())
+        self.assertEqual((self.root / "factory/state.json").read_bytes(), self.state_before)
+
     def test_rejects_nonexistent_issue(self):
         def missing(url):
             raise OSError("404")
