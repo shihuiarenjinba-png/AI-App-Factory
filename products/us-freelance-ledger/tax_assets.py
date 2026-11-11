@@ -124,7 +124,7 @@ def require_tax_profile(source_url, tax_year, method_name):
         raise ValueError("Tax profile requires an official HTTPS IRS URL") from exc
     # Reject ambiguous authority, credentials, malformed ports and nonstandard ports.
     if (not isinstance(source_url, str) or
-        any(char in source_url for char in ("\\", "\\r", "\\n", "\\t")) or
+        any(char.isspace() or ord(char) < 32 or ord(char) == 127 or char == "\\" for char in source_url) or
         parsed.scheme != "https" or
         (host != "irs.gov" and not host.endswith(".irs.gov")) or
         parsed.username is not None or parsed.password is not None or
