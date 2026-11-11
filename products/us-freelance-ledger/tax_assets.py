@@ -117,8 +117,18 @@ def require_tax_profile(source_url, tax_year, method_name):
         parsed=urlsplit(source_url)
     except (TypeError,ValueError) as exc:
         raise ValueError("Tax profile requires an official HTTPS IRS URL") from exc
-    host=(parsed.hostname or "").lower()
-    if parsed.scheme!="https" or (host!="irs.gov" and not host.endswith(".irs.gov")) or parsed.username or parsed.password:
+    try:
+        host=(parsed.hostname or "").lower()
+        port=parsed.port
+    except ValueError as exc:
+        raise ValueError("Tax profile requires an official HTTPS IRS URL") from exc
+    # Reject ambiguous authority, credentials, malformed ports and nonstandard ports.
+    if (not isinstance(source_url, str) or
+        any(char in source_url for char in ("\\\\", "\\r", "\\n", "\\t")) or
+        parsed.scheme != "https" or
+        (host != "irs.gov" and not host.endswith(".irs.gov")) or
+        parsed.username is not None or parsed.password is not None or
+        port not in (None, 443) or not parsed.netloc):
         raise ValueError("Tax profile requires an official HTTPS IRS URL")
     year=_year(tax_year)
     if year<2000: raise ValueError("Tax year is invalid")
