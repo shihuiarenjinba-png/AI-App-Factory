@@ -18,6 +18,8 @@ class Issue64TaxAssetsTests(unittest.TestCase):
             "https://evil.example/?next=https://irs.gov",
             "https://irs.gov:invalid/publications/p946",
             "https://irs.gov\\@evil.example/publications/p946",
+            "https://irs.gov\\@evil.example/publications/p946",
+            "https://irs.gov\\evil.example/publications/p946",
             "",
         ]
         for url in bad:
