@@ -48,6 +48,15 @@ class Issue64BookkeepingTests(unittest.TestCase):
                 tax.straight_line_book_schedule(1000, "2026-01-01", 5,
                                                 business_use_percent=use)
 
+    def test_manual_sales_tax_rate_bounds(self):
+        for rate in (-1, 100.01, 101, "NaN", "Infinity", "-Infinity", "invalid"):
+            with self.subTest(rate=rate), self.assertRaises(ValueError):
+                tax.manual_sales_tax(100, rate)
+        for rate in (0, 100):
+            with self.subTest(valid_rate=rate):
+                result = tax.manual_sales_tax(100, rate)
+                self.assertEqual(result["rate_percent"], tax._percent(rate, "Sales tax rate"))
+
     def test_json_year_keys(self):
         rows = tax.custom_tax_depreciation_schedule(1000, {"2026": 40, "2027": 60})
         self.assertEqual([row["year"] for row in rows], [2026, 2027])
