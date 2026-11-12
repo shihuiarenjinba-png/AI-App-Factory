@@ -90,5 +90,15 @@ class Issue64TaxAssetsTests(unittest.TestCase):
         self.assertEqual(sum(row["tax_depreciation"] for row in rows), 1000)
 
 
+    def test_manual_sales_tax_rate_fail_closed(self):
+        for rate in (-1, 101, "NaN", "Infinity", "-Infinity", "not-a-rate", None):
+            with self.subTest(rate=rate), self.assertRaises(ValueError):
+                tax.manual_sales_tax("100.00", rate)
+        for amount in (-1, "NaN", "Infinity"):
+            with self.subTest(amount=amount), self.assertRaises(ValueError):
+                tax.manual_sales_tax(amount, 10)
+        self.assertEqual(tax.manual_sales_tax("100", 0)["tax"], 0)
+        self.assertEqual(tax.manual_sales_tax("100", 100)["tax"], 100)
+
 if __name__ == "__main__":
     unittest.main()
