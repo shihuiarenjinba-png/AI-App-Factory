@@ -130,14 +130,34 @@ def retrospective_adjustment(schedule, posted_by_year, tax_mode=False):
 
 
 def require_tax_profile(source_url, tax_year, method_name):
-    if not isinstance(source_url, str):
-        raise ValueError("Tax profile requires an IRS source URL")
-    parsed = urlsplit(source_url)
-    if parsed.scheme != "https" or not parsed.hostname or not (parsed.hostname == "irs.gov" or parsed.hostname.endswith(".irs.gov")):
-        raise ValueError("Tax profile requires an HTTPS IRS source URL")
-    if int(tax_year) < 2000:
+    """Require an unambiguous official IRS HTTPS source; never certify tax rules."""
+    if not isinstance(source_url, str) or not source_url or any(
+        char.isspace() or ord(char) < 32 or ord(char) == 127 or char == "\\\\"
+        for char in source_url
+    ):
+        raise ValueError("Tax profile requires an official HTTPS IRS URL")
+    try:
+        parsed = urlsplit(source_url)
+        host = (parsed.hostname or "").lower()
+        port = parsed.port
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Tax profile requires an official HTTPS IRS URL") from exc
+    if (
+        parsed.scheme != "https"
+        or (host != "irs.gov" and not host.endswith(".irs.gov"))
+        or parsed.username is not None
+        or parsed.password is not None
+        or port not in (None, 443)
+        or not parsed.netloc
+    ):
+        raise ValueError("Tax profile requires an official HTTPS IRS URL")
+    try:
+        year = int(tax_year)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("Tax year is invalid") from exc
+    if str(tax_year).strip() != str(year) or not 2000 <= year <= 2100:
         raise ValueError("Tax year is invalid")
     if not isinstance(method_name, str) or not method_name.strip():
         raise ValueError("Method name is required")
-    return {"source_url": source_url, "tax_year": int(tax_year), "method_name": method_name,
+    return {"source_url": source_url, "tax_year": year, "method_name": method_name.strip(),
             "review_required": True}
