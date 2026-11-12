@@ -132,7 +132,7 @@ def retrospective_adjustment(schedule, posted_by_year, tax_mode=False):
 def require_tax_profile(source_url, tax_year, method_name):
     """Require an unambiguous official IRS HTTPS source; never certify tax rules."""
     if not isinstance(source_url, str) or not source_url or any(
-        char.isspace() or ord(char) < 32 or ord(char) == 127 or char == "\\\\"
+        char.isspace() or ord(char) < 32 or ord(char) == 127 or char == "\\"
         for char in source_url
     ):
         raise ValueError("Tax profile requires an official HTTPS IRS URL")
