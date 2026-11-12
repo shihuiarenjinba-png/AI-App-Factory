@@ -17,6 +17,11 @@ class Issue64TaxAssetsTests(unittest.TestCase):
             "https://irs.gov@evil.example/publications/p946",
             "https://evil.example/?next=https://irs.gov",
             "https://irs.gov:invalid/publications/p946",
+            "https://irs.gov:444/publications/p946",
+            "https://user:password@irs.gov/publications/p946",
+            "https://irs.gov./publications/p946",
+            "https://irs.gov%2eevil.example/publications/p946",
+            "https://irs.gov/publications/p946\u00a0",
             "https://irs.gov\\@evil.example/publications/p946",
             "https://irs.gov\\@evil.example/publications/p946",
             "https://irs.gov\\evil.example/publications/p946",
@@ -91,10 +96,10 @@ class Issue64TaxAssetsTests(unittest.TestCase):
 
 
     def test_manual_sales_tax_rate_fail_closed(self):
-        for rate in (-1, 101, "NaN", "Infinity", "-Infinity", "not-a-rate", None):
+        for rate in (-1, 101, "NaN", "Infinity", "-Infinity", "not-a-rate", None, "", True):
             with self.subTest(rate=rate), self.assertRaises(ValueError):
                 tax.manual_sales_tax("100.00", rate)
-        for amount in (-1, "NaN", "Infinity"):
+        for amount in (-1, "NaN", "Infinity", "-Infinity", None, ""):
             with self.subTest(amount=amount), self.assertRaises(ValueError):
                 tax.manual_sales_tax(amount, 10)
         self.assertEqual(tax.manual_sales_tax("100", 0)["tax"], 0)
