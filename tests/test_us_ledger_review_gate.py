@@ -54,5 +54,54 @@ class USReviewGateTests(unittest.TestCase):
         self.assertIn("United States only", self.source)
         self.assertIn("USD", self.source)
 
+
+    def test_runtime_decline_never_opens_calculator(self):
+        # Execute the actual App callback without a display or real ledger.
+        import copy
+        from unittest.mock import Mock
+        method = copy.deepcopy(self.tax_method)
+        method.decorator_list = []
+        method.args.defaults = []
+        module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
+        dialogs = Mock()
+        scope = {"confirm_us_tax_review": lambda parent: False,
+                 "simpledialog": dialogs, "messagebox": Mock()}
+        exec(compile(module, str(MAIN), "exec"), scope)
+        scope["tax_assets"](object())
+        dialogs.assert_not_called()
+        scope["messagebox"].showinfo.assert_not_called()
+
+    def test_runtime_approved_sales_tax_stays_usd_and_requires_review(self):
+        import copy
+        from unittest.mock import Mock
+        method = copy.deepcopy(self.tax_method)
+        module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
+        dialogs = Mock()
+        dialogs.askstring.side_effect = ["sales tax", "California"]
+        dialogs.askfloat.side_effect = [100.0, 7.5]
+        messages = Mock()
+        scope = {"confirm_us_tax_review": lambda parent: True,
+                 "simpledialog": dialogs, "messagebox": messages,
+                 "manual_sales_tax": lambda amount, rate: {"tax": "7.50", "gross": "107.50"}}
+        exec(compile(module, str(MAIN), "exec"), scope)
+        scope["tax_assets"](object())
+        messages.showinfo.assert_called_once()
+        title, body = messages.showinfo.call_args.args
+        self.assertIn("REVIEW REQUIRED", title)
+        self.assertIn("USD", body)
+        self.assertIn("No posting", body)
+        self.assertNotIn("JPY", body)
+        self.assertNotIn("消費税", body)
+
+    def test_us_runtime_dependency_imports_are_local_and_not_jp(self):
+        # Inspect all US product Python modules, not only the UI entrypoint.
+        for path in US.glob("*.py"):
+            with self.subTest(module=path.name):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                imports = [n for n in ast.walk(tree) if isinstance(n, (ast.Import, ast.ImportFrom))]
+                names = " ".join(ast.unparse(n) for n in imports).lower()
+                for forbidden in ("japan_tax", "jp_ledger", "jp_accounting", "nta"):
+                    self.assertNotIn(forbidden, names)
+
 if __name__ == "__main__":
     unittest.main()
