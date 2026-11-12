@@ -93,6 +93,32 @@ class USReviewGateTests(unittest.TestCase):
         self.assertNotIn("JPY", body)
         self.assertNotIn("消費税", body)
 
+    def test_unknown_calculation_mode_fails_closed_without_book_depreciation(self):
+        import copy
+        from unittest.mock import Mock
+        method = copy.deepcopy(self.tax_method)
+        module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
+        dialogs = Mock()
+        dialogs.askstring.return_value = "unrecognized tax calculation"
+        messages = Mock()
+        scope = {"confirm_us_tax_review": lambda parent: True,
+                 "simpledialog": dialogs, "messagebox": messages}
+        exec(compile(module, str(MAIN), "exec"), scope)
+        scope["tax_assets"](object())
+        dialogs.askfloat.assert_not_called()
+        dialogs.askinteger.assert_not_called()
+        messages.showinfo.assert_not_called()
+        messages.showwarning.assert_called_once()
+        self.assertIn("REVIEW REQUIRED", messages.showwarning.call_args.args[0])
+
+    def test_us_tax_ui_never_posts_to_ledger(self):
+        # All calculator branches must remain read-only; do not silently write JP/US ledger.
+        prohibited = {"add", "execute", "executemany", "commit", "set_accounting_method"}
+        for node in ast.walk(self.tax_method):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                self.assertNotIn(node.func.attr, prohibited)
+        self.assertNotIn("JPY", ast.get_source_segment(self.source, self.tax_method))
+
     def test_us_runtime_dependency_imports_are_local_and_not_jp(self):
         # Inspect all US product Python modules, not only the UI entrypoint.
         for path in US.glob("*.py"):
