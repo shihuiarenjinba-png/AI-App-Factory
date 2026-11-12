@@ -476,7 +476,7 @@ class App(tk.Tk):
                 vals=[v.strip() for v in raw.split(",") if v.strip()]
                 rows=custom_tax_depreciation_schedule(cost,{start+i:v for i,v in enumerate(vals)})
                 messagebox.showinfo("REVIEW REQUIRED — Tax depreciation","\n".join(f'{r["year"]}: USD {r["business_depreciation"]}' for r in rows[:12])+"\n\nREVIEW REQUIRED: Verify IRS tax-year rules before use. No posting.")
-            else:
+            elif "book dep" in lower:
                 cost=simpledialog.askfloat("Book depreciation","Asset cost (USD)",minvalue=0)
                 first=simpledialog.askstring("Book depreciation","Placed-in-service date YYYY-MM-DD",initialvalue=date.today().isoformat())
                 life=simpledialog.askinteger("Book depreciation","Useful life in years",minvalue=1)
@@ -485,6 +485,10 @@ class App(tk.Tk):
                 if cost is None or not first or life is None:return
                 rows=straight_line_book_schedule(cost,first,life,salvage_value=salvage or 0,business_use_percent=use or 0,through_year=date.today().year+life)
                 messagebox.showinfo("REVIEW REQUIRED — Book depreciation","\n".join(f'{r["year"]}: USD {r["business_depreciation"]}' for r in rows[:12])+"\n\nREVIEW REQUIRED: Book and tax depreciation are separate. No posting.")
+            else:
+                messagebox.showwarning("REVIEW REQUIRED — Unknown calculation",
+                    "Choose exactly one supported calculation: sales tax, book depreciation, or tax depreciation. Nothing was calculated or posted.")
+                return
         except Exception as e:messagebox.showerror("Calculation error",str(e))
     def export(self):
         x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
