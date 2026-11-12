@@ -31,6 +31,27 @@ class Issue64TaxAssetsTests(unittest.TestCase):
             with self.subTest(url=url), self.assertRaises(ValueError):
                 tax.require_tax_profile(url, 2026, "manual-review")
 
+    def test_malformed_irs_hostname_labels_fail_closed(self):
+        malformed = [
+            "https://a..irs.gov/publications/p946",
+            "https://-a.irs.gov/publications/p946",
+            "https://a-.irs.gov/publications/p946",
+            "https://" + "a" * 64 + ".irs.gov/publications/p946",
+            "https://é.irs.gov/publications/p946",
+        ]
+        for url in malformed:
+            with self.subTest(url=url), self.assertRaises(ValueError):
+                tax.require_tax_profile(url, 2026, "manual-review")
+
+    def test_valid_subdomain_still_requires_review(self):
+        for url in (
+            "https://irs.gov/publications/p946",
+            "https://www.irs.gov:443/publications/p946",
+        ):
+            with self.subTest(url=url):
+                profile = tax.require_tax_profile(url, 2026, "manual-review")
+                self.assertIs(profile["review_required"], True)
+
     def test_official_irs_source_is_review_required(self):
         result = tax.require_tax_profile(
             "https://www.irs.gov/publications/p946", "2026", "manual-review"
