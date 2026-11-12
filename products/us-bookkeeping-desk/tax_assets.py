@@ -25,9 +25,9 @@ def _percent(value, label):
 
 def manual_sales_tax(amount_before_tax, rate_percent, rounding="nearest"):
     amount = _finite(amount_before_tax, "amount")
-    rate = _finite(rate_percent, "sales tax rate")
-    if amount < 0 or rate < 0:
-        raise ValueError("Amount and rate must be non-negative")
+    rate = _percent(rate_percent, "Sales tax rate")
+    if amount < 0:
+        raise ValueError("Amount must be non-negative")
     if rounding not in ROUNDING:
         raise ValueError("Unknown rounding mode")
     tax = (amount * rate / Decimal("100")).quantize(Decimal("0.01"), rounding=ROUNDING[rounding])
