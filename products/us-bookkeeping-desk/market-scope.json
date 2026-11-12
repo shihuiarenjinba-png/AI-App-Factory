@@ -1,0 +1,12 @@
+{
+  "store_markets": ["US"],
+  "store_language": "en-US",
+  "currency": "USD",
+  "country_profile": "United States",
+  "cross_market_sale": false,
+  "federal_scope": "general_business_bookkeeping_records_not_tax_return_preparation",
+  "state_local_tax_automation": false,
+  "tax_filing": false,
+  "deductibility_determination": false,
+  "compliance_claim": false
+}
