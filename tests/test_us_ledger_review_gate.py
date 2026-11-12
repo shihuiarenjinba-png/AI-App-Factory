@@ -129,5 +129,54 @@ class USReviewGateTests(unittest.TestCase):
                 for forbidden in ("japan_tax", "jp_ledger", "jp_accounting", "nta"):
                     self.assertNotIn(forbidden, names)
 
+    def test_review_button_is_bound_to_tax_callback_not_ledger_write(self):
+        # Validate the actual ttk.Button keyword binding rather than only a label string.
+        build = next(n for n in self.app.body if isinstance(n, ast.FunctionDef) and n.name == "build")
+        matches = []
+        for node in ast.walk(build):
+            if not isinstance(node, ast.Call):
+                continue
+            label = next((k.value.value for k in node.keywords
+                          if k.arg == "text" and isinstance(k.value, ast.Constant)
+                          and isinstance(k.value.value, str)), None)
+            if label == "US tax / fixed assets — REVIEW REQUIRED":
+                matches.append(node)
+        self.assertEqual(len(matches), 1, "Exactly one visible US review entrypoint is required")
+        command = next((k.value for k in matches[0].keywords if k.arg == "command"), None)
+        self.assertIsInstance(command, ast.Attribute)
+        self.assertIsInstance(command.value, ast.Name)
+        self.assertEqual(command.value.id, "self")
+        self.assertEqual(command.attr, "tax_assets")
+
+    def test_review_warning_explains_scope_and_no_automatic_posting(self):
+        # Confirm novice-facing warning actually includes essential risk boundaries.
+        values = {}
+        for node in self.tree.body:
+            if isinstance(node, ast.Assign):
+                for target in node.targets:
+                    if isinstance(target, ast.Name) and target.id in ("TAX_REVIEW_TITLE", "TAX_REVIEW_TEXT"):
+                        values[target.id] = ast.literal_eval(node.value)
+        warning = values["TAX_REVIEW_TITLE"] + " " + values["TAX_REVIEW_TEXT"]
+        for required in ("REVIEW REQUIRED", "USD", "NOT a tax return",
+                         "tax year", "IRS publication", "No tax amounts are posted automatically"):
+            self.assertIn(required, warning)
+
+    def test_us_modules_do_not_use_dynamic_jp_import_or_cross_product_paths(self):
+        # Static import checks alone miss importlib/__import__ and relative JP file access.
+        for path in US.glob("*.py"):
+            with self.subTest(module=path.name):
+                tree = ast.parse(path.read_text(encoding="utf-8"))
+                for node in ast.walk(tree):
+                    if isinstance(node, ast.Call):
+                        fn = node.func
+                        dynamic = (isinstance(fn, ast.Name) and fn.id == "__import__") or (
+                            isinstance(fn, ast.Attribute) and fn.attr == "import_module")
+                        if dynamic:
+                            self.fail(f"Dynamic import requires manual JP/US isolation review: {path.name}")
+                    if isinstance(node, ast.Constant) and isinstance(node.value, str):
+                        value = node.value.lower().replace("\\\\", "/")
+                        self.assertNotIn("../jp-", value)
+                        self.assertNotIn("products/jp-", value)
+
 if __name__ == "__main__":
     unittest.main()
