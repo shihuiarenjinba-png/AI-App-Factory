@@ -127,6 +127,9 @@ def require_tax_profile(source_url, tax_year, method_name):
         any(char.isspace() or ord(char) < 32 or ord(char) == 127 or char == "\\" for char in source_url) or
         parsed.scheme != "https" or
         (host != "irs.gov" and not host.endswith(".irs.gov")) or
+        any(not label or len(label) > 63 or not label.isascii() or
+            not all(ch.isalnum() or ch == "-" for ch in label) or
+            label.startswith("-") or label.endswith("-") for label in host.split(".")) or
         parsed.username is not None or parsed.password is not None or
         port not in (None, 443) or not parsed.netloc):
         raise ValueError("Tax profile requires an official HTTPS IRS URL")
