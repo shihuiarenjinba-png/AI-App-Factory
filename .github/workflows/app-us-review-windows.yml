@@ -42,7 +42,39 @@ jobs:
             Start-Sleep -Seconds 12
             if ($p.HasExited) { throw "EXE exited before smoke receipt: $($p.ExitCode)" }
             $p.Refresh()
-            if ($p.MainWindowHandle -eq 0) { throw "EXE alive but no visible main window handle" }
+            $processes = @(Get-CimInstance Win32_Process | Where-Object { $_.ProcessId -eq $p.Id -or $_.ParentProcessId -eq $p.Id })
+            $processes | Select-Object ProcessId,ParentProcessId,Name,CommandLine | ConvertTo-Json -Depth 4 | Out-File app-smoke-evidence/exe_process_tree.json
+            Add-Type -TypeDefinition @'
+          using System;
+          using System.Text;
+          using System.Collections.Generic;
+          using System.Runtime.InteropServices;
+          public static class WindowProbe {
+            public delegate bool EnumProc(IntPtr hwnd, IntPtr lparam);
+            [DllImport("user32.dll")] public static extern bool EnumWindows(EnumProc cb, IntPtr arg);
+            [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hwnd);
+            [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint pid);
+            [DllImport("user32.dll", CharSet=CharSet.Unicode)] public static extern int GetWindowText(IntPtr hwnd, StringBuilder text, int max);
+            public static string[] Snapshot() {
+              var found = new List<string>();
+              EnumWindows((hwnd,arg) => {
+                uint pid; GetWindowThreadProcessId(hwnd,out pid);
+                if (IsWindowVisible(hwnd)) {
+                  var title = new StringBuilder(512); GetWindowText(hwnd,title,512);
+                  found.Add(pid.ToString()+"|"+hwnd.ToInt64().ToString()+"|"+title.ToString());
+                }
+                return true;
+              },IntPtr.Zero);
+              return found.ToArray();
+            }
+          }
+          '@
+            $windows = @([WindowProbe]::Snapshot())
+            $windows | Out-File app-smoke-evidence/exe_visible_windows.txt
+            $ids = @($processes | ForEach-Object { [string]$_.ProcessId })
+            $matches = @($windows | Where-Object { ($_.Split('|')[0]) -in $ids })
+            if ($matches.Count -eq 0) { throw "EXE process tree has no visible top-level window; inspect diagnostics artifact" }
+            $matches | Out-File app-smoke-evidence/exe_matched_windows.txt
             python -c "from PIL import ImageGrab; ImageGrab.grab().save('app-smoke-evidence/exe_running.png')"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             "PID=$($p.Id);alive=true;main_window_handle=$($p.MainWindowHandle);source=$env:GITHUB_SHA" | Out-File app-smoke-evidence/exe_launch.txt
