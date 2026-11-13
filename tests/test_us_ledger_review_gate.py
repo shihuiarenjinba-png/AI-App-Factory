@@ -178,5 +178,26 @@ class USReviewGateTests(unittest.TestCase):
                         self.assertNotIn("../jp-", value)
                         self.assertNotIn("products/jp-", value)
 
+    def test_ambiguous_mode_aliases_are_rejected_before_any_numeric_input(self):
+        import copy
+        from unittest.mock import Mock
+        method = copy.deepcopy(self.tax_method)
+        module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
+        for mode in ("sales tax and book depreciation", "sales adjustment",
+                     "tax depreciation extra", "book depreciation now", "sales"):
+            with self.subTest(mode=mode):
+                dialogs = Mock()
+                dialogs.askstring.return_value = mode
+                messages = Mock()
+                scope = {"confirm_us_tax_review": lambda parent: True,
+                         "simpledialog": dialogs, "messagebox": messages}
+                exec(compile(module, str(MAIN), "exec"), scope)
+                scope["tax_assets"](object())
+                dialogs.askfloat.assert_not_called()
+                dialogs.askinteger.assert_not_called()
+                messages.showinfo.assert_not_called()
+                messages.showwarning.assert_called_once()
+                self.assertIn("REVIEW REQUIRED", messages.showwarning.call_args.args[0])
+
 if __name__ == "__main__":
     unittest.main()
