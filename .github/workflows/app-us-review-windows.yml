@@ -79,7 +79,39 @@ jobs:
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             "PID=$($p.Id);alive=true;main_window_handle=$($p.MainWindowHandle);source=$env:GITHUB_SHA" | Out-File app-smoke-evidence/exe_launch.txt
           } finally {
-            if (!$p.HasExited) { Stop-Process -Id $p.Id -Force }
+            # PyInstaller --onefile may spawn a child GUI process. Stop the
+            # whole observed process tree, then fail if a descendant survives.
+            $rootId = [uint32]$p.Id
+            $all = @(Get-CimInstance Win32_Process)
+            $tracked = [System.Collections.Generic.HashSet[uint32]]::new()
+            [void]$tracked.Add($rootId)
+            do {
+              $before = $tracked.Count
+              foreach ($proc in $all) {
+                if ($tracked.Contains([uint32]$proc.ParentProcessId)) {
+                  [void]$tracked.Add([uint32]$proc.ProcessId)
+                }
+              }
+            } while ($tracked.Count -gt $before)
+            $descendants = @($tracked | Where-Object { $_ -ne $rootId })
+            foreach ($pidToStop in $descendants) {
+              Stop-Process -Id $pidToStop -Force -ErrorAction SilentlyContinue
+            }
+            Stop-Process -Id $rootId -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 2
+            $survivors = @(Get-CimInstance Win32_Process | Where-Object {
+              $tracked.Contains([uint32]$_.ProcessId)
+            })
+            $cleanup = [ordered]@{
+              root_pid = $rootId
+              tracked_pids = @($tracked)
+              surviving_pids = @($survivors | ForEach-Object { $_.ProcessId })
+              complete = ($survivors.Count -eq 0)
+            }
+            $cleanup | ConvertTo-Json -Depth 4 | Set-Content app-smoke-evidence/exe_cleanup.json
+            if ($survivors.Count -gt 0) {
+              throw "EXE process tree cleanup incomplete: $($cleanup.surviving_pids -join ',')"
+            }
           }
       - name: Hash evidence and source
         shell: pwsh
