@@ -33,9 +33,15 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
             jp = base / "JPFreelanceLedger"
             jp.mkdir()
             jp_db = jp / "books.sqlite3"
-            with sqlite3.connect(jp_db) as connection:
+            # sqlite3's context manager commits but does not close the handle.
+            # Windows prevents TemporaryDirectory cleanup while it remains open.
+            connection = sqlite3.connect(jp_db)
+            try:
                 connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
                 connection.execute("INSERT INTO sentinel VALUES ('JP-KEEP')")
+                connection.commit()
+            finally:
+                connection.close()
             before = jp_db.read_bytes()
             with patch.dict(os.environ, {"APPDATA": str(base)}):
                 store = core.Store()
@@ -48,7 +54,7 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
                 finally:
                     store.conn.close()
             self.assertEqual(jp_db.read_bytes(), before, "US write changed JP database")
-            self.assertEqual([p.name for p in base.iterdir()], ["JPFreelanceLedger", "USFreelanceLedger"])
+            self.assertEqual({p.name for p in base.iterdir()}, {"JPFreelanceLedger", "USFreelanceLedger"})
 
     def test_us_default_path_cannot_fall_back_to_jp_directory(self):
         core = load_us_core()
