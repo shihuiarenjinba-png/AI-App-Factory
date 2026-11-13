@@ -6,6 +6,9 @@ from datetime import date
 ROUNDING = {"floor":ROUND_DOWN,"nearest":ROUND_HALF_UP,"ceil":ROUND_UP}
 
 def _finite(value, label):
+    # bool is a subclass of int but is not a user-entered monetary/rate value.
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid {label}")
     try:
         number=Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError) as exc:
@@ -117,8 +120,21 @@ def require_tax_profile(source_url, tax_year, method_name):
         parsed=urlsplit(source_url)
     except (TypeError,ValueError) as exc:
         raise ValueError("Tax profile requires an official HTTPS IRS URL") from exc
-    host=(parsed.hostname or "").lower()
-    if parsed.scheme!="https" or (host!="irs.gov" and not host.endswith(".irs.gov")) or parsed.username or parsed.password:
+    try:
+        host=(parsed.hostname or "").lower()
+        port=parsed.port
+    except ValueError as exc:
+        raise ValueError("Tax profile requires an official HTTPS IRS URL") from exc
+    # Reject ambiguous authority, credentials, malformed ports and nonstandard ports.
+    if (not isinstance(source_url, str) or
+        any(char.isspace() or ord(char) < 32 or ord(char) == 127 or char == "\\" for char in source_url) or
+        parsed.scheme != "https" or
+        (host != "irs.gov" and not host.endswith(".irs.gov")) or
+        any(not label or len(label) > 63 or not label.isascii() or
+            not all(ch.isalnum() or ch == "-" for ch in label) or
+            label.startswith("-") or label.endswith("-") for label in host.split(".")) or
+        parsed.username is not None or parsed.password is not None or
+        port not in (None, 443) or not parsed.netloc):
         raise ValueError("Tax profile requires an official HTTPS IRS URL")
     year=_year(tax_year)
     if year<2000: raise ValueError("Tax year is invalid")
