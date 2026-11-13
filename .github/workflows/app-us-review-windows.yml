@@ -1,0 +1,60 @@
+name: APP US Review Windows Evidence
+on:
+  pull_request:
+    paths:
+      - 'tests/windows_us_review_gui_smoke.py'
+      - '.github/workflows/app-us-review-windows.yml'
+      - 'products/us-freelance-ledger/**'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  app-us-review-gui:
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install isolated smoke dependencies
+        run: python -m pip install pillow pyinstaller
+      - name: Exercise real Tk GUI button and save deterministic receipts
+        env:
+          APP_SMOKE_OUTPUT: app-smoke-evidence
+        run: python tests/windows_us_review_gui_smoke.py
+      - name: Build US-only EXE (not MSIX; no Store Identity)
+        shell: pwsh
+        run: |
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name USFreelanceLedgerSmoke --distpath app-smoke-dist products/us-freelance-ledger/main.py --paths products/us-freelance-ledger
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $exe = 'app-smoke-dist/USFreelanceLedgerSmoke.exe'
+          if (!(Test-Path $exe)) { throw 'EXE missing' }
+          (Get-FileHash $exe -Algorithm SHA256).Hash | Out-File app-smoke-evidence/exe_sha256.txt
+      - name: Launch real EXE and capture live desktop
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path 'app-smoke-dist/USFreelanceLedgerSmoke.exe').Path
+          $env:APPDATA = Join-Path $env:RUNNER_TEMP 'us-ledger-exe-smoke'
+          New-Item -ItemType Directory -Force $env:APPDATA | Out-Null
+          $p = Start-Process -FilePath $exe -PassThru
+          try {
+            Start-Sleep -Seconds 12
+            if ($p.HasExited) { throw "EXE exited before smoke receipt: $($p.ExitCode)" }
+            python -c "from PIL import ImageGrab; ImageGrab.grab().save('app-smoke-evidence/exe_running.png')"
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            "PID=$($p.Id);alive=true;source=$env:GITHUB_SHA" | Out-File app-smoke-evidence/exe_launch.txt
+          } finally {
+            if (!$p.HasExited) { Stop-Process -Id $p.Id -Force }
+          }
+      - name: Hash evidence and source
+        shell: pwsh
+        run: |
+          Get-FileHash tests/windows_us_review_gui_smoke.py,products/us-freelance-ledger/main.py,app-smoke-dist/USFreelanceLedgerSmoke.exe -Algorithm SHA256 | Format-Table -AutoSize | Out-String | Out-File app-smoke-evidence/hashes.txt
+          "source_sha=$env:GITHUB_SHA" | Out-File app-smoke-evidence/source.txt
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: app-us-review-windows-${{ github.run_id }}
+          path: app-smoke-evidence/
+          if-no-files-found: warn
