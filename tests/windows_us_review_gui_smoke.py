@@ -40,11 +40,11 @@ def main():
             ImageGrab.grab().save(path)
             return {"file": path.name, "sha256": sha(path)}
         receipt["window"] = shot("us_main_window")
-        with patch.object(messagebox, "askyesno", return_value=False) as confirm, patch.object(simpledialog, "askstring") as ask:
+        with patch.object(us_main, "confirm_us_tax_review", return_value=False) as confirm, patch.object(simpledialog, "askstring") as ask:
             buttons[0].invoke()
             assert confirm.call_count == 1 and ask.call_count == 0
             receipt["scenarios"].append({"case": "decline", "result": "no_calculator_opened"})
-        with patch.object(messagebox, "askyesno", return_value=True) as confirm, patch.object(simpledialog, "askstring", side_effect=["sales tax", "California"]), patch.object(simpledialog, "askfloat", side_effect=[100.0, 7.5]), patch.object(messagebox, "showinfo") as info:
+        with patch.object(us_main, "confirm_us_tax_review", return_value=True) as confirm, patch.object(simpledialog, "askstring", side_effect=["sales tax", "California"]), patch.object(simpledialog, "askfloat", side_effect=[100.0, 7.5]), patch.object(messagebox, "showinfo") as info:
             buttons[0].invoke()
             assert confirm.call_count == 1 and info.call_count == 1
             title, body = info.call_args.args[:2]
