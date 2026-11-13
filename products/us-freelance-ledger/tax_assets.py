@@ -6,6 +6,9 @@ from datetime import date
 ROUNDING = {"floor":ROUND_DOWN,"nearest":ROUND_HALF_UP,"ceil":ROUND_UP}
 
 def _finite(value, label):
+    # bool is a subclass of int but is not a user-entered monetary/rate value.
+    if isinstance(value, bool):
+        raise ValueError(f"Invalid {label}")
     try:
         number=Decimal(str(value))
     except (InvalidOperation, ValueError, TypeError) as exc:
