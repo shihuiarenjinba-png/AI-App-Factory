@@ -46,7 +46,16 @@ def run_case(accept):
         buttons = [b for b in main.descendants(class_name="Button")
                    if "US tax / fixed assets" in b.window_text()]
         if len(buttons) != 1:
-            raise AssertionError(f"Tax action button count: {len(buttons)}")
+            capture("native_tax_button_missing")
+            diagnostics = {"main": main.window_text(), "handle": main.handle,
+                           "children": [{"class": c.class_name(), "text": c.window_text(),
+                                         "rectangle": str(c.rectangle())}
+                                        for c in main.descendants()],
+                           "top_windows": [{"title": w.window_text(), "class": w.class_name()}
+                                           for w in Desktop(backend="win32").windows() if w.is_visible()]}
+            (OUT / "native_controls_diagnostic.json").write_text(
+                json.dumps(diagnostics, indent=2), encoding="utf-8")
+            raise AssertionError(f"Tax action button count: {len(buttons)}; inspect native_controls_diagnostic.json")
         buttons[0].click_input()
         modal = wait_window("REVIEW REQUIRED")
         if "manual estimate" not in modal.window_text().lower() and not any(
