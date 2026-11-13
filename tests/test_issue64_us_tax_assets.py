@@ -78,7 +78,7 @@ class Issue64TaxAssetsTests(unittest.TestCase):
                 tax.custom_tax_depreciation_schedule(1000, schedule)
 
     def test_invalid_business_use_rejected_for_both_schedules(self):
-        for percent in (-1, 101, "NaN", "Infinity"):
+        for percent in (-1, 101, "NaN", "Infinity", True, False):
             with self.subTest(percent=percent):
                 with self.assertRaises(ValueError):
                     tax.custom_tax_depreciation_schedule(1000, {"2026": 50}, percent)
@@ -99,7 +99,7 @@ class Issue64TaxAssetsTests(unittest.TestCase):
         for rate in (-1, 101, "NaN", "Infinity", "-Infinity", "not-a-rate", None, "", True):
             with self.subTest(rate=rate), self.assertRaises(ValueError):
                 tax.manual_sales_tax("100.00", rate)
-        for amount in (-1, "NaN", "Infinity", "-Infinity", None, ""):
+        for amount in (-1, "NaN", "Infinity", "-Infinity", None, "", True, False):
             with self.subTest(amount=amount), self.assertRaises(ValueError):
                 tax.manual_sales_tax(amount, 10)
         self.assertEqual(tax.manual_sales_tax("100", 0)["tax"], 0)
