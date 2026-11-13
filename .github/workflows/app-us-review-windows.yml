@@ -3,6 +3,7 @@ on:
   pull_request:
     paths:
       - 'tests/windows_us_review_gui_smoke.py'
+      - 'tests/windows_us_review_native_exe.py'
       - '.github/workflows/app-us-review-windows.yml'
       - 'products/us-freelance-ledger/**'
   workflow_dispatch:
@@ -18,7 +19,7 @@ jobs:
         with:
           python-version: '3.12'
       - name: Install isolated smoke dependencies
-        run: python -m pip install pillow pyinstaller
+        run: python -m pip install pillow pyinstaller pywinauto
       - name: Exercise real Tk GUI button and save deterministic receipts
         env:
           APP_SMOKE_OUTPUT: app-smoke-evidence
@@ -113,6 +114,14 @@ jobs:
               throw "EXE process tree cleanup incomplete: $($cleanup.surviving_pids -join ',')"
             }
           }
+      - name: Native EXE REVIEW REQUIRED approve and decline (no mocked dialogs)
+        shell: pwsh
+        run: |
+          python tests/windows_us_review_native_exe.py
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $native = Get-Content app-smoke-evidence/native_receipt.json -Raw | ConvertFrom-Json
+          if (@($native.scenarios).Count -ne 2) { throw 'Native receipt incomplete' }
+          if (@($native.scenarios | Where-Object { $_.dialog_method -notlike 'native*' }).Count -ne 0) { throw 'Native method mismatch' }
       - name: Hash evidence and source
         shell: pwsh
         run: |
