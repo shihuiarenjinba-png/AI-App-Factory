@@ -456,15 +456,15 @@ class App(tk.Tk):
         mode=simpledialog.askstring("Tax / fixed assets","Enter sales tax, book depreciation, or tax depreciation")
         if not mode:return
         try:
-            lower=mode.lower()
-            if "sales" in lower:
+            lower=mode.strip().lower()
+            if lower == "sales tax":
                 amount=simpledialog.askfloat("Sales tax","Amount before tax",minvalue=0)
                 rate=simpledialog.askfloat("Sales tax","Jurisdiction rate (%) — enter manually",minvalue=0)
                 jurisdiction=simpledialog.askstring("Sales tax","Jurisdiction name")
                 if amount is None or rate is None:return
                 x=manual_sales_tax(amount,rate)
                 messagebox.showinfo("REVIEW REQUIRED — Sales tax",f'Jurisdiction: {jurisdiction or "manual"}\nTax USD {x["tax"]}\nGross USD {x["gross"]}\n\nREVIEW REQUIRED: Arithmetic only; nexus/taxability is not determined. No posting.')
-            elif "tax dep" in lower:
+            elif lower == "tax depreciation":
                 source=simpledialog.askstring("Tax depreciation","IRS source URL",initialvalue="https://www.irs.gov/publications/p946")
                 tax_year=simpledialog.askinteger("Tax depreciation","Tax year",initialvalue=date.today().year,minvalue=2000)
                 method=simpledialog.askstring("Tax depreciation","Method/profile name")
@@ -476,7 +476,7 @@ class App(tk.Tk):
                 vals=[v.strip() for v in raw.split(",") if v.strip()]
                 rows=custom_tax_depreciation_schedule(cost,{start+i:v for i,v in enumerate(vals)})
                 messagebox.showinfo("REVIEW REQUIRED — Tax depreciation","\n".join(f'{r["year"]}: USD {r["business_depreciation"]}' for r in rows[:12])+"\n\nREVIEW REQUIRED: Verify IRS tax-year rules before use. No posting.")
-            elif "book dep" in lower:
+            elif lower == "book depreciation":
                 cost=simpledialog.askfloat("Book depreciation","Asset cost (USD)",minvalue=0)
                 first=simpledialog.askstring("Book depreciation","Placed-in-service date YYYY-MM-DD",initialvalue=date.today().isoformat())
                 life=simpledialog.askinteger("Book depreciation","Useful life in years",minvalue=1)
