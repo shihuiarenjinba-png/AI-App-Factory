@@ -41,9 +41,11 @@ jobs:
           try {
             Start-Sleep -Seconds 12
             if ($p.HasExited) { throw "EXE exited before smoke receipt: $($p.ExitCode)" }
+            $p.Refresh()
+            if ($p.MainWindowHandle -eq 0) { throw "EXE alive but no visible main window handle" }
             python -c "from PIL import ImageGrab; ImageGrab.grab().save('app-smoke-evidence/exe_running.png')"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            "PID=$($p.Id);alive=true;source=$env:GITHUB_SHA" | Out-File app-smoke-evidence/exe_launch.txt
+            "PID=$($p.Id);alive=true;main_window_handle=$($p.MainWindowHandle);source=$env:GITHUB_SHA" | Out-File app-smoke-evidence/exe_launch.txt
           } finally {
             if (!$p.HasExited) { Stop-Process -Id $p.Id -Force }
           }
@@ -52,6 +54,30 @@ jobs:
         run: |
           Get-FileHash tests/windows_us_review_gui_smoke.py,products/us-freelance-ledger/main.py,app-smoke-dist/USFreelanceLedgerSmoke.exe -Algorithm SHA256 | Format-Table -AutoSize | Out-String | Out-File app-smoke-evidence/hashes.txt
           "source_sha=$env:GITHUB_SHA" | Out-File app-smoke-evidence/source.txt
+      - name: Verify evidence provenance and write immutable manifest
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $receipt = Get-Content app-smoke-evidence/receipt.json -Raw | ConvertFrom-Json
+          $request = (Get-FileHash tests/windows_us_review_gui_smoke.py -Algorithm SHA256).Hash.ToLowerInvariant()
+          $exe = (Get-FileHash app-smoke-dist/USFreelanceLedgerSmoke.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $recordedExe = (Get-Content app-smoke-evidence/exe_sha256.txt -Raw).Trim().ToLowerInvariant()
+          if ($receipt.source_sha -ne $env:GITHUB_SHA) { throw 'Receipt source SHA mismatch' }
+          if ($receipt.request_sha256 -ne $request) { throw 'Receipt request SHA mismatch' }
+          if ($recordedExe -ne $exe) { throw 'EXE SHA mismatch' }
+          if ($receipt.dialog_method -notlike '*NOT native*') { throw 'Dialog evidence classification missing' }
+          if (@($receipt.scenarios).Count -ne 2) { throw 'Expected approve and decline receipts' }
+          $cases = @($receipt.scenarios | ForEach-Object { $_.case })
+          if ('approve' -notin $cases -or 'decline' -notin $cases) { throw 'Missing review scenarios' }
+          $manifest = [ordered]@{
+            source_sha = $env:GITHUB_SHA
+            request_sha256 = $request
+            exe_sha256 = $exe
+            evidence_type = 'Tk real button invoke with patched dialogs; EXE launch and window handle; NOT native modal clicks'
+            windows_run_id = $env:GITHUB_RUN_ID
+            review_scenarios = $cases
+          }
+          $manifest | ConvertTo-Json -Depth 5 | Set-Content app-smoke-evidence/provenance_manifest.json -Encoding utf8
       - uses: actions/upload-artifact@v4
         if: always()
         with:
