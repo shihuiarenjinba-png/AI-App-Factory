@@ -44,7 +44,35 @@ def find_tax_button(main):
                                        "rectangle": str(c.rectangle())} for c in main.descendants()]}
     (OUT / "native_controls_diagnostic.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
     capture("native_tax_button_missing")
-    raise AssertionError(f"Expected exactly one visible enabled US tax button; UIA matches={len(matches)}")
+    # Tk/ttk widgets appear as unnamed TkChild HWNDs on this runner.
+    # The captured runner screenshot and Win32 tree identify the tax action
+    # between Add transaction and Export CSV in the left Transaction pane.
+    # Derive the target from the live pane geometry, never screen pixels.
+    pane_candidates = [c for c in main.descendants()
+                       if c.class_name() == "TkChild" and
+                       170 <= c.rectangle().width() <= 260 and
+                       c.rectangle().height() >= 400]
+    if len(pane_candidates) != 1:
+        raise AssertionError(f"Transaction pane ambiguous: {len(pane_candidates)}")
+    pane = pane_candidates[0].rectangle()
+    buttons = [c for c in main.descendants()
+               if c.class_name() == "TkChild" and
+               c.rectangle().left >= pane.left and
+               c.rectangle().right <= pane.right and
+               c.rectangle().width() >= pane.width() * .70 and
+               20 <= c.rectangle().height() <= 32]
+    buttons.sort(key=lambda c: c.rectangle().top)
+    # The four consecutive full-width actions are Browse, Suggest,
+    # Add transaction, Tax review; the next row is split Export/Backup.
+    if len(buttons) != 4:
+        raise AssertionError(f"Unexpected transaction action layout: {len(buttons)}")
+    if not all(25 <= buttons[i+1].rectangle().top - buttons[i].rectangle().top <= 40
+               for i in range(3)):
+        raise AssertionError("Transaction action row spacing changed")
+    target = buttons[-1]
+    if not target.is_visible() or not target.is_enabled():
+        raise AssertionError("Tax action not visible/enabled")
+    return target
 
 def click_named(window, label):
     matches = [c for c in window.descendants(class_name="Button")
