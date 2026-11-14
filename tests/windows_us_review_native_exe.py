@@ -137,8 +137,12 @@ def run_case(accept):
             mode = wait_window("Tax / fixed assets")
             after = capture("native_approved_mode")
             # Cancel the mode prompt: verify native consent without posting.
-            click_named(mode, "Cancel")
+            mode.set_focus()
+            mode.type_keys("{ESC}")
             time.sleep(.5)
+            if any(w.handle == mode.handle and w.is_visible()
+                   for w in Desktop(backend="win32").windows()):
+                raise AssertionError("Tax mode dialog did not close on Escape")
         else:
             after = capture("native_declined_main")
             assert not any("Tax / fixed assets" in w.window_text()
