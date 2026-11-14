@@ -173,13 +173,12 @@ def run_case(accept):
                         f"Native USD result missing {expected!r}: {result_text!r}")
             after = capture("native_usd_result_verified")
             click_named(result, "OK")
-            records.append({"case": "usd_sales_tax_result",
-                            "inputs": {"amount_usd": 100, "manual_rate_percent": 8,
+            calculation = {"inputs": {"amount_usd": 100, "manual_rate_percent": 8,
                                        "jurisdiction": "Fixture jurisdiction"},
-                            "expected": {"tax_usd": 8, "gross_usd": 108},
-                            "observed_dialog": result_text,
-                            "screenshot": after,
-                            "scope": "arithmetic only; not a legal tax-rate assertion"})
+                           "expected": {"tax_usd": 8, "gross_usd": 108},
+                           "observed_dialog": result_text,
+                           "screenshot": after,
+                           "scope": "arithmetic only; not a legal tax-rate assertion"}
         else:
             after = capture("native_declined_main")
             assert not any("Tax / fixed assets" in w.window_text()
@@ -191,7 +190,8 @@ def run_case(accept):
         records.append({"case": "approve" if accept else "decline",
                         "dialog_method": "native Win32 click_input, no monkeypatch",
                         "before": before, "after": after, "no_posting": True,
-                        "ledger_before": ledger_before, "ledger_after": ledger_after})
+                        "ledger_before": ledger_before, "ledger_after": ledger_after,
+                        **({"usd_sales_tax_result": calculation} if accept else {})})
     finally:
         subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
                        capture_output=True, text=True, timeout=15)
@@ -203,5 +203,5 @@ finally:
     (OUT / "native_receipt.json").write_text(json.dumps({
         "source_sha": os.environ.get("GITHUB_SHA"), "scenarios": records,
         "exe_sha256": hashlib.sha256(EXE.read_bytes()).hexdigest(),
-        "scope": "native modal consent only; USD calculation result not yet validated"
+        "scope": "native consent and fixed-input USD sales-tax arithmetic; not legal tax advice"
     }, indent=2), encoding="utf-8")
