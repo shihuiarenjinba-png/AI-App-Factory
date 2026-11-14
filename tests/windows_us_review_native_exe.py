@@ -149,13 +149,37 @@ def run_case(accept):
         if accept:
             mode = wait_window("Tax / fixed assets")
             after = capture("native_approved_mode")
-            # Cancel the mode prompt: verify native consent without posting.
-            mode.set_focus()
-            mode.type_keys("{ESC}")
-            time.sleep(.5)
-            if any(w.handle == mode.handle and w.is_visible()
-                   for w in Desktop(backend="win32").windows()):
-                raise AssertionError("Tax mode dialog did not close on Escape")
+            # Verify native USD arithmetic result, not only consent.
+            from pywinauto.keyboard import send_keys
+            def answer_dialog(dialog, value):
+                dialog.set_focus()
+                send_keys("^a")
+                send_keys(str(value), with_spaces=True)
+                send_keys("{ENTER}")
+                time.sleep(.5)
+
+            answer_dialog(mode, "sales tax")
+            answer_dialog(wait_window("Sales tax"), "100")
+            answer_dialog(wait_window("Sales tax"), "8")
+            answer_dialog(wait_window("Sales tax"), "Fixture jurisdiction")
+            result = wait_window("REVIEW REQUIRED — Sales tax")
+            result_text = "\\n".join([result.window_text()] +
+                [child.window_text() for child in result.descendants()])
+            for expected in ("Tax USD 8.0", "Gross USD 108.0",
+                             "REVIEW REQUIRED", "No posting"):
+                if expected.lower() not in result_text.lower():
+                    capture("native_usd_result_mismatch")
+                    raise AssertionError(
+                        f"Native USD result missing {expected!r}: {result_text!r}")
+            after = capture("native_usd_result_verified")
+            click_named(result, "OK")
+            records.append({"case": "usd_sales_tax_result",
+                            "inputs": {"amount_usd": 100, "manual_rate_percent": 8,
+                                       "jurisdiction": "Fixture jurisdiction"},
+                            "expected": {"tax_usd": 8, "gross_usd": 108},
+                            "observed_dialog": result_text,
+                            "screenshot": after,
+                            "scope": "arithmetic only; not a legal tax-rate assertion"})
         else:
             after = capture("native_declined_main")
             assert not any("Tax / fixed assets" in w.window_text()
