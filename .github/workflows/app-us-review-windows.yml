@@ -132,12 +132,33 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           $receipt = Get-Content app-smoke-evidence/receipt.json -Raw | ConvertFrom-Json
+          $nativePath = 'app-smoke-evidence/native_receipt.json'
+          if (!(Test-Path $nativePath)) { throw 'Native receipt missing' }
+          $native = Get-Content $nativePath -Raw | ConvertFrom-Json
+          $nativeSha = (Get-FileHash $nativePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($native.source_sha -ne $env:GITHUB_SHA) { throw 'Native receipt source SHA mismatch' }
+          if (@($native.scenarios).Count -ne 2) { throw 'Native scenario count mismatch' }
+          $nativeCases = @($native.scenarios | ForEach-Object { $_.case })
+          if ('approve' -notin $nativeCases -or 'decline' -notin $nativeCases) { throw 'Native review scenarios missing' }
+          foreach ($scenario in $native.scenarios) {
+            if ($scenario.dialog_method -notlike 'native*') { throw 'Native modal method mismatch' }
+            if ($scenario.no_posting -ne $true) { throw 'Native no-posting assertion missing' }
+            if (!$scenario.ledger_before.sha256 -or $scenario.ledger_before.sha256 -ne $scenario.ledger_after.sha256) { throw 'Native SQLite snapshot mismatch' }
+          }
+          $approved = @($native.scenarios | Where-Object { $_.case -eq 'approve' })
+          if ($approved.Count -ne 1) { throw 'Native approval receipt ambiguous' }
+          $usd = $approved[0].usd_sales_tax_result
+          if (!$usd -or $usd.inputs.amount_usd -ne 100 -or $usd.inputs.manual_rate_percent -ne 8 -or $usd.expected.tax_usd -ne 8 -or $usd.expected.gross_usd -ne 108) { throw 'USD fixture mismatch' }
+          foreach ($token in @('Tax USD 8.0', 'Gross USD 108.0', 'REVIEW REQUIRED', 'No posting')) {
+            if (!$usd.observed_dialog.Contains($token)) { throw "Native USD result missing: $token" }
+          }
           $request = (Get-FileHash tests/windows_us_review_gui_smoke.py -Algorithm SHA256).Hash.ToLowerInvariant()
           $exe = (Get-FileHash app-smoke-dist/USFreelanceLedgerSmoke.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           $recordedExe = (Get-Content app-smoke-evidence/exe_sha256.txt -Raw).Trim().ToLowerInvariant()
           if ($receipt.source_sha -ne $env:GITHUB_SHA) { throw 'Receipt source SHA mismatch' }
           if ($receipt.request_sha256 -ne $request) { throw 'Receipt request SHA mismatch' }
           if ($recordedExe -ne $exe) { throw 'EXE SHA mismatch' }
+          if ($native.exe_sha256 -ne $exe) { throw 'Native EXE SHA mismatch' }
           if ($receipt.dialog_method -notlike '*NOT native*') { throw 'Dialog evidence classification missing' }
           if (@($receipt.scenarios).Count -ne 2) { throw 'Expected approve and decline receipts' }
           $cases = @($receipt.scenarios | ForEach-Object { $_.case })
@@ -146,7 +167,13 @@ jobs:
             source_sha = $env:GITHUB_SHA
             request_sha256 = $request
             exe_sha256 = $exe
-            evidence_type = 'Tk real button invoke with patched dialogs; EXE launch and window handle; NOT native modal clicks'
+            evidence_type = 'Two distinct evidence types; see mock_gui_evidence_type and native_exe_evidence_type'
+            mock_gui_evidence_type = 'Tk real button invoke with patched dialogs; NOT native modal clicks'
+            native_exe_evidence_type = 'Real Windows PyInstaller EXE; native Win32 approve/decline modal clicks and USD result'
+            native_receipt_sha256 = $nativeSha
+            native_review_scenarios = $nativeCases
+            native_usd_fixture = '100 USD at manually entered 8 percent; tax 8 USD; gross 108 USD'
+            native_sqlite_no_posting_verified = $true
             windows_run_id = $env:GITHUB_RUN_ID
             review_scenarios = $cases
           }
