@@ -31,6 +31,21 @@ def wait_window(title, timeout=25):
         time.sleep(.4)
     raise AssertionError("Native window not found: " + title)
 
+def find_tax_button(main):
+    """ttk buttons are not necessarily native Win32 Button children."""
+    ui = Desktop(backend="uia").window(handle=main.handle)
+    controls = ui.descendants(control_type="Button")
+    matches = [c for c in controls if "US tax / fixed assets" in c.window_text()]
+    if len(matches) == 1 and matches[0].is_visible() and matches[0].is_enabled():
+        return matches[0]
+    diagnostics = {"uia_buttons": [{"name": c.window_text(), "type": c.element_info.control_type,
+                                      "rectangle": str(c.rectangle())} for c in controls],
+                   "win32_children": [{"class": c.class_name(), "text": c.window_text(),
+                                       "rectangle": str(c.rectangle())} for c in main.descendants()]}
+    (OUT / "native_controls_diagnostic.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
+    capture("native_tax_button_missing")
+    raise AssertionError(f"Expected exactly one visible enabled US tax button; UIA matches={len(matches)}")
+
 def click_named(window, label):
     matches = [c for c in window.descendants(class_name="Button")
                if c.window_text().strip().lower() == label.lower()]
@@ -43,20 +58,7 @@ def run_case(accept):
     try:
         main = wait_window("Freelance Ledger US")
         main.set_focus()
-        buttons = [b for b in main.descendants(class_name="Button")
-                   if "US tax / fixed assets" in b.window_text()]
-        if len(buttons) != 1:
-            capture("native_tax_button_missing")
-            diagnostics = {"main": main.window_text(), "handle": main.handle,
-                           "children": [{"class": c.class_name(), "text": c.window_text(),
-                                         "rectangle": str(c.rectangle())}
-                                        for c in main.descendants()],
-                           "top_windows": [{"title": w.window_text(), "class": w.class_name()}
-                                           for w in Desktop(backend="win32").windows() if w.is_visible()]}
-            (OUT / "native_controls_diagnostic.json").write_text(
-                json.dumps(diagnostics, indent=2), encoding="utf-8")
-            raise AssertionError(f"Tax action button count: {len(buttons)}; inspect native_controls_diagnostic.json")
-        buttons[0].click_input()
+        find_tax_button(main).click_input()
         modal = wait_window("REVIEW REQUIRED")
         if "manual estimate" not in modal.window_text().lower() and not any(
             "manual estimate" in c.window_text().lower() for c in modal.descendants()
