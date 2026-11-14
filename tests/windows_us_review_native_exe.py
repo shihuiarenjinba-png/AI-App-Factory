@@ -75,11 +75,49 @@ def find_tax_button(main):
     return target
 
 def click_named(window, label):
-    matches = [c for c in window.descendants(class_name="Button")
-               if c.window_text().strip().lower() == label.lower()]
-    if len(matches) != 1:
-        raise AssertionError(f"Expected one native {label} button; found {len(matches)}")
-    matches[0].click_input()
+    """Use a verified native control, including UIA and mnemonic-prefixed labels."""
+    def normalized(text):
+        return text.replace("&", "").replace("_", "").strip().lower()
+
+    candidates = []
+    for backend in ("win32", "uia"):
+        try:
+            dialog = Desktop(backend=backend).window(handle=window.handle)
+            for control in dialog.descendants():
+                try:
+                    if normalized(control.window_text()) != label.lower():
+                        continue
+                    if backend == "win32" and control.class_name() != "Button":
+                        continue
+                    if backend == "uia" and control.element_info.control_type != "Button":
+                        continue
+                    if control.is_visible() and control.is_enabled():
+                        candidates.append((backend, control))
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    if candidates:
+        # Both backends may expose the same button; prefer Win32.
+        candidates[0][1].click_input()
+        return
+
+    diagnostics = {"label": label, "modal_title": window.window_text(),
+                   "modal_handle": window.handle, "controls": {}}
+    for backend in ("win32", "uia"):
+        try:
+            dialog = Desktop(backend=backend).window(handle=window.handle)
+            diagnostics["controls"][backend] = [
+                {"text": c.window_text(), "class": c.class_name(),
+                 "rectangle": str(c.rectangle())}
+                for c in dialog.descendants()
+            ]
+        except Exception as exc:
+            diagnostics["controls"][backend] = {"error": repr(exc)}
+    (OUT / ("native_modal_" + label.lower() + "_diagnostic.json")).write_text(
+        json.dumps(diagnostics, indent=2), encoding="utf-8")
+    capture("native_modal_" + label.lower() + "_missing")
+    raise AssertionError(f"Expected one visible enabled native {label} button; found 0")
 
 def run_case(accept):
     p = subprocess.Popen([str(EXE)], cwd=str(EXE.parent))
