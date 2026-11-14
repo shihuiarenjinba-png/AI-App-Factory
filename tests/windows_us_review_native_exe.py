@@ -2,6 +2,7 @@
 import hashlib
 import json
 import os
+import sqlite3
 from pathlib import Path
 import subprocess
 import time
@@ -15,6 +16,17 @@ EXE = Path("app-smoke-dist/USFreelanceLedgerSmoke.exe").resolve()
 os.environ["APPDATA"] = str(Path(os.environ["RUNNER_TEMP"]) / "us-ledger-native")
 Path(os.environ["APPDATA"]).mkdir(parents=True, exist_ok=True)
 records = []
+
+def ledger_snapshot():
+    """Hash a consistent SQLite logical snapshot, not an unverified assertion."""
+    db = Path(os.environ["APPDATA"]) / "USFreelanceLedger" / "books.sqlite3"
+    if not db.is_file():
+        raise AssertionError("Expected isolated US ledger database is missing")
+    with sqlite3.connect(str(db)) as conn:
+        with sqlite3.connect(":memory:") as snapshot:
+            conn.backup(snapshot)
+            dump = "\\n".join(snapshot.iterdump()).encode("utf-8")
+    return {"path": str(db), "sha256": hashlib.sha256(dump).hexdigest()}
 
 def capture(label):
     path = OUT / (label + ".png")
@@ -124,6 +136,7 @@ def run_case(accept):
     try:
         main = wait_window("Freelance Ledger US")
         main.set_focus()
+        ledger_before = ledger_snapshot()
         find_tax_button(main).click_input()
         modal = wait_window("REVIEW REQUIRED")
         if "manual estimate" not in modal.window_text().lower() and not any(
@@ -148,9 +161,13 @@ def run_case(accept):
             assert not any("Tax / fixed assets" in w.window_text()
                            for w in Desktop(backend="win32").windows()
                            if w.is_visible() and w.handle != main.handle)
+        ledger_after = ledger_snapshot()
+        if ledger_before["sha256"] != ledger_after["sha256"]:
+            raise AssertionError("Tax review consent changed the US ledger database")
         records.append({"case": "approve" if accept else "decline",
                         "dialog_method": "native Win32 click_input, no monkeypatch",
-                        "before": before, "after": after, "no_posting": True})
+                        "before": before, "after": after, "no_posting": True,
+                        "ledger_before": ledger_before, "ledger_after": ledger_after})
     finally:
         subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
                        capture_output=True, text=True, timeout=15)
