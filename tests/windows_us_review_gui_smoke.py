@@ -33,7 +33,7 @@ def main():
                 walk(child)
         walk(app)
         assert len(buttons) == 1, f"Expected one real GUI button, got {len(buttons)}"
-        receipt = {"source_sha": os.environ.get("GITHUB_SHA", "LOCAL"), "scenarios": []}
+        receipt = {"source_sha": os.environ.get("APP_SOURCE_SHA", "LOCAL"), "scenarios": []}
         def shot(label):
             app.update()
             path = out / (label + ".png")
