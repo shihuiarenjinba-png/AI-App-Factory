@@ -13,8 +13,17 @@ jobs:
   app-us-review-gui:
     runs-on: windows-latest
     timeout-minutes: 25
+    env:
+      APP_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact-head checkout
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:APP_SOURCE_SHA) { throw "Exact-head mismatch: $actual != $env:APP_SOURCE_SHA" }
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -78,7 +87,7 @@ jobs:
             $matches | Out-File app-smoke-evidence/exe_matched_windows.txt
             python -c "from PIL import ImageGrab; ImageGrab.grab().save('app-smoke-evidence/exe_running.png')"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            "PID=$($p.Id);alive=true;main_window_handle=$($p.MainWindowHandle);source=$env:GITHUB_SHA" | Out-File app-smoke-evidence/exe_launch.txt
+            "PID=$($p.Id);alive=true;main_window_handle=$($p.MainWindowHandle);source=$env:APP_SOURCE_SHA" | Out-File app-smoke-evidence/exe_launch.txt
           } finally {
             # PyInstaller --onefile may spawn a child GUI process. Stop the
             # whole observed process tree, then fail if a descendant survives.
@@ -126,7 +135,7 @@ jobs:
         shell: pwsh
         run: |
           Get-FileHash tests/windows_us_review_gui_smoke.py,products/us-freelance-ledger/main.py,app-smoke-dist/USFreelanceLedgerSmoke.exe -Algorithm SHA256 | Format-Table -AutoSize | Out-String | Out-File app-smoke-evidence/hashes.txt
-          "source_sha=$env:GITHUB_SHA" | Out-File app-smoke-evidence/source.txt
+          "source_sha=$env:APP_SOURCE_SHA" | Out-File app-smoke-evidence/source.txt
       - name: Verify evidence provenance and write immutable manifest
         shell: pwsh
         run: |
@@ -136,7 +145,7 @@ jobs:
           if (!(Test-Path $nativePath)) { throw 'Native receipt missing' }
           $native = Get-Content $nativePath -Raw | ConvertFrom-Json
           $nativeSha = (Get-FileHash $nativePath -Algorithm SHA256).Hash.ToLowerInvariant()
-          if ($native.source_sha -ne $env:GITHUB_SHA) { throw 'Native receipt source SHA mismatch' }
+          if ($native.source_sha -ne $env:APP_SOURCE_SHA) { throw 'Native receipt source SHA mismatch' }
           if (@($native.scenarios).Count -ne 2) { throw 'Native scenario count mismatch' }
           $nativeCases = @($native.scenarios | ForEach-Object { $_.case })
           if ('approve' -notin $nativeCases -or 'decline' -notin $nativeCases) { throw 'Native review scenarios missing' }
@@ -155,7 +164,7 @@ jobs:
           $request = (Get-FileHash tests/windows_us_review_gui_smoke.py -Algorithm SHA256).Hash.ToLowerInvariant()
           $exe = (Get-FileHash app-smoke-dist/USFreelanceLedgerSmoke.exe -Algorithm SHA256).Hash.ToLowerInvariant()
           $recordedExe = (Get-Content app-smoke-evidence/exe_sha256.txt -Raw).Trim().ToLowerInvariant()
-          if ($receipt.source_sha -ne $env:GITHUB_SHA) { throw 'Receipt source SHA mismatch' }
+          if ($receipt.source_sha -ne $env:APP_SOURCE_SHA) { throw 'Receipt source SHA mismatch' }
           if ($receipt.request_sha256 -ne $request) { throw 'Receipt request SHA mismatch' }
           if ($recordedExe -ne $exe) { throw 'EXE SHA mismatch' }
           if ($native.exe_sha256 -ne $exe) { throw 'Native EXE SHA mismatch' }
@@ -164,7 +173,7 @@ jobs:
           $cases = @($receipt.scenarios | ForEach-Object { $_.case })
           if ('approve' -notin $cases -or 'decline' -notin $cases) { throw 'Missing review scenarios' }
           $manifest = [ordered]@{
-            source_sha = $env:GITHUB_SHA
+            source_sha = $env:APP_SOURCE_SHA
             request_sha256 = $request
             exe_sha256 = $exe
             evidence_type = 'Two distinct evidence types; see mock_gui_evidence_type and native_exe_evidence_type'
