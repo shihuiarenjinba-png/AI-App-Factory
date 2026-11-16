@@ -16,6 +16,7 @@ from tkinter import filedialog, messagebox, ttk
 
 MAX_FILES = 100
 MAX_BYTES = 256 * 1024 * 1024
+MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024  # Bound serialized snapshots and actual file reads.
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 KIND = "file-integrity-ledger"
 
@@ -158,15 +159,29 @@ def _atomic_write(path, content):
             os.unlink(temp)
 
 
+def _snapshot_payload(data):
+    """Serialize once and reject oversized content before changing the destination."""
+    validate_snapshot(data)
+    payload = (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    if len(payload) > MAX_SNAPSHOT_BYTES:
+        raise ValueError("Snapshot exceeds 2 MiB limit")
+    return payload
+
+
 def load_snapshot(path):
     path = Path(path)
-    if path.is_symlink() or path.stat().st_size > 128 * 1024:
-        raise ValueError("Unsafe or oversized snapshot")
-    return validate_snapshot(json.loads(path.read_text(encoding="utf-8")))
+    if path.is_symlink():
+        raise ValueError("Linked snapshot path is prohibited")
+    # Bound bytes actually read, rather than trusting a size check followed by read_text.
+    with path.open("rb") as reader:
+        payload = reader.read(MAX_SNAPSHOT_BYTES + 1)
+    if len(payload) > MAX_SNAPSHOT_BYTES:
+        raise ValueError("Snapshot exceeds 2 MiB limit")
+    return validate_snapshot(json.loads(payload.decode("utf-8")))
 
 
 def save_snapshot(path, data):
-    validate_snapshot(data)
+    payload = _snapshot_payload(data)
     path = Path(path)
     if path.exists():
         try:
@@ -175,8 +190,8 @@ def save_snapshot(path, data):
             previous = None
         if previous is not None:
             backup = Path(str(path) + ".bak")
-            _atomic_write(backup, (json.dumps(previous, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    _atomic_write(path, (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+            _atomic_write(backup, _snapshot_payload(previous))
+    _atomic_write(path, payload)
 
 
 def recover_snapshot(path):

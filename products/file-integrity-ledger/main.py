@@ -16,6 +16,7 @@ from tkinter import filedialog, messagebox, ttk
 
 MAX_FILES = 100
 MAX_BYTES = 256 * 1024 * 1024
+MAX_SNAPSHOT_BYTES = 2 * 1024 * 1024  # Bound serialized snapshots and actual file reads.
 HEX64 = re.compile(r"^[0-9a-f]{64}$")
 KIND = "file-integrity-ledger"
 
@@ -39,6 +40,7 @@ TEXT = {
         "not_checked": "NOT CHECKED", "ok": "UNCHANGED", "modified": "MODIFIED",
         "missing": "MISSING", "error_result": "ERROR",
         "language": "English", "help": "Read-only: no delete, upload, sync or background scanning.",
+        "progress": "Files {total} | Checked {checked} | Unchanged {ok} | Changed {changed} | Missing {missing} | Errors {errors}",
     },
     "ja": {
         "title": "ファイル整合性台帳", "add": "ファイル追加", "remove": "行を除外",
@@ -59,6 +61,7 @@ TEXT = {
         "not_checked": "未検証", "ok": "一致", "modified": "変更あり",
         "missing": "見つからない", "error_result": "エラー",
         "language": "日本語", "help": "読み取り専用：削除・アップロード・同期・自動走査はしません。",
+        "progress": "登録 {total}件｜検証 {checked}件｜一致 {ok}｜変更 {changed}｜不明 {missing}｜エラー {errors}",
     },
 }
 
@@ -158,15 +161,29 @@ def _atomic_write(path, content):
             os.unlink(temp)
 
 
+def _snapshot_payload(data):
+    """Serialize once and reject oversized content before changing the destination."""
+    validate_snapshot(data)
+    payload = (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    if len(payload) > MAX_SNAPSHOT_BYTES:
+        raise ValueError("Snapshot exceeds 2 MiB limit")
+    return payload
+
+
 def load_snapshot(path):
     path = Path(path)
-    if path.is_symlink() or path.stat().st_size > 128 * 1024:
-        raise ValueError("Unsafe or oversized snapshot")
-    return validate_snapshot(json.loads(path.read_text(encoding="utf-8")))
+    if path.is_symlink():
+        raise ValueError("Linked snapshot path is prohibited")
+    # Bound bytes actually read, rather than trusting a size check followed by read_text.
+    with path.open("rb") as reader:
+        payload = reader.read(MAX_SNAPSHOT_BYTES + 1)
+    if len(payload) > MAX_SNAPSHOT_BYTES:
+        raise ValueError("Snapshot exceeds 2 MiB limit")
+    return validate_snapshot(json.loads(payload.decode("utf-8")))
 
 
 def save_snapshot(path, data):
-    validate_snapshot(data)
+    payload = _snapshot_payload(data)
     path = Path(path)
     if path.exists():
         try:
@@ -175,8 +192,8 @@ def save_snapshot(path, data):
             previous = None
         if previous is not None:
             backup = Path(str(path) + ".bak")
-            _atomic_write(backup, (json.dumps(previous, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
-    _atomic_write(path, (json.dumps(data, ensure_ascii=False, indent=2) + "\n").encode("utf-8"))
+            _atomic_write(backup, _snapshot_payload(previous))
+    _atomic_write(path, payload)
 
 
 def recover_snapshot(path):
@@ -197,6 +214,19 @@ def verify_snapshot(data):
         results.append({"path": entry["path"], "size": entry["size"],
                         "sha256": entry["sha256"], "status": status})
     return results
+
+
+def verification_progress(entries, results):
+    """Summarize visible verification progress without changing snapshot data."""
+    statuses = [row.get("status") for row in results if isinstance(row, dict)]
+    return {
+        "total": len(entries),
+        "checked": len(statuses),
+        "ok": statuses.count("UNCHANGED"),
+        "changed": statuses.count("MODIFIED"),
+        "missing": statuses.count("MISSING"),
+        "errors": statuses.count("ERROR"),
+    }
 
 
 def csv_safe(value):
@@ -225,6 +255,7 @@ class LedgerApp:
         self.entries = []
         self.results = []
         self.status = tk.StringVar()
+        self.progress = tk.StringVar()
         self.root.geometry("980x690")
         self.root.minsize(850, 620)
         self.frame = ttk.Frame(root, padding=12)
@@ -232,7 +263,10 @@ class LedgerApp:
         self.heading = ttk.Label(self.frame, font=("Segoe UI", 17, "bold"))
         self.heading.pack(anchor="w", pady=(0, 4))
         self.intro = ttk.Label(self.frame, wraplength=850)
-        self.intro.pack(anchor="w", pady=(0, 10))
+        self.intro.pack(anchor="w", pady=(0, 6))
+        ttk.Label(self.frame, textvariable=self.progress, font=("Segoe UI", 10, "bold")).pack(
+            anchor="w", pady=(0, 8)
+        )
         self.toolbar = ttk.Frame(self.frame)
         self.toolbar.pack(fill="x", pady=(0, 8))
         self.actions = [
@@ -287,6 +321,8 @@ class LedgerApp:
         self.localize()
 
     def refresh(self):
+        summary = verification_progress(self.entries, self.results)
+        self.progress.set(self.t("progress").format(**summary))
         self.table.delete(*self.table.get_children())
         status_map = {row["path"]: row["status"] for row in self.results}
         mapping = {"NOT CHECKED": "not_checked", "UNCHANGED": "ok",

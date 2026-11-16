@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "slug": "file-integrity-ledger",
+  "approved": true,
+  "kind": "integrity",
+  "background": "#14231C",
+  "accent": "#78D6A3",
+  "note": "Deterministic package icon only; not a Store listing screenshot."
+}

@@ -42,6 +42,10 @@ jobs:
           EXPLICIT_SLUG: ${{ inputs.slug }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: python tools/msix_push_product.py
+      - name: Generate approved package assets
+        if: steps.pick.outputs.ready == 'true'
+        run: python tools/generate_package_assets.py --slug "${{ steps.pick.outputs.slug }}"
+
       - name: Run factory regression tests
         if: steps.pick.outputs.ready == 'true'
         run: python -m unittest discover -s tests -v

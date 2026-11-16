@@ -44,6 +44,22 @@ class LedgerTests(unittest.TestCase):
         self.file.unlink()
         self.assertEqual(ledger.verify_snapshot(ledger.snapshot([original]))[0]["status"], "MISSING")
 
+    def test_verification_progress_summary(self):
+        entries = [self.entry()]
+        self.assertEqual(
+            ledger.verification_progress(entries, []),
+            {"total": 1, "checked": 0, "ok": 0, "changed": 0, "missing": 0, "errors": 0},
+        )
+        summary = ledger.verification_progress(entries, [
+            {"path": entries[0]["path"], "status": "UNCHANGED"},
+            {"path": "x", "status": "MODIFIED"},
+            {"path": "y", "status": "MISSING"},
+            {"path": "z", "status": "ERROR"},
+        ])
+        self.assertEqual(summary, {
+            "total": 1, "checked": 4, "ok": 1, "changed": 1, "missing": 1, "errors": 1
+        })
+
     def test_verify_unreadable_or_symlink(self):
         original = self.entry()
         self.file.unlink()
@@ -95,6 +111,28 @@ class LedgerTests(unittest.TestCase):
         out = self.root / "baseline.json"
         ledger.save_snapshot(out, s)
         self.assertEqual(ledger.load_snapshot(out), s)
+
+    def test_maximum_length_paths_roundtrip(self):
+        """100 accepted 2048-character paths must remain reloadable after saving."""
+        original = self.entry()
+        entries = []
+        for i in range(ledger.MAX_FILES):
+            prefix = str(self.root / f"entry-{i:03d}-")
+            self.assertLess(len(prefix), 2048)
+            path = prefix + "x" * (2048 - len(prefix))
+            entries.append(dict(original, path=path))
+        data = ledger.snapshot(entries)
+        out = self.root / "large-baseline.json"
+        ledger.save_snapshot(out, data)
+        self.assertGreater(out.stat().st_size, 128 * 1024)
+        self.assertEqual(ledger.load_snapshot(out), data)
+
+    def test_oversized_snapshot_is_rejected(self):
+        """The read cap applies to actual bytes, before JSON decoding."""
+        out = self.root / "oversized-baseline.json"
+        out.write_bytes(b" " * (ledger.MAX_SNAPSHOT_BYTES + 1))
+        with self.assertRaises(ValueError):
+            ledger.load_snapshot(out)
 
     def test_valid_previous_backup(self):
         out = self.root / "baseline.json"
