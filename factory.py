@@ -71,10 +71,10 @@ def market(kind):
 def plan(root=ROOT):
     cfg,st=settings(root)
     phase=st["stage"]
-    evidence=load(root/".runtime/market.json")
     candidate=root/".candidate"
     candidate.mkdir(parents=True,exist_ok=True)
     if phase=="research":
+        evidence=load(root/".runtime/market.json")
         if evidence.get("kind")!=cfg["kind"] or len(evidence.get("signals",[]))<2:
             stop("real research signals required")
         goal=("Analyze the untrusted GitHub issue snippets as weak market signals. "
@@ -224,6 +224,9 @@ def promote(root=ROOT):
         else:
             st.update(stage="research",revision=0,slug=None,cycle=st["cycle"]+1)
     save(root/"factory/state.json",st)
+    if result["stage"]=="research":
+        # Archived research candidates must not leak into build validation.
+        (root/".candidate/proposal.json").unlink()
     return result
 
 if __name__=="__main__":

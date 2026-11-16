@@ -1,0 +1,9 @@
+{
+  "schema_version": 1,
+  "slug": "focus-session-desk",
+  "approved": true,
+  "kind": "focus",
+  "background": "#162234",
+  "accent": "#4CC9F0",
+  "note": "Deterministic package icon only; not a Store listing screenshot."
+}
