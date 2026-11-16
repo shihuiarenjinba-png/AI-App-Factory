@@ -44,6 +44,22 @@ class LedgerTests(unittest.TestCase):
         self.file.unlink()
         self.assertEqual(ledger.verify_snapshot(ledger.snapshot([original]))[0]["status"], "MISSING")
 
+    def test_verification_progress_summary(self):
+        entries = [self.entry()]
+        self.assertEqual(
+            ledger.verification_progress(entries, []),
+            {"total": 1, "checked": 0, "ok": 0, "changed": 0, "missing": 0, "errors": 0},
+        )
+        summary = ledger.verification_progress(entries, [
+            {"path": entries[0]["path"], "status": "UNCHANGED"},
+            {"path": "x", "status": "MODIFIED"},
+            {"path": "y", "status": "MISSING"},
+            {"path": "z", "status": "ERROR"},
+        ])
+        self.assertEqual(summary, {
+            "total": 1, "checked": 4, "ok": 1, "changed": 1, "missing": 1, "errors": 1
+        })
+
     def test_verify_unreadable_or_symlink(self):
         original = self.entry()
         self.file.unlink()
