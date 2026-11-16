@@ -7,7 +7,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from main import (
     FocusTimer, add_task, blank_document, delete_task, find_task, load_document,
-    move_task, new_task, rename_task, save_document, toggle_task,
+    move_task, new_task, rename_task, save_document, task_progress, toggle_task,
     validate_document, validate_minutes
 )
 
@@ -36,6 +36,15 @@ class FocusDeskTests(unittest.TestCase):
         delete_task(self.data, a)
         self.assertEqual(len(self.data["tasks"]), 1)
         self.assertEqual(find_task(self.data, b), 0)
+
+    def test_task_progress_summary(self):
+        self.assertEqual(task_progress(self.data), {"done": 0, "total": 0, "percent": 0})
+        a = add_task(self.data, "A")
+        b = add_task(self.data, "B")
+        add_task(self.data, "C")
+        toggle_task(self.data, a)
+        toggle_task(self.data, b)
+        self.assertEqual(task_progress(self.data), {"done": 2, "total": 3, "percent": 67})
 
     def test_empty_and_invalid_task(self):
         for title in ("", "  ", "x" * 181, "bad\nname", "broken" + chr(0xD800)):
