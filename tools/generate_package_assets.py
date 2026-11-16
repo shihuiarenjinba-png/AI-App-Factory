@@ -109,3 +109,19 @@ def ensure_assets(root: Path, slug: str) -> list[Path]:
         path.write_bytes(_render(size, kind, background, accent))
         written.append(path)
     return written
+
+
+def main(argv=None) -> int:
+    import argparse
+    p = argparse.ArgumentParser()
+    p.add_argument("--slug", required=True)
+    p.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[1])
+    args = p.parse_args(argv)
+    paths = ensure_assets(args.root, args.slug)
+    for path in paths:
+        print(path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
