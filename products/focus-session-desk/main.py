@@ -165,6 +165,15 @@ def move_task(document, ident, delta):
     return True
 
 
+def task_progress(document):
+    """Return a stable task-completion summary without changing saved schema."""
+    validate_document(document)
+    total = len(document["tasks"])
+    done = sum(1 for task in document["tasks"] if task["done"])
+    percent = 0 if total == 0 else round(done * 100 / total)
+    return {"done": done, "total": total, "percent": percent}
+
+
 class FocusTimer:
     """Monotonic, pause-safe timer; never counts elapsed time while app is closed."""
     def __init__(self, minutes=25, clock=None):
@@ -234,7 +243,8 @@ WORDS = {
         "recovered": "バックアップから復旧しました。現在の内容を確認してください。",
         "finish": "集中時間が終了しました。お疲れさまでした！",
         "running": "実行中", "paused": "一時停止中", "idle": "準備完了", "finished": "完了",
-        "duration": "時間を変更", "cancel": "キャンセル", "ok": "OK"
+        "duration": "時間を変更", "cancel": "キャンセル", "ok": "OK",
+        "progress": "進捗：{done}/{total} 完了（{percent}%）"
     },
     "en": {
         "name": "Focus Session Desk", "subtitle": "Offline focus timer and task checklist",
@@ -247,7 +257,8 @@ WORDS = {
         "recovered": "Recovered from backup. Review the restored data.",
         "finish": "Focus session finished. Nice work!",
         "running": "Running", "paused": "Paused", "idle": "Ready", "finished": "Finished",
-        "duration": "Apply duration", "cancel": "Cancel", "ok": "OK"
+        "duration": "Apply duration", "cancel": "Cancel", "ok": "OK",
+        "progress": "Progress: {done}/{total} complete ({percent}%)"
     }
 }
 
@@ -310,6 +321,8 @@ class Desk:
         self.reset_button.pack(side="left", padx=4)
         self.tasks_frame = ttk.LabelFrame(self.frame, text=self.words("tasks"), padding=10)
         self.tasks_frame.pack(fill="both", expand=True)
+        self.progress_label = ttk.Label(self.tasks_frame, font=("Segoe UI", 10, "bold"))
+        self.progress_label.pack(anchor="w", pady=(0, 4))
         self.empty = ttk.Label(self.tasks_frame)
         self.empty.pack(anchor="w")
         self.tree = ttk.Treeview(self.tasks_frame, columns=("done", "title"), show="headings", selectmode="browse", height=8)
@@ -386,6 +399,10 @@ class Desk:
             self.tree.insert("", "end", iid=task["id"], values=("✓" if task["done"] else "", task["title"]))
         if previous and self.tree.exists(previous[0]):
             self.tree.selection_set(previous[0])
+        summary = task_progress(self.data)
+        self.progress_label.configure(
+            text=self.words("progress").format(**summary)
+        )
         self.empty.configure(text=self.words("empty") if not self.data["tasks"] else "")
         self.timer_state.configure(text=self.words(self.timer.state))
         self.pause_button.configure(text=self.words("resume") if self.timer.state == "paused" else self.words("pause"))
