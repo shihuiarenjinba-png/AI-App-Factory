@@ -40,6 +40,7 @@ TEXT = {
         "not_checked": "NOT CHECKED", "ok": "UNCHANGED", "modified": "MODIFIED",
         "missing": "MISSING", "error_result": "ERROR",
         "language": "English", "help": "Read-only: no delete, upload, sync or background scanning.",
+        "progress": "Files {total} | Checked {checked} | Unchanged {ok} | Changed {changed} | Missing {missing} | Errors {errors}",
     },
     "ja": {
         "title": "ファイル整合性台帳", "add": "ファイル追加", "remove": "行を除外",
@@ -60,6 +61,7 @@ TEXT = {
         "not_checked": "未検証", "ok": "一致", "modified": "変更あり",
         "missing": "見つからない", "error_result": "エラー",
         "language": "日本語", "help": "読み取り専用：削除・アップロード・同期・自動走査はしません。",
+        "progress": "登録 {total}件｜検証 {checked}件｜一致 {ok}｜変更 {changed}｜不明 {missing}｜エラー {errors}",
     },
 }
 
@@ -214,6 +216,19 @@ def verify_snapshot(data):
     return results
 
 
+def verification_progress(entries, results):
+    """Summarize visible verification progress without changing snapshot data."""
+    statuses = [row.get("status") for row in results if isinstance(row, dict)]
+    return {
+        "total": len(entries),
+        "checked": len(statuses),
+        "ok": statuses.count("UNCHANGED"),
+        "changed": statuses.count("MODIFIED"),
+        "missing": statuses.count("MISSING"),
+        "errors": statuses.count("ERROR"),
+    }
+
+
 def csv_safe(value):
     value = str(value)
     if value.lstrip().startswith(("=", "+", "-", "@")):
@@ -240,6 +255,7 @@ class LedgerApp:
         self.entries = []
         self.results = []
         self.status = tk.StringVar()
+        self.progress = tk.StringVar()
         self.root.geometry("980x690")
         self.root.minsize(850, 620)
         self.frame = ttk.Frame(root, padding=12)
@@ -247,7 +263,10 @@ class LedgerApp:
         self.heading = ttk.Label(self.frame, font=("Segoe UI", 17, "bold"))
         self.heading.pack(anchor="w", pady=(0, 4))
         self.intro = ttk.Label(self.frame, wraplength=850)
-        self.intro.pack(anchor="w", pady=(0, 10))
+        self.intro.pack(anchor="w", pady=(0, 6))
+        ttk.Label(self.frame, textvariable=self.progress, font=("Segoe UI", 10, "bold")).pack(
+            anchor="w", pady=(0, 8)
+        )
         self.toolbar = ttk.Frame(self.frame)
         self.toolbar.pack(fill="x", pady=(0, 8))
         self.actions = [
@@ -302,6 +321,8 @@ class LedgerApp:
         self.localize()
 
     def refresh(self):
+        summary = verification_progress(self.entries, self.results)
+        self.progress.set(self.t("progress").format(**summary))
         self.table.delete(*self.table.get_children())
         status_map = {row["path"]: row["status"] for row in self.results}
         mapping = {"NOT CHECKED": "not_checked", "UNCHANGED": "ok",
