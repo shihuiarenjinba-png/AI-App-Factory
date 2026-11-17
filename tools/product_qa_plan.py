@@ -8,6 +8,7 @@ verified MSIX handoff.
 from __future__ import annotations
 
 from copy import deepcopy
+import argparse
 from hashlib import sha256
 import json
 from pathlib import Path
@@ -248,3 +249,31 @@ def bind_plan(template: dict[str, Any], *, source_repository: str,
     if set(bound) != BOUND_KEYS:
         _fail("bound plan fields are invalid")
     return bound
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--plan", type=Path, required=True)
+    parser.add_argument("--slug", required=True)
+    parser.add_argument("--product-type", choices=("APP", "GAME", "GAME_3D"),
+                        required=True)
+    args = parser.parse_args(argv)
+    try:
+        value = load_template(
+            args.plan, expected_slug=args.slug, expected_type=args.product_type,
+        )
+    except (QAPlanError, OSError, json.JSONDecodeError) as exc:
+        print("HOLD:", str(exc))
+        return 2
+    print(json.dumps({
+        "status": "QA_PLAN_TEMPLATE_VALID",
+        "product_slug": value["product_slug"],
+        "product_type": value["product_type"],
+        "template_sha256": sha256(canonical(value)).hexdigest(),
+        "step_count": len(value["steps"]),
+    }, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
