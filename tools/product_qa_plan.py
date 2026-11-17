@@ -11,6 +11,14 @@ SCHEMA_VERSION = "windows-product-qa-plan-v1"
 SLUG = re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 STEP_ID = re.compile(r"^[a-z][a-z0-9_]{2,63}$")
 TEST_ID = re.compile(r"^[A-Z][A-Z0-9_]{2,63}$")
+KNOWN_TEST_IDS = {
+    "ARTIFACT_HASH", "PROCESS_START", "WINDOW_RESPONSIVE",
+    "UIA_FIND_CONTROL", "UIA_INVOKE", "UIA_READ_TEXT", "UIA_ASSERT_TEXT",
+    "NORMAL_EXIT", "SAVE_RELOAD", "PACKAGE_IDENTITY_READ",
+    "PACKAGE_VERSION_READ", "FILE_OUTPUT_EXISTS",
+    "EVENT_LOG_QUERY", "PROCESS_STATUS", "WINDOW_ENUMERATION",
+}
+DIAGNOSTIC_TEST_IDS = {"EVENT_LOG_QUERY", "PROCESS_STATUS", "WINDOW_ENUMERATION"}
 TOP_KEYS = {
     "schema_version", "product", "intent", "steps",
     "allowed_diagnostics", "success_criteria",
@@ -104,8 +112,9 @@ def validate_plan(value: Any, *, slug: str, kind: str) -> dict[str, Any]:
             _fail("invalid step_id")
         if step_id in seen:
             _fail("duplicate step_id")
-        if not isinstance(test_id, str) or not TEST_ID.fullmatch(test_id):
-            _fail("invalid test_id")
+        if (not isinstance(test_id, str) or not TEST_ID.fullmatch(test_id) or
+                test_id not in KNOWN_TEST_IDS):
+            _fail("invalid or unsupported test_id")
         if type(raw.get("required")) is not bool:
             _fail("required must be boolean")
         requires = raw.get("requires")
@@ -155,7 +164,8 @@ def validate_plan(value: Any, *, slug: str, kind: str) -> dict[str, Any]:
     diagnostics = value.get("allowed_diagnostics")
     if (not isinstance(diagnostics, list) or len(diagnostics) > 16 or
             len(diagnostics) != len(set(diagnostics)) or
-            any(not isinstance(x, str) or not TEST_ID.fullmatch(x) for x in diagnostics)):
+            any(not isinstance(x, str) or not TEST_ID.fullmatch(x)
+                or x not in DIAGNOSTIC_TEST_IDS for x in diagnostics)):
         _fail("invalid allowed_diagnostics")
     criteria = value.get("success_criteria")
     if (not isinstance(criteria, list) or not 1 <= len(criteria) <= 12 or
