@@ -64,8 +64,12 @@ def msix_data(path:Path)->dict:
             if len(applications)!=1:
                 fail("MSIX must declare exactly one executable application")
             executable=applications[0].attrib.get("Executable")
+            application_id=applications[0].attrib.get("Id")
             if not isinstance(executable,str):
                 fail("MSIX executable path missing")
+            if (not isinstance(application_id,str) or not application_id or
+                any(not (ch.isalnum() or ch in "._") for ch in application_id)):
+                fail("MSIX application Id invalid")
             exe_path=executable.replace("\\","/")
             components=exe_path.split("/")
             if (not exe_path.lower().endswith(".exe") or
@@ -92,7 +96,8 @@ def msix_data(path:Path)->dict:
     with path.open("rb") as reader:
         for piece in iter(lambda:reader.read(1024*1024),b""):digest.update(piece)
     fields.update(package_sha256=digest.hexdigest(),package_bytes=path.stat().st_size,
-                  executable_sha256=exe_digest.hexdigest())
+                  executable_sha256=exe_digest.hexdigest(),
+                  executable_path=exe_path,application_id=application_id)
     return fields
 
 def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:str,source_branch:str)->dict:
@@ -129,6 +134,8 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
        "package_sha256":actual["package_sha256"],
        "package_bytes":actual["package_bytes"],
        "executable_sha256":actual["executable_sha256"],
+       "executable_path":actual["executable_path"],
+       "application_id":actual["application_id"],
        "identity":{k:actual[k] for k in ("name","publisher","version")},
        "qa_plan":"qa-plan.json",
        "qa_plan_schema":"windows-product-qa-plan-v1",
