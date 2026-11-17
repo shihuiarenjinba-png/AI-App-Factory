@@ -9,3 +9,9 @@ Prioritize English/Japanese labels, useful first run, accessible controls, corre
 clear errors, 1024x768 compatibility, and real headless regression tests.
 Do not claim Windows installation, signing, Store certification, or sales readiness.
 Never publish, merge, or submit; all outputs are review-only.
+
+For build/improve stages, maintain .candidate/product/qa-plan.json using
+docs/PRODUCT_QA_PLAN.md. The QA plan is declarative data only: no raw shell,
+PowerShell, Python, Git, Store, or arbitrary executable commands. Use only the
+reviewed test_id vocabulary and safe parameter fields. Do not claim local Windows
+execution; Windows-all-auto will execute the plan separately.
