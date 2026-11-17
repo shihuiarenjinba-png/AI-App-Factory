@@ -20,7 +20,7 @@ def good_plan():
             {
                 "step_id":"process_start","test_id":"PROCESS_START","required":True,
                 "requires":["artifact_hash"],"purpose":"Launch and observe the exact product.",
-                "parameters":{"observation_seconds":5},"evidence":["exit_code","runtime_state"],
+                "parameters":{},"evidence":["exit_code","runtime_state"],
                 "on_fail":"STOP_AND_RETURN"
             }
         ],
