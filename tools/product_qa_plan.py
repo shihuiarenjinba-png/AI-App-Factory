@@ -126,13 +126,16 @@ def validate_plan(value: Any, *, slug: str, kind: str) -> dict[str, Any]:
         on_fail = raw.get("on_fail")
         if on_fail not in {"STOP_AND_RETURN", "CONTINUE_DIAGNOSTICS"}:
             _fail("invalid on_fail policy")
+        parameters = _parameters(raw.get("parameters"))
+        if test_id in {"ARTIFACT_HASH", "PROCESS_START"} and parameters:
+            _fail("baseline ARTIFACT_HASH/PROCESS_START parameters must be empty")
         normalized_steps.append({
             "step_id": step_id,
             "test_id": test_id,
             "required": raw["required"],
             "requires": list(requires),
             "purpose": purpose,
-            "parameters": _parameters(raw.get("parameters")),
+            "parameters": parameters,
             "evidence": list(evidence),
             "on_fail": on_fail,
         })
