@@ -11,6 +11,8 @@ import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
+from tools.product_qa_plan import load_plan
+
 SLUG=re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 SHA40=re.compile(r"^[a-f0-9]{40}$")
 OWNER="shihuiarenjinba-png"
@@ -102,6 +104,8 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
     app_manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
     if app_manifest.get("slug")!=slug or app_manifest.get("kind")!=kind:
         fail("product manifest / factory mismatch")
+    qa_plan_path=repo_root/"products"/slug/"qa-plan.json"
+    _,qa_plan_sha256=load_plan(qa_plan_path,slug=slug,kind=kind)
     approved_path=repo_root/"products"/slug/"store/approved-identity.json"
     if not approved_path.is_file():fail("official Identity approval input missing")
     approved=json.loads(approved_path.read_text(encoding="utf-8"))
@@ -122,12 +126,16 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
        "package_bytes":actual["package_bytes"],
        "executable_sha256":actual["executable_sha256"],
        "identity":{k:actual[k] for k in ("name","publisher","version")},
+       "qa_plan":"qa-plan.json",
+       "qa_plan_schema":"windows-product-qa-plan-v1",
+       "qa_plan_sha256":qa_plan_sha256,
     }
     dest=output/"factory-msix-handoff"
     if dest.exists():fail("output artifact already exists")
     dest.mkdir(parents=True)
     try:
         shutil.copyfile(package,dest/"package.msix")
+        shutil.copyfile(qa_plan_path,dest/"qa-plan.json")
         (dest/"handoff.json").write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
         if msix_data(dest/"package.msix")["package_sha256"]!=actual["package_sha256"]:
             fail("copied MSIX hash mismatch")
