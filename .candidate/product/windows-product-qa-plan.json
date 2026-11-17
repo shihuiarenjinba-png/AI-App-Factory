@@ -1,0 +1,45 @@
+{
+  "schema_version": "windows-product-qa-plan-template-v1",
+  "product_slug": "synthetic-sale-loop",
+  "product_type": "APP",
+  "plan_version": 1,
+  "steps": [
+    {
+      "step_id": "artifact-hash",
+      "action": "ARTIFACT_HASH",
+      "requires": [],
+      "required": true,
+      "params": {}
+    },
+    {
+      "step_id": "process-start",
+      "action": "PROCESS_START",
+      "requires": [
+        "artifact-hash"
+      ],
+      "required": true,
+      "params": {
+        "observation_seconds": 5
+      }
+    }
+  ],
+  "allowed_diagnostics": [
+    "PROCESS_STATUS",
+    "EVENT_LOG_QUERY"
+  ],
+  "forbidden_actions": [
+    "SOURCE_EDIT",
+    "ARBITRARY_SHELL",
+    "GIT_WRITE",
+    "STORE_SUBMIT",
+    "STORE_PUBLISH",
+    "SECURITY_POLICY_CHANGE"
+  ],
+  "success_policy": {
+    "required_steps_must_pass": true,
+    "evidence_return_required": true,
+    "product_e2e_authority": false,
+    "release_authority": false,
+    "store_authority": false
+  }
+}
