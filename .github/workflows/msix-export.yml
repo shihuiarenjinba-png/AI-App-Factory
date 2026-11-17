@@ -51,9 +51,9 @@ jobs:
       - name: Build MSIX on Windows with approved package identity
         if: steps.pick.outputs.ready == 'true'
         run: python tools/build_windows_msix.py --slug "${{ steps.pick.outputs.slug }}" --output dist/msix
-      - name: Assemble verified MSIX handoff
+      - name: Assemble verified MSIX + QA-plan handoff
         if: steps.pick.outputs.ready == 'true'
-        run: python tools/msix_handoff.py --slug "${{ steps.pick.outputs.slug }}" --msix "dist/msix/${{ steps.pick.outputs.slug }}.msix" --output dist/handoff
+        run: python tools/msix_handoff.py --slug "${{ steps.pick.outputs.slug }}" --msix "dist/msix/${{ steps.pick.outputs.slug }}.msix" --output dist/handoff --source-branch "${{ github.ref_name }}"
       - name: Export package and checksum for Windows-all-auto
         if: steps.pick.outputs.ready == 'true'
         uses: actions/upload-artifact@v4
