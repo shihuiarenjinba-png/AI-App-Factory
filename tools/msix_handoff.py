@@ -11,6 +11,8 @@ import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
+from tools.product_qa_plan import bind_plan, canonical, load_template
+
 SLUG=re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 SHA40=re.compile(r"^[a-f0-9]{40}$")
 OWNER="shihuiarenjinba-png"
@@ -114,14 +116,30 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
     for field in ("name","publisher","version"):
         if approved.get(field)!=actual[field]:fail("MSIX identity differs from approved "+field)
     basename="AI-App-Factory" if kind=="app" else "AI-Game-Factory"
+    source_repository="https://github.com/"+OWNER+"/"+basename
+    identity={k:actual[k] for k in ("name","publisher","version")}
+    qa_template=load_template(
+        repo_root/"products"/slug/"qa"/"windows-product-qa-plan.json",
+        expected_slug=slug,
+        expected_type={"app":"APP","game":"GAME"}[kind],
+    )
+    bound_qa_plan=bind_plan(
+        qa_template,
+        source_repository=source_repository,
+        source_sha=source_sha,
+        package_sha256=actual["package_sha256"],
+        executable_sha256=actual["executable_sha256"],
+        identity=identity,
+    )
     result={
-       "schema_version":1,"source_repository":"https://github.com/"+OWNER+"/"+basename,
+       "schema_version":1,"source_repository":source_repository,
        "source_sha":source_sha,"type":kind,"slug":slug,
-       "package":"package.msix","status":"QA_UNSIGNED",
+       "package":"package.msix","qa_plan":"qa-plan.json","status":"QA_UNSIGNED",
        "package_sha256":actual["package_sha256"],
        "package_bytes":actual["package_bytes"],
        "executable_sha256":actual["executable_sha256"],
-       "identity":{k:actual[k] for k in ("name","publisher","version")},
+       "qa_plan_template_sha256":bound_qa_plan["template_sha256"],
+       "identity":identity,
     }
     dest=output/"factory-msix-handoff"
     if dest.exists():fail("output artifact already exists")
@@ -129,6 +147,10 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
     try:
         shutil.copyfile(package,dest/"package.msix")
         (dest/"handoff.json").write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
+        (dest/"qa-plan.json").write_text(
+            json.dumps(bound_qa_plan,ensure_ascii=False,indent=2,sort_keys=True)+"\n",
+            encoding="utf-8",
+        )
         if msix_data(dest/"package.msix")["package_sha256"]!=actual["package_sha256"]:
             fail("copied MSIX hash mismatch")
     except BaseException:
