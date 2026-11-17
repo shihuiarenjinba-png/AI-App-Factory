@@ -127,6 +127,55 @@ class ProductQAPlanTests(unittest.TestCase):
         with self.assertRaisesRegex(QAPlanError, "observation"):
             validate_template(value)
 
+
+    def test_uia_set_text_is_bounded(self):
+        value = plan()
+        value["steps"].append({
+            "step_id": "set-search",
+            "action": "UIA_SET_TEXT",
+            "requires": ["artifact-hash", "process-start"],
+            "required": True,
+            "params": {
+                "name": "Search",
+                "control_type": "Edit",
+                "value": "synthetic-token",
+            },
+        })
+        validated = validate_template(value)
+        self.assertEqual(validated["steps"][-1]["action"], "UIA_SET_TEXT")
+
+    def test_uia_set_text_rejects_unsafe_shapes(self):
+        bad_params = (
+            {"name": "Search", "control_type": "Button", "value": "x"},
+            {"name": "Search", "control_type": "Edit", "value": "x" * 4097},
+            {"name": "Search", "control_type": "Edit", "command": "powershell"},
+            {"name": "Search", "control_type": "Edit"},
+        )
+        for params in bad_params:
+            with self.subTest(params=list(params)):
+                value = plan()
+                value["steps"].append({
+                    "step_id": "set-search",
+                    "action": "UIA_SET_TEXT",
+                    "requires": ["artifact-hash", "process-start"],
+                    "required": True,
+                    "params": params,
+                })
+                with self.assertRaises(QAPlanError):
+                    validate_template(value)
+
+    def test_uia_set_text_requires_process_start(self):
+        value = plan()
+        value["steps"].append({
+            "step_id": "set-search",
+            "action": "UIA_SET_TEXT",
+            "requires": ["artifact-hash"],
+            "required": True,
+            "params": {"name": "Search", "control_type": "Edit", "value": "x"},
+        })
+        with self.assertRaisesRegex(QAPlanError, "PROCESS_START"):
+            validate_template(value)
+
     def test_binding_requires_real_hash_shapes(self):
         with self.assertRaisesRegex(QAPlanError, "source SHA"):
             bind_plan(
