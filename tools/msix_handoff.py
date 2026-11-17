@@ -15,6 +15,7 @@ from tools.product_qa_plan import load_plan
 
 SLUG=re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 SHA40=re.compile(r"^[a-f0-9]{40}$")
+BRANCH=re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$")
 OWNER="shihuiarenjinba-png"
 
 def fail(reason):
@@ -94,9 +95,12 @@ def msix_data(path:Path)->dict:
                   executable_sha256=exe_digest.hexdigest())
     return fields
 
-def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:str)->dict:
+def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:str,source_branch:str)->dict:
     if not isinstance(slug,str) or not SLUG.fullmatch(slug):fail("invalid product slug")
     if not SHA40.fullmatch(str(source_sha)):fail("invalid Git source commit")
+    if (not isinstance(source_branch,str) or not BRANCH.fullmatch(source_branch) or
+        source_branch.startswith("/") or source_branch.endswith("/") or ".." in source_branch):
+        fail("invalid Git source branch")
     config=json.loads((repo_root/"factory/config.json").read_text(encoding="utf-8"))
     kind=config.get("kind")
     if kind not in ("app","game"):fail("factory app/game kind missing")
@@ -120,7 +124,7 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
     basename="AI-App-Factory" if kind=="app" else "AI-Game-Factory"
     result={
        "schema_version":1,"source_repository":"https://github.com/"+OWNER+"/"+basename,
-       "source_sha":source_sha,"type":kind,"slug":slug,
+       "source_sha":source_sha,"source_branch":source_branch,"type":kind,"slug":slug,
        "package":"package.msix","status":"QA_UNSIGNED",
        "package_sha256":actual["package_sha256"],
        "package_bytes":actual["package_bytes"],
@@ -149,13 +153,14 @@ def main(argv=None):
     parser.add_argument("--slug",required=True)
     parser.add_argument("--msix",required=True,type=Path)
     parser.add_argument("--output",required=True,type=Path)
+    parser.add_argument("--source-branch",required=True)
     parser.add_argument("--repository-root",type=Path,default=Path(__file__).resolve().parents[1])
     args=parser.parse_args(argv)
     try:
         head=subprocess.check_output(["git","rev-parse","HEAD"],
             cwd=args.repository_root,encoding="utf-8",timeout=8).strip()
         print(json.dumps(create_handoff(args.repository_root,args.slug,args.msix,
-            args.output,head),ensure_ascii=False))
+            args.output,head,args.source_branch),ensure_ascii=False))
         return 0
     except (OSError,ValueError,subprocess.CalledProcessError,subprocess.TimeoutExpired,KeyError) as exc:
         print("HOLD:",type(exc).__name__,str(exc)[:160],file=sys.stderr)
