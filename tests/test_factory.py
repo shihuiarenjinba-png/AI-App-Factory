@@ -44,7 +44,7 @@ class CoreTests(unittest.TestCase):
                 {
                     "step_id":"process_start","test_id":"PROCESS_START","required":True,
                     "requires":["artifact_hash"],"purpose":"Launch the exact product.",
-                    "parameters":{"observation_seconds":5},
+                    "parameters":{},
                     "evidence":["exit_code","runtime_state"],
                     "on_fail":"STOP_AND_RETURN"
                 }
