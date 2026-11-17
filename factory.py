@@ -91,7 +91,8 @@ def plan(root=ROOT):
         goal=("Implement a REAL working offline Windows prototype in .candidate/product: "
               "manifest.json (slug,kind,entry=main.py), README.md, main.py, "
               "tests/test_smoke.py, qa-plan.json. The qa-plan.json is the final pre-sale "
-              "Windows QA contract: use schema_version windows-product-qa-plan-v1; start "
+              "Windows QA contract: follow docs/PRODUCT_QA_PLAN.md exactly; use "
+              "schema_version windows-product-qa-plan-v1; start "
               "with required ARTIFACT_HASH then required PROCESS_START depending on it; "
               "describe additional product-specific tests as declarative test_id steps, "
               "parameters and dependencies. Never write raw shell/PowerShell/Python "
@@ -110,6 +111,7 @@ def plan(root=ROOT):
               "1024x768 sizing, save/restart stability and regression coverage. "
               "Modify ONLY .candidate/product. Preserve existing features. "
               "Update README, headless tests, and qa-plan.json so the final Windows QA "
+              "plan follows docs/PRODUCT_QA_PLAN.md and "
               "plan matches the actual current UI/features. Keep ARTIFACT_HASH -> "
               "PROCESS_START as mandatory baseline; use declarative test IDs and safe "
               "parameters, never raw commands. No downloads or API access.")
