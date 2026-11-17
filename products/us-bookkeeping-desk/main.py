@@ -4,10 +4,11 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import TYPES,METHODS,BookError,Store,suggest_entry,review_requirements_for_codes
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
 from receipt_vault import ReceiptVault,ReceiptError
+from budget import MonthlyBudgets
 
 class App(tk.Tk):
  def __init__(self):
-  super().__init__();self.title("Double-Entry Bookkeeping US");self.geometry("1180x760");self.minsize(980,650);self.s=Store();self.vault=ReceiptVault(self.s);self.row_entry_ids=[];self.protocol("WM_DELETE_WINDOW",self.close)
+  super().__init__();self.title("Double-Entry Bookkeeping US");self.geometry("1180x760");self.minsize(980,650);self.s=Store();self.budgets=MonthlyBudgets(self.s);self.vault=ReceiptVault(self.s);self.row_entry_ids=[];self.protocol("WM_DELETE_WINDOW",self.close)
   self.d=tk.StringVar(value=date.today().isoformat());self.desc=tk.StringVar();self.method=tk.StringVar(value=self.s.accounting_method);self.lines=[];self.build();self.refresh_accounts();self.refresh()
 
  def build(self):
@@ -30,6 +31,7 @@ class App(tk.Tk):
   ttk.Button(f,text="Attach receipts",command=self.attach_receipts).grid(row=12,column=1,columnspan=2,sticky="ew",pady=3)
   ttk.Button(f,text="Export journal CSV",command=self.export).grid(row=13,column=0,sticky="ew",pady=4)
   ttk.Button(f,text="Review receipts",command=self.review_receipts).grid(row=13,column=1,columnspan=2,sticky="ew",pady=4)
+  ttk.Button(f,text="Plan monthly spending",command=self.monthly_budget).grid(row=14,column=0,columnspan=3,sticky="ew",pady=3)
   f.columnconfigure(0,weight=2)
   nb=ttk.Notebook(p);p.add(nb,weight=3);j=ttk.Frame(nb,padding=8);r=ttk.Frame(nb,padding=8);nb.add(j,text="Journal");nb.add(r,text="Reports")
   self.tree=ttk.Treeview(j,columns=("d","x","a","db","cr"),show="headings")
@@ -153,6 +155,60 @@ class App(tk.Tk):
    messagebox.showinfo("Receipt saved","A SHA-256-verified copy was saved.",parent=win)
   ttk.Button(win,text="Save selected copy",command=save_selected).pack(side="left",padx=12,pady=8)
   ttk.Button(win,text="Close",command=win.destroy).pack(side="right",padx=12,pady=8)
+
+ def monthly_budget(self):
+  """Beginner workflow: choose an expense, set a monthly target, review posted actuals."""
+  win=tk.Toplevel(self);win.title("Monthly spending plan");win.geometry("750x480");win.minsize(620,380)
+  ttk.Label(win,text="Plan monthly spending",font=("Segoe UI",14,"bold")).pack(anchor="w",padx=12,pady=(12,3))
+  ttk.Label(win,text="Set a spending target, then compare it with saved journal entries. This does not change your books or calculate tax.").pack(anchor="w",padx=12)
+  form=ttk.Frame(win);form.pack(fill="x",padx=12,pady=10)
+  month=tk.StringVar(value=date.today().strftime("%Y-%m"))
+  account=tk.StringVar()
+  amount=tk.StringVar()
+  expense=[a for a in self.s.accounts() if a["type"]=="expense"]
+  labels=[f'{a["code"]} {a["name"]}' for a in expense]
+  ttk.Label(form,text="Month (YYYY-MM)").grid(row=0,column=0,sticky="w")
+  ttk.Entry(form,textvariable=month,width=13).grid(row=1,column=0,sticky="ew",padx=(0,8))
+  ttk.Label(form,text="Spending category").grid(row=0,column=1,sticky="w")
+  choices=ttk.Combobox(form,textvariable=account,values=labels,state="readonly")
+  choices.grid(row=1,column=1,sticky="ew",padx=(0,8))
+  if labels:choices.current(0)
+  ttk.Label(form,text="Target USD").grid(row=0,column=2,sticky="w")
+  ttk.Entry(form,textvariable=amount,width=13).grid(row=1,column=2,sticky="ew")
+  form.columnconfigure(1,weight=1)
+  summary=tk.StringVar(value="")
+  ttk.Label(win,textvariable=summary).pack(anchor="w",padx=12,pady=3)
+  frame=ttk.Frame(win);frame.pack(fill="both",expand=True,padx=12,pady=6)
+  columns=("category","planned","actual","remaining")
+  table=ttk.Treeview(frame,columns=columns,show="headings")
+  for key,title in zip(columns,("Category","Target USD","Recorded USD","Left USD")):table.heading(key,text=title)
+  table.column("category",width=260);table.column("planned",width=105,anchor="e")
+  table.column("actual",width=105,anchor="e");table.column("remaining",width=105,anchor="e")
+  scroll=ttk.Scrollbar(frame,orient="vertical",command=table.yview)
+  table.configure(yscrollcommand=scroll.set);table.pack(side="left",fill="both",expand=True)
+  scroll.pack(side="right",fill="y")
+  def show_report():
+   try:r=self.budgets.report(month.get())
+   except BookError as exc:messagebox.showerror("Check month",str(exc),parent=win);return
+   for item in table.get_children():table.delete(item)
+   for row in r["rows"]:
+    left=row["remaining_cents"]
+    table.insert("","end",values=(f'{row["code"]} {row["name"]}',
+      f'{row["planned_cents"]/100:,.2f}' if row["has_budget"] else "Not set",
+      f'{row["actual_cents"]/100:,.2f}',
+      f'{left/100:,.2f}' if left is not None else "Not set"))
+   summary.set(f'Target USD {r["planned_cents"]/100:,.2f}  |  Recorded USD {r["actual_cents"]/100:,.2f}  |  Without a target USD {r["unbudgeted_actual_cents"]/100:,.2f}')
+  def save_budget():
+   if not account.get():
+    messagebox.showinfo("Choose a category","Select an expense category first.",parent=win);return
+   try:self.budgets.set_budget(month.get(),account.get().split()[0],amount.get())
+   except BookError as exc:messagebox.showerror("Check target",str(exc),parent=win);return
+   show_report()
+  buttons=ttk.Frame(win);buttons.pack(fill="x",padx=12,pady=(0,12))
+  ttk.Button(buttons,text="Save spending target",command=save_budget).pack(side="left")
+  ttk.Button(buttons,text="Refresh comparison",command=show_report).pack(side="left",padx=8)
+  ttk.Button(buttons,text="Close",command=win.destroy).pack(side="right")
+  show_report()
 
  def tax_assets(self):
   mode=simpledialog.askstring("Tax / fixed assets","Enter sales tax, book depreciation, or tax depreciation")
