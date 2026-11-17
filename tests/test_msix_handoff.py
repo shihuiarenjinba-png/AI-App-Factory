@@ -69,6 +69,8 @@ class FactoryTransportTests(unittest.TestCase):
                          hashlib.sha256(b"windows test executable").hexdigest())
         self.assertEqual(meta["qa_plan_schema"],"windows-product-qa-plan-v1")
         self.assertEqual(meta["source_branch"],BRANCH)
+        self.assertEqual(meta["executable_path"],"demo.exe")
+        self.assertEqual(meta["application_id"],"App")
         self.assertEqual((saved/"qa-plan.json").read_text(),
                          (self.prod/"qa-plan.json").read_text())
         self.assertRegex(meta["qa_plan_sha256"],r"^[0-9a-f]{64}$")
