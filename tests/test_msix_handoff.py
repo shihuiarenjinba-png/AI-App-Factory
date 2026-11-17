@@ -68,6 +68,7 @@ class FactoryTransportTests(unittest.TestCase):
         self.assertEqual(meta["executable_sha256"],
                          hashlib.sha256(b"windows test executable").hexdigest())
         self.assertEqual(meta["qa_plan_schema"],"windows-product-qa-plan-v1")
+        self.assertEqual(meta["source_branch"],BRANCH)
         self.assertEqual((saved/"qa-plan.json").read_text(),
                          (self.prod/"qa-plan.json").read_text())
         self.assertRegex(meta["qa_plan_sha256"],r"^[0-9a-f]{64}$")
@@ -88,6 +89,12 @@ class FactoryTransportTests(unittest.TestCase):
         self.save_approved()
         with self.assertRaisesRegex(ValueError,"approved publisher"):
             create_handoff(self.root,"demo-product",self.package,self.root/"exports",SHA,BRANCH)
+
+    def test_invalid_source_branch_fails(self):
+        with self.assertRaisesRegex(ValueError,"source branch"):
+            create_handoff(
+                self.root,"demo-product",self.package,self.root/"exports",SHA,"../bad"
+            )
 
     def test_wrong_source_sha_fails(self):
         with self.assertRaisesRegex(ValueError,"Git source"):
