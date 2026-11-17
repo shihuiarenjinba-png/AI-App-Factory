@@ -98,7 +98,8 @@ def plan(root=ROOT):
               "Also write qa/windows-product-qa-plan.json using schema "
               "windows-product-qa-plan-template-v1. The QA plan must describe the "
               "sale-preflight Windows checks as action IDs + bounded params + explicit "
-              "requires dependencies; never embed shell commands, executable paths, "
+              "requires dependencies; use UIA_SET_TEXT only for bounded Edit-field " 
+              "input when a real product control requires text entry; never embed shell commands, executable paths, "
               "Git writes, Store actions, security changes, or authority flags. "
               "Always include ARTIFACT_HASH first and exactly one PROCESS_START that "
               "requires it. Add product-specific UIA read/find/invoke steps only when "
@@ -114,7 +115,8 @@ def plan(root=ROOT):
               "Modify ONLY .candidate/product. Preserve existing features. "
               "Update README and headless tests. Update "
               "qa/windows-product-qa-plan.json so it matches the current real product "
-              "and uses only structured action IDs, bounded params, and dependencies. "
+              "and uses only structured action IDs, bounded params, and dependencies. " 
+              "UIA_SET_TEXT is allowed only for bounded Edit-field input tied to a real control. "
               "Never put shell commands, Git writes, Store actions, security changes, "
               "or release authority in the plan. No downloads or API access.")
     snapshot={k:st.get(k) for k in ("schema","kind","stage","cycle","revision","slug")}
