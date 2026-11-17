@@ -46,7 +46,8 @@
               "UIA_FIND_WINDOW",
               "UIA_FIND_CONTROL",
               "UIA_INVOKE",
-              "UIA_READ_TEXT"
+              "UIA_READ_TEXT",
+              "UIA_SET_TEXT"
             ]
           },
           "requires": {
