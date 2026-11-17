@@ -20,3 +20,41 @@ Factoryは販売担当ではなく「製品のコード・Windows/MSIX候補の�
 ## 参照
 中央担当: https://github.com/shihuiarenjinba-png/Windows-all-auto/tree/codex/windows-all-auto-integration-20261026
 中央仕様: docs/FACTORY_TO_STORE_HANDOFF.md
+
+
+## Structured sale-preflight QA plan
+
+Every build/improve candidate must now include:
+
+`qa/windows-product-qa-plan.json`
+
+The GitHub-side development model writes this file after reading the actual
+product code.  It is deliberately not a shell script.  It contains closed,
+machine-readable test steps:
+
+```json
+{
+  "step_id": "process-start",
+  "action": "PROCESS_START",
+  "requires": ["artifact-hash"],
+  "required": true,
+  "params": {"observation_seconds": 5}
+}
+```
+
+Raw commands, executable paths, Git writes, Store operations, security-policy
+changes, and release authority are rejected.
+
+During MSIX export, `tools/msix_handoff.py` validates the model-authored
+template and emits `qa-plan.json` beside `package.msix` and
+`handoff.json`.  The exported plan is bound to the verified:
+
+- source repository and exact source SHA;
+- package SHA-256;
+- contained executable SHA-256;
+- approved package Identity and Version.
+
+Windows-all-auto must reject any mismatch and must HOLD any required action that
+its local trusted executor does not support.  Local test evidence and ACK
+receipts are returned separately; source repair remains a GitHub-side coding
+responsibility and requires a new source SHA before retest.
