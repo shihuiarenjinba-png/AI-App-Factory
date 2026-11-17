@@ -10,6 +10,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from tools.product_qa_plan import load_plan
+
 ROOT=Path(__file__).resolve().parent
 SLUG=re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 QUERIES={
@@ -88,7 +90,12 @@ def plan(root=ROOT):
         context=load(root/"proposals"/(st["slug"]+".json"))
         goal=("Implement a REAL working offline Windows prototype in .candidate/product: "
               "manifest.json (slug,kind,entry=main.py), README.md, main.py, "
-              "tests/test_smoke.py. Use Python stdlib/Tkinter only. "
+              "tests/test_smoke.py, qa-plan.json. The qa-plan.json is the final pre-sale "
+              "Windows QA contract: use schema_version windows-product-qa-plan-v1; start "
+              "with required ARTIFACT_HASH then required PROCESS_START depending on it; "
+              "describe additional product-specific tests as declarative test_id steps, "
+              "parameters and dependencies. Never write raw shell/PowerShell/Python "
+              "commands in the QA plan. Use Python stdlib/Tkinter only. "
               "Implement clear first-run UI and full interactions. "
               "For games implement playable loop, keyboard/mouse, game over and "
               "save/load. For apps implement useful functionality, validation, "
@@ -102,7 +109,10 @@ def plan(root=ROOT):
         goal=("Improve reliability, usability, first-run flow, honest error handling, "
               "1024x768 sizing, save/restart stability and regression coverage. "
               "Modify ONLY .candidate/product. Preserve existing features. "
-              "Update README and headless tests. No downloads or API access.")
+              "Update README, headless tests, and qa-plan.json so the final Windows QA "
+              "plan matches the actual current UI/features. Keep ARTIFACT_HASH -> "
+              "PROCESS_START as mandatory baseline; use declarative test IDs and safe "
+              "parameters, never raw commands. No downloads or API access.")
     snapshot={k:st.get(k) for k in ("schema","kind","stage","cycle","revision","slug")}
     save(root/".runtime/plan.json",snapshot)
     guidance=(root/"AGENTS.md").read_text(encoding="utf-8")
@@ -153,7 +163,7 @@ def validate(root=ROOT):
             stop("research evidence must reference two distinct repositories")
         return {"stage":"research","slug":slug}
     if any(part.parts[0]!="product" for part in files): stop("unexpected candidate root")
-    for req in ("manifest.json","README.md","main.py","tests/test_smoke.py"):
+    for req in ("manifest.json","README.md","main.py","tests/test_smoke.py","qa-plan.json"):
         if not (base/"product"/req).is_file(): stop("missing: "+req)
     if not (base/"product/README.md").read_text(encoding="utf-8").strip():
         stop("empty README")
@@ -203,7 +213,10 @@ def validate(root=ROOT):
     mf=load(base/"product/manifest.json")
     if mf.get("slug")!=st["slug"] or mf.get("kind")!=cfg["kind"] or mf.get("entry")!="main.py":
         stop("manifest/state mismatch")
-    return {"stage":st["stage"],"slug":st["slug"]}
+    _,qa_plan_sha256=load_plan(
+        base/"product/qa-plan.json",slug=st["slug"],kind=cfg["kind"]
+    )
+    return {"stage":st["stage"],"slug":st["slug"],"qa_plan_sha256":qa_plan_sha256}
 
 def promote(root=ROOT):
     result=validate(root);_,st=settings(root)
