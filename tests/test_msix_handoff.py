@@ -25,6 +25,23 @@ class FactoryTransportTests(unittest.TestCase):
         self.prod=self.root/"products/demo-product"
         (self.prod/"store").mkdir(parents=True)
         (self.prod/"manifest.json").write_text(json.dumps({"slug":"demo-product","kind":self.kind}))
+        self.qa_plan={
+            "schema_version":"windows-product-qa-plan-v1",
+            "product":{"slug":"demo-product","kind":self.kind},
+            "intent":"Final pre-sale local Windows QA for the exact package.",
+            "steps":[
+                {"step_id":"artifact_hash","test_id":"ARTIFACT_HASH","required":True,
+                 "requires":[],"purpose":"Verify exact artifact bytes.","parameters":{},
+                 "evidence":["artifact_sha256"],"on_fail":"STOP_AND_RETURN"},
+                {"step_id":"process_start","test_id":"PROCESS_START","required":True,
+                 "requires":["artifact_hash"],"purpose":"Launch exact product.",
+                 "parameters":{"observation_seconds":5},"evidence":["exit_code"],
+                 "on_fail":"STOP_AND_RETURN"}
+            ],
+            "allowed_diagnostics":["EVENT_LOG_QUERY","PROCESS_STATUS"],
+            "success_criteria":["All required steps pass and Evidence is returned."]
+        }
+        (self.prod/"qa-plan.json").write_text(json.dumps(self.qa_plan))
         self.approved={"reviewed":True,"source":"partner_center","store_id":"9PTESTING",
             "name":"OkinawaDesktopTools.Demo","publisher":"CN=TEST","version":"1.0.0.0"}
         self.save_approved()
@@ -49,6 +66,15 @@ class FactoryTransportTests(unittest.TestCase):
         self.assertEqual(meta["package_sha256"],hashlib.sha256(self.package.read_bytes()).hexdigest())
         self.assertEqual(meta["executable_sha256"],
                          hashlib.sha256(b"windows test executable").hexdigest())
+        self.assertEqual(meta["qa_plan_schema"],"windows-product-qa-plan-v1")
+        self.assertEqual((saved/"qa-plan.json").read_text(),
+                         (self.prod/"qa-plan.json").read_text())
+        self.assertRegex(meta["qa_plan_sha256"],r"^[0-9a-f]{64}$")
+
+    def test_missing_qa_plan_fails(self):
+        (self.prod/"qa-plan.json").unlink()
+        with self.assertRaisesRegex(ValueError,"QA_PLAN|qa-plan"):
+            create_handoff(self.root,"demo-product",self.package,self.root/"exports",SHA)
 
     def test_no_partner_center_evidence_fails(self):
         self.approved["reviewed"]=False
