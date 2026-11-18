@@ -103,7 +103,10 @@ def plan(root=ROOT):
               "Git writes, Store actions, security changes, or authority flags. "
               "Always include ARTIFACT_HASH first and exactly one PROCESS_START that "
               "requires it. Add product-specific UIA read/find/invoke steps only when "
-              "they correspond to real controls in this product. "
+              "they correspond to real controls in this product. Also add a small set "
+              "of required=false read-only diagnostic steps when useful; their actions "
+              "must appear in allowed_diagnostics so local Ollama may select only those "
+              "pre-authored diagnostics after a required-step failure. "
               "No downloads, telemetry, remote shell, payment, or secrets.")
     else:
         source=root/"products"/st["slug"]
@@ -117,7 +120,9 @@ def plan(root=ROOT):
               "qa/windows-product-qa-plan.json so it matches the current real product "
               "and uses only structured action IDs, bounded params, and dependencies. " 
               "UIA_SET_TEXT is allowed only for bounded Edit-field input tied to a real control. "
-              "Never put shell commands, Git writes, Store actions, security changes, "
+              "Keep failure diagnostics required=false and read-only; prefer PROCESS_STATUS, "
+              "UIA_FIND_WINDOW, UIA_FIND_CONTROL, or UIA_READ_TEXT and list the chosen action "
+              "in allowed_diagnostics. Never put shell commands, Git writes, Store actions, security changes, "
               "or release authority in the plan. No downloads or API access.")
     snapshot={k:st.get(k) for k in ("schema","kind","stage","cycle","revision","slug")}
     save(root/".runtime/plan.json",snapshot)
