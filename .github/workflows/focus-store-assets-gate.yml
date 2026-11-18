@@ -1,0 +1,23 @@
+name: Focus Store PNG delivery gate
+
+on:
+  pull_request:
+    paths:
+      - 'products/focus-session-desk/store/assets/**'
+      - 'products/focus-session-desk/tests/test_store_assets.py'
+      - '.github/workflows/focus-store-assets-gate.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  focus-store-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate real PNG bytes, dimensions and CRC
+        run: python -m unittest discover -s products/focus-session-desk/tests -p test_store_assets.py -v
