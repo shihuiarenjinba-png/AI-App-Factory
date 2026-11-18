@@ -3,9 +3,12 @@
 This is a delivery gate only. It does not change product code, Identity, or Version.
 Run: python -m unittest products/focus-session-desk/tests/test_store_assets.py
 """
+import hashlib
+import io
 import struct
 import unittest
 import zlib
+import zipfile
 from pathlib import Path
 
 ASSETS = Path(__file__).resolve().parents[1] / "store" / "assets"
@@ -55,6 +58,28 @@ class StoreAssetsTest(unittest.TestCase):
             with self.subTest(filename=filename):
                 self.assertTrue((ASSETS / filename).is_file(), f"missing delivery asset: {filename}")
                 validate_png(ASSETS / filename, dimensions)
+
+
+    def test_package_zip_payload_roundtrip(self):
+        """Preflight only: package-style ZIP paths and exact byte preservation.
+
+        Does not assert that a real MSIX was built, signed or installed.
+        """
+        original = {}
+        output = io.BytesIO()
+        with zipfile.ZipFile(output, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+            for filename, dimensions in EXPECTED.items():
+                data = (ASSETS / filename).read_bytes()
+                validate_png(ASSETS / filename, dimensions)
+                name = "Assets/" + filename
+                original[name] = hashlib.sha256(data).hexdigest()
+                archive.writestr(name, data)
+        output.seek(0)
+        with zipfile.ZipFile(output, "r") as archive:
+            self.assertIsNone(archive.testzip())
+            self.assertEqual(set(archive.namelist()), set(original))
+            for name, expected_sha in original.items():
+                self.assertEqual(hashlib.sha256(archive.read(name)).hexdigest(), expected_sha)
 
 
 if __name__ == "__main__":
