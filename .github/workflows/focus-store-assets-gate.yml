@@ -15,9 +15,43 @@ jobs:
   focus-store-assets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout exact source head (not PR merge ref)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Verify exact source head
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD)"
+          echo "expected_source_sha=$EXPECTED_HEAD"
+          echo "actual_source_sha=$actual"
+          test "$actual" = "$EXPECTED_HEAD"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Validate real PNG bytes, dimensions and CRC
         run: python -m unittest discover -s products/focus-session-desk/tests -p test_store_assets.py -v
+      - name: Record asset SHA-256 and source provenance
+        shell: bash
+        run: |
+          mkdir -p focus-delivery-evidence
+          git rev-parse HEAD > focus-delivery-evidence/source-sha.txt
+          python - <<'PY'
+          from pathlib import Path
+          import hashlib
+          assets = Path('products/focus-session-desk/store/assets')
+          names = ('StoreLogo.png', 'Square150.png', 'Square44.png')
+          lines = [f'{hashlib.sha256((assets / n).read_bytes()).hexdigest()}  {n}' for n in names]
+          Path('focus-delivery-evidence/assets-sha256.txt').write_text('\n'.join(lines) + '\n', encoding='utf-8')
+          print('\n'.join(lines))
+          PY
+      - name: Upload preflight provenance (not a real MSIX)
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-png-preflight-${{ github.run_id }}
+          path: focus-delivery-evidence/
+          if-no-files-found: error
+          retention-days: 30
