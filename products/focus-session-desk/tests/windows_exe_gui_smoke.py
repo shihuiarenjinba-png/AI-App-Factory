@@ -39,18 +39,27 @@ try:
         edits[-1].click_input()
         receipt["task_entry_target"] = "uia_last_edit"
     else:
-        # Anchor to the actual Add button: task Entry is immediately to its left.
-        # Fixed window-bottom offsets are unreliable across DPI and runner themes.
-        add_button = window.child_window(title="追加", control_type="Button")
-        add_button.wait("visible", timeout=10)
-        add_rect = add_button.rectangle()
+        # Tkinter on hosted Windows exposes widgets as unnamed Pane peers.
+        # Locate the wide task-entry pane by its geometry within the task row,
+        # rather than requiring a named UIA Button that does not exist.
         win_rect = window.rectangle()
-        x = max(win_rect.left + 35, add_rect.left - 85)
-        y = (add_rect.top + add_rect.bottom) // 2
-        assert win_rect.left < x < add_rect.left and win_rect.top < y < win_rect.bottom, (win_rect, add_rect, x, y)
+        panes = []
+        for control in window.descendants(control_type="Pane"):
+            rect = control.rectangle()
+            width, height = rect.right - rect.left, rect.bottom - rect.top
+            if (0.30 * win_rect.width() < width < 0.75 * win_rect.width()
+                    and 15 <= height <= 40
+                    and rect.top > win_rect.top + 0.70 * win_rect.height()
+                    and rect.bottom < win_rect.bottom - 35):
+                panes.append((control, rect))
+        assert len(panes) == 1, "Expected one task-entry Pane; found " + repr(
+            [[r.left, r.top, r.right, r.bottom] for _, r in panes])
+        rect = panes[0][1]
+        x, y = (rect.left + rect.right) // 2, (rect.top + rect.bottom) // 2
         from pywinauto.mouse import click
         click(coords=(x, y))
-        receipt["task_entry_target"] = "left_of_add_button"
+        receipt["task_entry_target"] = "geometry_verified_uia_pane"
+        receipt["task_entry_rectangle"] = [rect.left, rect.top, rect.right, rect.bottom]
         receipt["task_entry_click_xy"] = [x, y]
     send_keys("^a{BACKSPACE}Focus smoke task{ENTER}", with_spaces=True, pause=0.08)
     deadline = time.time() + 12
