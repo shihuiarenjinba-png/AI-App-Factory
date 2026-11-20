@@ -11,6 +11,7 @@ from pathlib import Path
 
 from pywinauto import Desktop
 from pywinauto.keyboard import send_keys
+from pywinauto.mouse import click
 
 exe = Path(sys.argv[1]).resolve()
 out = Path(sys.argv[2]).resolve()
@@ -74,15 +75,47 @@ try:
     assert data["tasks"][0]["title"] == "Focus smoke task"
     receipt["steps"].append("task_added_and_persisted")
     window.capture_as_image().save(out / "02-task-added.png")
-    # Switch language via actual native button.
-    window.child_window(title="English", control_type="Button").click_input()
+    # Tk/ttk buttons are unnamed Pane peers on this Windows runner. Resolve
+    # the unique footer language button by measured window-relative geometry.
+    def click_native_pane(area, *, expected_width=(60, 100)):
+        win = window.rectangle()
+        candidates = []
+        for control in window.descendants(control_type="Pane"):
+            rect = control.rectangle()
+            width, height = rect.right - rect.left, rect.bottom - rect.top
+            if (expected_width[0] <= width <= expected_width[1]
+                    and 15 <= height <= 40 and area(rect, win)):
+                candidates.append(rect)
+        assert len(candidates) == 1, "Ambiguous native Pane target: " + repr(
+            [[r.left, r.top, r.right, r.bottom] for r in candidates])
+        r = candidates[0]
+        click(coords=((r.left + r.right) // 2, (r.top + r.bottom) // 2))
+        return [r.left, r.top, r.right, r.bottom]
+
+    receipt["language_button_rect"] = click_native_pane(
+        lambda r, w: r.top > w.bottom - 65 and r.right > w.right - 35)
+
     time.sleep(0.8)
     assert json.loads(state.read_text(encoding="utf-8"))["language"] == "en"
     receipt["steps"].append("native_language_switch_en")
     window.capture_as_image().save(out / "03-english.png")
     # Start/pause/resume/reset through the native UI, not direct Python model calls.
+    def w_top(win, rect):
+        return (win.top + 0.28 * win.height() < rect.top < win.top + 0.40 * win.height())
+
     for label, expected in (("Start", "running"), ("Pause", "paused"), ("Resume", "running"), ("Reset", "idle")):
-        window.child_window(title=label, control_type="Button").click_input()
+        # Native timer row: duration, start, pause/resume, reset. Use the
+        # measured Pane row, not inaccessible UIA Button names.
+        index = {"Start": 1, "Pause": 2, "Resume": 2, "Reset": 3}[label]
+        win = window.rectangle()
+        row = sorted((c.rectangle() for c in window.descendants(control_type="Pane")
+                      if 60 <= c.rectangle().width() <= 100
+                      and 15 <= c.rectangle().height() <= 40
+                      and w_top(win, c.rectangle())), key=lambda r: r.left)
+        assert len(row) == 4, "Expected four timer controls; got " + repr(
+            [[r.left, r.top, r.right, r.bottom] for r in row])
+        r = row[index]
+        click(coords=((r.left + r.right) // 2, (r.top + r.bottom) // 2))
         time.sleep(0.6)
         saved = json.loads(state.read_text(encoding="utf-8"))
         assert saved["session"] == ("interrupted" if expected in ("running", "paused") else "idle"), (label, saved)
