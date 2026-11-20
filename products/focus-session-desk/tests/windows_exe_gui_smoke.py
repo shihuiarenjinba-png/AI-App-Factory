@@ -31,10 +31,17 @@ try:
     # Window activation can move focus away from the task entry on Windows CI.
     # Target the actual native task Entry explicitly (the last Edit, after minutes).
     edits = window.descendants(control_type="Edit")
-    assert len(edits) >= 2, f"Expected duration and task edits; found {len(edits)}"
-    task_entry = edits[-1]
-    task_entry.click_input()
-    task_entry.type_keys("Focus smoke task{ENTER}", with_spaces=True, pause=0.08)
+    # Tk/ttk controls may be exposed as a single top-level HWND on hosted Windows.
+    # Do not require UIA Edit peers: activate the visible task-entry area instead.
+    if edits:
+        edits[-1].click_input()
+    else:
+        rect = window.rectangle()
+        receipt["uia_edit_count"] = 0
+        receipt["window_size"] = [rect.width(), rect.height()]
+        # Task entry is in the bottom task action row, above the footer.
+        window.click_input(coords=(min(140, rect.width() // 4), rect.height() - 105))
+    send_keys("Focus smoke task{ENTER}", with_spaces=True, pause=0.08)
     deadline = time.time() + 12
     while time.time() < deadline:
         if state.exists():
