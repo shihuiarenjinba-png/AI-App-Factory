@@ -92,11 +92,41 @@ try:
         click(coords=((r.left + r.right) // 2, (r.top + r.bottom) // 2))
         return [r.left, r.top, r.right, r.bottom]
 
-    receipt["language_button_rect"] = click_native_pane(
-        lambda r, w: r.top > w.bottom - 65 and r.right > w.right - 35)
-
-    time.sleep(0.8)
-    assert json.loads(state.read_text(encoding="utf-8"))["language"] == "en"
+    # Keep the actual UIA peer so we can distinguish a missed mouse click
+    # from a product persistence defect. Never toggle a second time after success.
+    win = window.rectangle()
+    language_peers = []
+    for peer in window.descendants(control_type="Pane"):
+        rect = peer.rectangle()
+        if (60 <= rect.width() <= 100 and 15 <= rect.height() <= 40
+                and rect.top > win.bottom - 65 and rect.right > win.right - 35):
+            language_peers.append((peer, rect))
+    assert len(language_peers) == 1, "Ambiguous language peer: " + repr(
+        [[r.left, r.top, r.right, r.bottom] for _, r in language_peers])
+    language_peer, language_rect = language_peers[0]
+    receipt["language_button_rect"] = [
+        language_rect.left, language_rect.top, language_rect.right, language_rect.bottom]
+    receipt["language_before"] = json.loads(state.read_text(encoding="utf-8"))["language"]
+    assert receipt["language_before"] == "ja"
+    for method in ("uia_click_input", "mouse_center", "focus_space"):
+        if method == "uia_click_input":
+            language_peer.click_input()
+        elif method == "mouse_center":
+            click(coords=((language_rect.left + language_rect.right) // 2,
+                          (language_rect.top + language_rect.bottom) // 2))
+        else:
+            language_peer.set_focus()
+            send_keys("{SPACE}")
+        time.sleep(0.8)
+        current_language = json.loads(state.read_text(encoding="utf-8"))["language"]
+        receipt.setdefault("language_attempts", []).append(
+            {"method": method, "saved_language": current_language})
+        window.capture_as_image().save(out / ("language-" + method + ".png"))
+        if current_language == "en":
+            break
+    else:
+        raise AssertionError("Native language control did not persist en: " +
+                             repr(receipt["language_attempts"]))
     receipt["steps"].append("native_language_switch_en")
     window.capture_as_image().save(out / "03-english.png")
     # Start/pause/resume/reset through the native UI, not direct Python model calls.
