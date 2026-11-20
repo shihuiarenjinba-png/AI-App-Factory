@@ -92,46 +92,29 @@ try:
         click(coords=((r.left + r.right) // 2, (r.top + r.bottom) // 2))
         return [r.left, r.top, r.right, r.bottom]
 
-    # Hosted Tkinter exposes footer controls as unnamed Pane peers. The prior
-    # rightmost-only assumption failed on the actual Windows runner. Probe both
-    # edge controls and accept only a persisted JA -> EN transition.
-    win = window.rectangle()
-    footer = []
-    for peer in window.descendants(control_type="Pane"):
-        rect = peer.rectangle()
-        if (60 <= rect.width() <= 100 and 15 <= rect.height() <= 40
-                and rect.top > win.bottom - 65
-                and (rect.left < win.left + 130 or rect.right > win.right - 35)):
-            footer.append((peer, rect))
-    # Reject duplicates/ambiguous geometry rather than clicking arbitrary UI.
-    unique = {}
-    for peer, rect in footer:
-        unique[(rect.left, rect.top, rect.right, rect.bottom)] = (peer, rect)
-    footer = sorted(unique.values(), key=lambda pair: pair[1].left)
-    assert len(footer) == 2, "Expected two distinct footer edge controls: " + repr(list(unique))
-    receipt["footer_candidates"] = [list(key) for key in unique]
+    # UIA exposes Tk/ttk widgets as unnamed Pane peers; clicking their UIA
+    # rectangles did not activate the language button on the Windows runner.
+    # Use Tk's native keyboard focus traversal instead. In build(), the task
+    # Entry is followed by six task buttons and then the language button.
     receipt["language_before"] = json.loads(state.read_text(encoding="utf-8"))["language"]
     assert receipt["language_before"] == "ja"
-    for peer, rect in footer:
-        # Do not retry the same control with Space: that could accidentally
-        # reverse a successful toggle when state persistence is delayed.
-        peer.click_input()
-        deadline = time.time() + 3
-        current_language = "ja"
-        while time.time() < deadline:
-            current_language = json.loads(state.read_text(encoding="utf-8"))["language"]
-            if current_language == "en":
-                break
-            time.sleep(0.2)
-        receipt.setdefault("language_attempts", []).append(
-            {"rectangle": [rect.left, rect.top, rect.right, rect.bottom],
-             "saved_language": current_language})
-        window.capture_as_image().save(out / ("language-candidate-" + str(len(receipt["language_attempts"])) + ".png"))
-        if current_language == "en":
-            receipt["language_button_rect"] = [rect.left, rect.top, rect.right, rect.bottom]
+    entry_rect = receipt["task_entry_rectangle"] if receipt["task_entry_target"] == "geometry_verified_uia_pane" else None
+    if entry_rect is None:
+        # The actual task entry is the last Edit in this UI, when exposed.
+        er = edits[-1].rectangle()
+        entry_rect = [er.left, er.top, er.right, er.bottom]
+    click(coords=((entry_rect[0] + entry_rect[2]) // 2,
+                  (entry_rect[1] + entry_rect[3]) // 2))
+    send_keys("{TAB 7}{SPACE}", pause=0.12)
+    deadline = time.time() + 5
+    while time.time() < deadline:
+        if json.loads(state.read_text(encoding="utf-8"))["language"] == "en":
             break
+        time.sleep(0.2)
     else:
-        raise AssertionError("No footer control persisted en: " + repr(receipt["language_attempts"]))
+        window.capture_as_image().save(out / "language-keyboard-failed.png")
+        raise AssertionError("Native keyboard focus traversal did not persist en")
+    receipt["language_method"] = "task_entry_tab_7_space"
     receipt["steps"].append("native_language_switch_en")
     window.capture_as_image().save(out / "03-english.png")
     # Start/pause/resume/reset through the native UI, not direct Python model calls.
