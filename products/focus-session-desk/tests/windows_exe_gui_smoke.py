@@ -35,13 +35,22 @@ try:
     # Do not require UIA Edit peers: activate the visible task-entry area instead.
     if edits:
         edits[-1].click_input()
+        receipt["task_entry_target"] = "uia_last_edit"
     else:
-        rect = window.rectangle()
-        receipt["uia_edit_count"] = 0
-        receipt["window_size"] = [rect.width(), rect.height()]
-        # Task entry is in the bottom task action row, above the footer.
-        window.click_input(coords=(min(140, rect.width() // 4), rect.height() - 105))
-    send_keys("Focus smoke task{ENTER}", with_spaces=True, pause=0.08)
+        # Anchor to the actual Add button: task Entry is immediately to its left.
+        # Fixed window-bottom offsets are unreliable across DPI and runner themes.
+        add_button = window.child_window(title="追加", control_type="Button")
+        add_button.wait("visible", timeout=10)
+        add_rect = add_button.rectangle()
+        win_rect = window.rectangle()
+        x = max(win_rect.left + 35, add_rect.left - 85)
+        y = (add_rect.top + add_rect.bottom) // 2
+        assert win_rect.left < x < add_rect.left and win_rect.top < y < win_rect.bottom, (win_rect, add_rect, x, y)
+        from pywinauto.mouse import click
+        click(coords=(x, y))
+        receipt["task_entry_target"] = "left_of_add_button"
+        receipt["task_entry_click_xy"] = [x, y]
+    send_keys("^a{BACKSPACE}Focus smoke task{ENTER}", with_spaces=True, pause=0.08)
     deadline = time.time() + 12
     while time.time() < deadline:
         if state.exists():
