@@ -28,8 +28,13 @@ try:
     window.set_focus()
     window.capture_as_image().save(out / "01-first-launch.png")
     receipt["steps"].append("native_exe_visible")
-    # Initial keyboard focus is the task-entry widget, as set by Desk.build().
-    send_keys("Focus smoke task{ENTER}", pause=0.08)
+    # Window activation can move focus away from the task entry on Windows CI.
+    # Target the actual native task Entry explicitly (the last Edit, after minutes).
+    edits = window.descendants(control_type="Edit")
+    assert len(edits) >= 2, f"Expected duration and task edits; found {len(edits)}"
+    task_entry = edits[-1]
+    task_entry.click_input()
+    task_entry.type_keys("Focus smoke task{ENTER}", with_spaces=True, pause=0.08)
     deadline = time.time() + 12
     while time.time() < deadline:
         if state.exists():
