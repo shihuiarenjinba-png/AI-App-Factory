@@ -111,6 +111,10 @@ finally:
             (out / "uia-controls.json").write_text(
                 json.dumps(controls, ensure_ascii=False, indent=2), encoding="utf-8"
             )
+            # Surface diagnostic control names in the job log as well as the artifact.
+            # The artifact is not always directly inspectable by automated supervisors.
+            print("GUI_DIAGNOSTIC_CONTROLS=" + json.dumps(controls[:100], ensure_ascii=False), flush=True)
+            print("GUI_DIAGNOSTIC_WINDOW_RECT=" + str(window.rectangle()), flush=True)
     if proc.poll() is None:
         proc.kill()
         proc.wait(timeout=10)
