@@ -92,41 +92,46 @@ try:
         click(coords=((r.left + r.right) // 2, (r.top + r.bottom) // 2))
         return [r.left, r.top, r.right, r.bottom]
 
-    # Keep the actual UIA peer so we can distinguish a missed mouse click
-    # from a product persistence defect. Never toggle a second time after success.
+    # Hosted Tkinter exposes footer controls as unnamed Pane peers. The prior
+    # rightmost-only assumption failed on the actual Windows runner. Probe both
+    # edge controls and accept only a persisted JA -> EN transition.
     win = window.rectangle()
-    language_peers = []
+    footer = []
     for peer in window.descendants(control_type="Pane"):
         rect = peer.rectangle()
         if (60 <= rect.width() <= 100 and 15 <= rect.height() <= 40
-                and rect.top > win.bottom - 65 and rect.right > win.right - 35):
-            language_peers.append((peer, rect))
-    assert len(language_peers) == 1, "Ambiguous language peer: " + repr(
-        [[r.left, r.top, r.right, r.bottom] for _, r in language_peers])
-    language_peer, language_rect = language_peers[0]
-    receipt["language_button_rect"] = [
-        language_rect.left, language_rect.top, language_rect.right, language_rect.bottom]
+                and rect.top > win.bottom - 65
+                and (rect.left < win.left + 130 or rect.right > win.right - 35)):
+            footer.append((peer, rect))
+    # Reject duplicates/ambiguous geometry rather than clicking arbitrary UI.
+    unique = {}
+    for peer, rect in footer:
+        unique[(rect.left, rect.top, rect.right, rect.bottom)] = (peer, rect)
+    footer = sorted(unique.values(), key=lambda pair: pair[1].left)
+    assert len(footer) == 2, "Expected two distinct footer edge controls: " + repr(list(unique))
+    receipt["footer_candidates"] = [list(key) for key in unique]
     receipt["language_before"] = json.loads(state.read_text(encoding="utf-8"))["language"]
     assert receipt["language_before"] == "ja"
-    for method in ("uia_click_input", "mouse_center", "focus_space"):
-        if method == "uia_click_input":
-            language_peer.click_input()
-        elif method == "mouse_center":
-            click(coords=((language_rect.left + language_rect.right) // 2,
-                          (language_rect.top + language_rect.bottom) // 2))
-        else:
-            language_peer.set_focus()
-            send_keys("{SPACE}")
-        time.sleep(0.8)
-        current_language = json.loads(state.read_text(encoding="utf-8"))["language"]
+    for peer, rect in footer:
+        # Do not retry the same control with Space: that could accidentally
+        # reverse a successful toggle when state persistence is delayed.
+        peer.click_input()
+        deadline = time.time() + 3
+        current_language = "ja"
+        while time.time() < deadline:
+            current_language = json.loads(state.read_text(encoding="utf-8"))["language"]
+            if current_language == "en":
+                break
+            time.sleep(0.2)
         receipt.setdefault("language_attempts", []).append(
-            {"method": method, "saved_language": current_language})
-        window.capture_as_image().save(out / ("language-" + method + ".png"))
+            {"rectangle": [rect.left, rect.top, rect.right, rect.bottom],
+             "saved_language": current_language})
+        window.capture_as_image().save(out / ("language-candidate-" + str(len(receipt["language_attempts"])) + ".png"))
         if current_language == "en":
+            receipt["language_button_rect"] = [rect.left, rect.top, rect.right, rect.bottom]
             break
     else:
-        raise AssertionError("Native language control did not persist en: " +
-                             repr(receipt["language_attempts"]))
+        raise AssertionError("No footer control persisted en: " + repr(receipt["language_attempts"]))
     receipt["steps"].append("native_language_switch_en")
     window.capture_as_image().save(out / "03-english.png")
     # Start/pause/resume/reset through the native UI, not direct Python model calls.
