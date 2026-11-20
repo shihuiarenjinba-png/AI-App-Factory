@@ -1,5 +1,7 @@
 """Windows-native EXE GUI smoke for Focus Session Desk; fail closed on missing evidence."""
 import hashlib
+import contextlib
+import traceback
 import json
 import os
 import subprocess
@@ -87,6 +89,28 @@ try:
     receipt["steps"].append("native_normal_exit")
     receipt["result"] = "PASS"
 finally:
+    # Preserve actionable evidence even if UIA cannot expose Tkinter widgets.
+    if sys.exc_info()[0] is not None:
+        receipt["failure_type"] = sys.exc_info()[0].__name__
+        receipt["failure_detail"] = str(sys.exc_info()[1])
+        (out / "failure-traceback.txt").write_text(
+            "".join(traceback.format_exception(*sys.exc_info())), encoding="utf-8"
+        )
+        with contextlib.suppress(Exception):
+            window.capture_as_image().save(out / "failure-window.png")
+        with contextlib.suppress(Exception):
+            with (out / "uia-tree.txt").open("w", encoding="utf-8") as stream:
+                with contextlib.redirect_stdout(stream):
+                    window.print_control_identifiers(depth=8)
+        with contextlib.suppress(Exception):
+            controls = []
+            for control in window.descendants():
+                rect = control.rectangle()
+                controls.append({"name": control.window_text(), "type": control.element_info.control_type,
+                                 "rectangle": [rect.left, rect.top, rect.right, rect.bottom]})
+            (out / "uia-controls.json").write_text(
+                json.dumps(controls, ensure_ascii=False, indent=2), encoding="utf-8"
+            )
     if proc.poll() is None:
         proc.kill()
         proc.wait(timeout=10)
