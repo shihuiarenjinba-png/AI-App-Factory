@@ -1,0 +1,20 @@
+name: File Integrity Store PNG delivery gate
+on:
+  pull_request:
+    paths:
+      - 'products/file-integrity-ledger/store/assets/**'
+      - 'products/file-integrity-ledger/tests/test_store_assets.py'
+      - '.github/workflows/integrity-store-assets-gate.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  integrity-store-assets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate PNG dimensions CRC and package-style ZIP roundtrip
+        run: python -m unittest discover -s products/file-integrity-ledger/tests -p test_store_assets.py -v
