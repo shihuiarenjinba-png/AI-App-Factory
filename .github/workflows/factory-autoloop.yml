@@ -1,0 +1,28 @@
+name: Factory MCP handoff validation (no OpenAI API)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: codex/factory-autoloop-20261026
+          persist-credentials: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate Factory source with no model API
+        run: |
+          python -m compileall -q factory.py tools tests
+          python -m unittest discover -s tests -v
+      - name: Explain orchestration ownership
+        run: |
+          echo "Product research, code changes and checkpoint decisions are performed by ChatGPT scheduled tasks using the GitHub connector."
+          echo "GitHub Actions handles deterministic CI, Windows builds, and validated artifact transfers only."
+          echo "No API key is used. This workflow does not schedule, run or invoke an AI model."

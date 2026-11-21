@@ -1,1 +1,121 @@
 # AI-App-Factory
+
+## Purpose
+Independent app development factory. Uses GitHub Actions and OpenAI Codex to
+research public GitHub issue demand signals, create a prototype, run two bounded
+improvement rounds, and repeat. GitHub issues are weak market proxies, NOT sales proof.
+
+This is a review-gated prototype infrastructure, not a finished autonomous Store publisher.
+
+## Activation (manual, once per repository)
+1. Review tests and merge the bootstrap Draft PR into main (scheduler requires default branch).
+2. Under Settings -> Secrets and variables -> Actions, create secret OPENAI_API_KEY.
+3. Under Actions -> Variables, create FACTORY_ENABLED with value true.
+4. Under Settings -> Actions -> General, enable GitHub Actions creation of pull requests.
+5. Set a provider-side API usage budget; check Actions job and billing quotas.
+6. Manually dispatch "Factory 15 minute cycle" once and inspect all job logs.
+7. Review the resulting Draft PR; merge only when acceptable.
+
+The Actions CRON runs every 15 minutes, but it may be delayed or dropped.
+The workflow pauses if an unmerged codex/factory-* PR exists, preventing overlap.
+The state in factory/state.json advances only when that human-reviewed PR merges.
+Schedule on the feature branch alone is INACTIVE.
+
+Stages: research -> build -> improve #1 -> improve #2 -> research next product.
+Products are staged in products/<slug>; proposals are in proposals/<slug>.json.
+No new GitHub repos are created automatically in this first phase.
+
+## Local smoke verification
+
+    python -m unittest discover -s tests -v
+    python -m py_compile factory.py
+
+- Codex runs with workspace permissions and no GitHub write token.
+- A clean CI runner validates generated candidate files, type, provenance, paths,
+  symlinks, size and test execution (timeouts).
+- A separate write-capable runner only creates a Draft PR; never main commits or merges.
+- The OpenAI key and GitHub write token are not passed to generated products.
+- No actual Windows UI test, commercial licensing verification, installer signing,
+  MSIX, Partner Center upload or Microsoft certification is performed by this repo.
+- Windows-data, Windows-checker, Windows-Automator and Windows-all-auto remain
+  downstream independent systems, currently with unfinished live integration.
+- Windows QA, identity and final commercial gate are mandatory before any sale.
+- All work uses reviewed branches; do not bypass a HOLD.
+
+## Failure circuit breaker and test isolation
+
+After 3 failed scheduled workflow runs within 24 hours the factory refuses further
+AI invocations until the window clears and the operator reviews errors.
+Generated tests execute in a memory/CPU/PID-bounded, network-disabled, non-root,
+read-only Docker container. The clean promotion job never executes generated tests.
+
+## Quality gates added during follow-up audit
+- The Codex job checks staged AND unstaged tracked changes before any generated artifact is accepted.
+- Generated tests must run at least one test successfully; skips and expected failures require review.
+- Product code cannot silently import process/network/system modules or call dynamic exec/eval.
+- Improvements must modify actual code and regression tests, and cannot silently delete existing files.
+- Pull request promotion stages only the expected state and product/proposal directory.
+- The scheduler still requires merge into the default branch, OpenAI credentials and opt-in variable.
+
+## Windows EXE before Partner Center Identity (Draft work branch)
+
+A committed APP under `products/<slug>` can be built to a real Windows EXE
+without any Store ID, approved Identity, OPENAI_API_KEY, or paid Codex API.
+On a Windows machine with Python 3.12, Git and PyInstaller 6.16.0:
+
+```powershell
+python tools/build_windows_exe.py --slug example-tool --expected-sha (git rev-parse HEAD) --output dist/preidentity
+```
+
+The script checks the exact clean Git source SHA, product manifest, and lane.
+It emits `<slug>.exe` plus `exe-receipt.json` with the real executable
+SHA-256, status `EXE_QA_UNSIGNED`, and `store_id: null`. It refuses
+overwrites, uncommitted changes, linked product files, or non-Windows runners.
+
+The `Factory pre-Identity Windows EXE` workflow can create the same
+5-day-retained QA artifact on an isolated `codex/*` push with exactly one
+changed product, or via a reviewed manual dispatch. It is not a Store package.
+No actual product is currently committed on this development branch, so
+this is a tested build path, **not a claimed real EXE artifact**.
+
+After local Windows QA, the operator must obtain the *real* Partner Center
+Identity, return the attested Identity through the separate Provisioner,
+then build and inspect MSIX. The Provisioner pins
+`codex/factory-autoloop-20261026`; this stacked Draft branch must be
+reviewed and integrated into that source branch before a live round trip.
+
+
+## SHA-pinned EXE reuse for MSIX (Draft APP build path)
+
+For a **real committed APP product** and a Provisioner-validated job, capture
+the exact `source_sha`, `source_branch` and `request_id` before the official
+Identity return. On a Windows checkout of that source commit, with PyInstaller:
+
+```powershell
+python tools/build_windows_exe.py --slug $Slug --expected-sha $SourceSha --source-branch $SourceBranch --request-id $RequestId --output dist/preidentity
+```
+
+The local Provisioner adapter passes these fields from its validated job and
+checks the resulting EXE bytes/receipt. A detached Provisioner checkout also
+needs its origin branch ref to match the pinned source SHA.
+
+After **authenticated** Partner Center Identity is returned to the same
+`codex/*` Factory branch, and approved PNG assets exist, build the MSIX from
+the *same EXE bytes*, without a second PyInstaller build:
+
+```powershell
+python tools/build_windows_msix_from_exe.py --slug $Slug --exe-evidence dist/preidentity --source-sha $SourceSha --source-branch $SourceBranch --request-id $RequestId --output dist/msix-prebuilt
+```
+
+The builder rejects modified source, mismatched receipt/request/branch/SHA,
+missing official Identity, altered EXE, invalid MSIX container, and package
+identity or embedded EXE SHA mismatches. Output contains the actual
+`<slug>.msix` and `msix-build-receipt.json` with package SHA-256.
+
+**HOLD:** This new builder is not yet wired into the existing
+`msix-export.yml` Actions artifact route. The old handoff script currently
+labels the post-Identity Git HEAD as `source_sha`; it must be adapted to
+preserve the original source SHA and separately record the packaging HEAD
+before claiming immutable Factory-to-Windows-all-auto E2E provenance.
+No actual product, official Identity, signed package, local install or
+Windows-all-auto E2E PASS is established by these offline tests.
