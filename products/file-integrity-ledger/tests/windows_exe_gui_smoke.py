@@ -1,5 +1,7 @@
 """Native Windows EXE first-use smoke; no source files or Store state changed."""
 import hashlib
+import csv
+import tempfile
 import json
 import os
 from pathlib import Path
@@ -8,7 +10,7 @@ import sys
 import time
 import traceback
 
-from pywinauto import Desktop
+from pywinauto import Desktop, keyboard
 
 exe = Path(sys.argv[1]).resolve()
 out = Path(sys.argv[2]).resolve()
@@ -38,7 +40,56 @@ try:
     window.capture_as_image().save(out / "01-first-use.png")
     assert (out / "01-first-use.png").stat().st_size > 1000
     receipt["steps"].append("native_exe_first_use_visible_and_screenshot_saved")
-    # No automatic file selection or dialog acceptance: read-only first-use check.
+
+    # Exercise native GUI against disposable fixtures only, never real user files.
+    with tempfile.TemporaryDirectory(prefix="integrity-native-e2e-") as folder:
+        work = Path(folder)
+        target = work / "fixture.txt"
+        target.write_bytes(b"integrity-original\\n")
+        baseline = {
+            "schema": 1, "kind": "file-integrity-ledger",
+            "entries": [{"path": str(target), "size": target.stat().st_size,
+                         "sha256": hashlib.sha256(target.read_bytes()).hexdigest()}],
+        }
+        baseline_path = work / "baseline.json"
+        baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
+
+        def open_baseline():
+            window.set_focus()
+            keyboard.send_keys("^o")
+            dialog = Desktop(backend="uia").window(title_re=".*Open.*")
+            dialog.wait("visible", timeout=15)
+            edits = dialog.descendants(control_type="Edit")
+            assert edits, "Open snapshot dialog has no filename edit"
+            edits[-1].set_edit_text(str(baseline_path))
+            keyboard.send_keys("{ENTER}")
+            dialog.wait_not("visible", timeout=15)
+            time.sleep(0.7)
+
+        def verify_expected(label, expected):
+            window.set_focus()
+            keyboard.send_keys("^r")
+            time.sleep(0.7)
+            if expected != "UNCHANGED":
+                warning = Desktop(backend="uia").window(title_re=".*Verify now.*")
+                warning.wait("visible", timeout=12)
+                warning.child_window(title="OK", control_type="Button").click_input()
+                warning.wait_not("visible", timeout=10)
+            texts = [x.window_text() for x in window.descendants() if x.window_text()]
+            combined = " ".join(texts)
+            assert expected in combined, f"{label}: expected {expected}, observed {combined[:500]}"
+            window.capture_as_image().save(out / f"{label}.png")
+            receipt["steps"].append(f"{label}:{expected}")
+
+        open_baseline()
+        receipt["steps"].append("native_snapshot_opened")
+        verify_expected("02-unchanged", "UNCHANGED")
+        target.write_bytes(b"integrity-changed\\n")
+        verify_expected("03-modified", "MODIFIED")
+        target.unlink()
+        verify_expected("04-missing", "MISSING")
+        assert not target.exists(), "Fixture deletion did not occur"
+        receipt["steps"].append("fixture_only_no_user_files_accessed")
     window.close()
     proc.wait(timeout=15)
     assert proc.returncode == 0, f"Native EXE exit code {proc.returncode}"
