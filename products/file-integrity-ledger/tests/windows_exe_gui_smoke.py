@@ -57,16 +57,25 @@ try:
         def open_baseline():
             window.set_focus()
             keyboard.send_keys("^o")
-            # Tkinter's native file picker may be hosted outside the EXE process
-            # or exposed through a different accessibility class on Windows.
-            # Use the common dialog's keyboard contract, not title/process lookup.
-            time.sleep(1.5)
-            keyboard.send_keys("%n")  # Alt+N focuses the File name field.
-            time.sleep(0.3)
-            keyboard.send_keys(str(baseline_path), with_spaces=True)
-            keyboard.send_keys("{ENTER}")
-            time.sleep(1.5)
-            # Subsequent status assertions fail closed if the picker did not load.
+            # Wait for the actual native picker and interact with its edit control.
+            # Sending Alt+N and Enter without verifying focus previously left the
+            # picker open, causing a false failure at the UNCHANGED assertion.
+            picker = Desktop(backend="uia").window(title_re=".*Open snapshot.*")
+            picker.wait("visible", timeout=15)
+            edits = picker.descendants(control_type="Edit")
+            assert edits, "Snapshot picker has no accessible filename edit"
+            filename = next((e for e in edits if e.element_info.automation_id == "1148"), edits[-1])
+            filename.set_edit_text(str(baseline_path))
+            open_button = picker.child_window(auto_id="1", control_type="Button")
+            if open_button.exists(timeout=2):
+                open_button.click_input()
+            else:
+                filename.set_focus()
+                keyboard.send_keys("{ENTER}")
+            picker.wait_not("visible", timeout=15)
+            window.wait("visible", timeout=15)
+            texts = [x.window_text() for x in window.descendants() if x.window_text()]
+            assert str(target) in " ".join(texts), "Snapshot picker closed without loading fixture"
 
         def verify_expected(label, expected):
             window.set_focus()
