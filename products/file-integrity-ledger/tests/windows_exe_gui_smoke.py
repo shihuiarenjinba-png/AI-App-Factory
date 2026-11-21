@@ -60,8 +60,19 @@ try:
             # Wait for the actual native picker and interact with its edit control.
             # Sending Alt+N and Enter without verifying focus previously left the
             # picker open, causing a false failure at the UNCHANGED assertion.
-            picker = Desktop(backend="uia").window(title_re=".*Open snapshot.*")
-            picker.wait("visible", timeout=15)
+            picker = None
+            deadline = time.monotonic() + 15
+            while time.monotonic() < deadline:
+                dialogs = [w for w in Desktop(backend="uia").windows()
+                           if w.is_visible() and w.element_info.class_name == "#32770"]
+                if dialogs:
+                    picker = dialogs[-1]
+                    break
+                time.sleep(0.25)
+            if picker is None:
+                visible = [(w.window_text(), w.element_info.class_name)
+                           for w in Desktop(backend="uia").windows() if w.is_visible()]
+                raise AssertionError(f"Native picker not found; windows: {visible!r}")
             edits = picker.descendants(control_type="Edit")
             assert edits, "Snapshot picker has no accessible filename edit"
             filename = next((e for e in edits if e.element_info.automation_id == "1148"), edits[-1])
