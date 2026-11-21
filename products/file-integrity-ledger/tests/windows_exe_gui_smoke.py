@@ -57,11 +57,21 @@ try:
         def open_baseline():
             window.set_focus()
             keyboard.send_keys("^o")
-            dialog = Desktop(backend="uia").window(title_re=".*Open.*")
-            dialog.wait("visible", timeout=15)
-            edits = dialog.descendants(control_type="Edit")
-            assert edits, "Open snapshot dialog has no filename edit"
+            # Native common dialogs are localized; do not depend on English title.
+            deadline = time.monotonic() + 20
+            dialog = None
+            while time.monotonic() < deadline:
+                matches = [w for w in Desktop(backend="win32").windows(process=proc.pid)
+                           if w.class_name() == "#32770" and w.is_visible()]
+                if matches:
+                    dialog = matches[0]
+                    break
+                time.sleep(0.25)
+            assert dialog is not None, "Snapshot dialog not found by process/class"
+            edits = dialog.descendants(class_name="Edit")
+            assert edits, "Snapshot dialog has no filename edit"
             edits[-1].set_edit_text(str(baseline_path))
+            dialog.set_focus()
             keyboard.send_keys("{ENTER}")
             dialog.wait_not("visible", timeout=15)
             time.sleep(0.7)
