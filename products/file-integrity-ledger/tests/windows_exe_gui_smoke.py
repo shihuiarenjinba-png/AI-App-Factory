@@ -57,24 +57,16 @@ try:
         def open_baseline():
             window.set_focus()
             keyboard.send_keys("^o")
-            # Native common dialogs are localized; do not depend on English title.
-            deadline = time.monotonic() + 20
-            dialog = None
-            while time.monotonic() < deadline:
-                matches = [w for w in Desktop(backend="win32").windows(process=proc.pid)
-                           if w.class_name() == "#32770" and w.is_visible()]
-                if matches:
-                    dialog = matches[0]
-                    break
-                time.sleep(0.25)
-            assert dialog is not None, "Snapshot dialog not found by process/class"
-            edits = dialog.descendants(class_name="Edit")
-            assert edits, "Snapshot dialog has no filename edit"
-            edits[-1].set_edit_text(str(baseline_path))
-            dialog.set_focus()
+            # Tkinter's native file picker may be hosted outside the EXE process
+            # or exposed through a different accessibility class on Windows.
+            # Use the common dialog's keyboard contract, not title/process lookup.
+            time.sleep(1.5)
+            keyboard.send_keys("%n")  # Alt+N focuses the File name field.
+            time.sleep(0.3)
+            keyboard.send_keys(str(baseline_path), with_spaces=True)
             keyboard.send_keys("{ENTER}")
-            dialog.wait_not("visible", timeout=15)
-            time.sleep(0.7)
+            time.sleep(1.5)
+            # Subsequent status assertions fail closed if the picker did not load.
 
         def verify_expected(label, expected):
             window.set_focus()
