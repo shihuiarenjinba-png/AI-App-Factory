@@ -107,12 +107,20 @@ try:
                     keyboard.send_keys("%n")
                     keyboard.send_keys(str(baseline_path), with_spaces=True, vk_packet=True)
                     keyboard.send_keys("{ENTER}")
-            try:
-                picker.wait_not("visible", timeout=15)
-            except Exception as exc:
+            # Desktop.windows() yields UIAWrapper instances, not WindowSpecification.
+            # UIAWrapper has no wait_not(); poll actual visibility.
+            close_deadline = time.monotonic() + 15
+            while time.monotonic() < close_deadline:
+                try:
+                    if not picker.is_visible():
+                        break
+                except (RuntimeError, LookupError, OSError):
+                    break  # Destroyed native dialog also means closed.
+                time.sleep(0.25)
+            else:
                 visible = [(w.window_text(), w.element_info.class_name)
                            for w in Desktop(backend="uia").windows() if w.is_visible()]
-                raise AssertionError(f"Snapshot picker remained open; windows={visible!r}") from exc
+                raise AssertionError(f"Snapshot picker remained open; windows={visible!r}")
             window.wait("visible", timeout=15)
             texts = [x.window_text() for x in window.descendants() if x.window_text()]
             assert str(target) in " ".join(texts), "Snapshot picker closed without loading fixture"
