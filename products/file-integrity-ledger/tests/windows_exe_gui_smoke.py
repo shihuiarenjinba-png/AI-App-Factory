@@ -127,8 +127,17 @@ try:
                            for w in Desktop(backend="uia").windows() if w.is_visible()]
                 raise AssertionError(f"Snapshot picker remained open; windows={visible!r}")
             window.wait("visible", timeout=15)
+            # Tkinter/ttk rows are not reliably exposed by UIA on hosted runners.
+            # Capture a post-open image and control inventory before failing closed;
+            # picker closure alone is NOT evidence that the snapshot was loaded.
+            window.capture_as_image().save(out / "02-after-open.png")
             texts = [x.window_text() for x in window.descendants() if x.window_text()]
-            assert str(target) in " ".join(texts), "Snapshot picker closed without loading fixture"
+            (out / "after-open-controls.json").write_text(
+                json.dumps({"visible_texts": texts, "target": str(target),
+                            "window_title": window.window_text()}, indent=2), encoding="utf-8")
+            assert str(target) in " ".join(texts), (
+                "Snapshot load not proven by UIA; inspect 02-after-open.png and "
+                "after-open-controls.json before changing the assertion")
 
         def verify_expected(label, expected):
             window.set_focus()
@@ -138,7 +147,14 @@ try:
                 warning = Desktop(backend="uia").window(title_re=".*Verify now.*")
                 warning.wait("visible", timeout=12)
                 warning.child_window(title="OK", control_type="Button").click_input()
-                warning.wait_not("visible", timeout=10)
+                close_by = time.monotonic() + 10
+                while time.monotonic() < close_by:
+                    if not any(w.is_visible() and w.window_text() == warning.window_text()
+                               for w in Desktop(backend="uia").windows()):
+                        break
+                    time.sleep(0.2)
+                else:
+                    raise AssertionError("Verify warning did not close")
             texts = [x.window_text() for x in window.descendants() if x.window_text()]
             combined = " ".join(texts)
             assert expected in combined, f"{label}: expected {expected}, observed {combined[:500]}"
