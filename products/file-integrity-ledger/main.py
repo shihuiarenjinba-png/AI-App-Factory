@@ -264,6 +264,7 @@ class LedgerApp:
         self.root.bind("<Control-o>", lambda event: self.open())
         self.root.bind("<Control-s>", lambda event: self.save())
         self.root.bind("<Control-r>", lambda event: self.verify())
+        self.root.bind("<Control-e>", lambda event: self.export())
         self.localize()
         self.status.set(TEXT[self.language]["empty"])
 
