@@ -73,17 +73,40 @@ try:
                 visible = [(w.window_text(), w.element_info.class_name)
                            for w in Desktop(backend="uia").windows() if w.is_visible()]
                 raise AssertionError(f"Native picker not found; windows: {visible!r}")
+            # Some hosted Windows pickers expose no UIA Edit control.
+            # Try UIA, Win32, then the keyboard filename shortcut.
             edits = picker.descendants(control_type="Edit")
-            assert edits, "Snapshot picker has no accessible filename edit"
-            filename = next((e for e in edits if e.element_info.automation_id == "1148"), edits[-1])
-            filename.set_edit_text(str(baseline_path))
-            open_button = picker.child_window(auto_id="1", control_type="Button")
-            if open_button.exists(timeout=2):
-                open_button.click_input()
+            if edits:
+                filename = next((e for e in edits if e.element_info.automation_id == "1148"), edits[-1])
+                filename.set_edit_text(str(baseline_path))
+                open_button = picker.child_window(auto_id="1", control_type="Button")
+                if open_button.exists(timeout=2):
+                    open_button.click_input()
+                else:
+                    filename.set_focus()
+                    keyboard.send_keys("{ENTER}")
             else:
-                filename.set_focus()
-                keyboard.send_keys("{ENTER}")
-            picker.wait_not("visible", timeout=15)
+                from pywinauto import Application
+                win32_edits = []
+                try:
+                    native = Application(backend="win32").connect(handle=picker.handle).window(handle=picker.handle)
+                    win32_edits = native.descendants(class_name="Edit")
+                except Exception:
+                    pass
+                if win32_edits:
+                    win32_edits[-1].set_edit_text(str(baseline_path))
+                    keyboard.send_keys("{ENTER}")
+                else:
+                    picker.set_focus()
+                    keyboard.send_keys("%n")
+                    keyboard.send_keys(str(baseline_path), with_spaces=True, vk_packet=True)
+                    keyboard.send_keys("{ENTER}")
+            try:
+                picker.wait_not("visible", timeout=15)
+            except Exception as exc:
+                visible = [(w.window_text(), w.element_info.class_name)
+                           for w in Desktop(backend="uia").windows() if w.is_visible()]
+                raise AssertionError(f"Snapshot picker remained open; windows={visible!r}") from exc
             window.wait("visible", timeout=15)
             texts = [x.window_text() for x in window.descendants() if x.window_text()]
             assert str(target) in " ".join(texts), "Snapshot picker closed without loading fixture"
