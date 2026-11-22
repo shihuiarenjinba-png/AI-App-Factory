@@ -56,7 +56,17 @@ try:
 
         def open_baseline():
             window.set_focus()
-            keyboard.send_keys("^o")
+            # Invoke the visible product button instead of relying on Ctrl+O.
+            # Hosted Windows runners have intermittently failed to deliver the
+            # keyboard accelerator despite the Tk top-level being visible.
+            open_buttons = [c for c in window.descendants(control_type="Button")
+                            if c.window_text() in ("Open snapshot", "記録を開く")]
+            if len(open_buttons) != 1:
+                controls = [(c.window_text(), c.element_info.control_type)
+                            for c in window.descendants() if c.window_text()]
+                raise AssertionError(f"Expected one Open snapshot button; controls={controls!r}")
+            open_buttons[0].click_input()
+            receipt["steps"].append("native_open_button_clicked")
             # Wait for the actual native picker and interact with its edit control.
             # Sending Alt+N and Enter without verifying focus previously left the
             # picker open, causing a false failure at the UNCHANGED assertion.
