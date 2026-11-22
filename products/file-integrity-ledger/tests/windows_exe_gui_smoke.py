@@ -110,15 +110,17 @@ try:
                     keyboard.send_keys("%n")
                     keyboard.send_keys(str(baseline_path), with_spaces=True, vk_packet=True)
                     keyboard.send_keys("{ENTER}")
-            # Desktop.windows() yields UIAWrapper instances, not WindowSpecification.
-            # UIAWrapper has no wait_not(); poll actual visibility.
+            # Re-enumerate live dialogs instead of trusting a cached UIAWrapper.
+            # A destroyed picker can retain stale element visibility in UIA.
+            picker_handle = picker.handle
             close_deadline = time.monotonic() + 15
             while time.monotonic() < close_deadline:
-                try:
-                    if not picker.is_visible():
-                        break
-                except (RuntimeError, LookupError, OSError):
-                    break  # Destroyed native dialog also means closed.
+                live = [w for w in Desktop(backend="uia").windows()
+                        if w.handle == picker_handle
+                        and w.element_info.class_name == "#32770"
+                        and w.is_visible()]
+                if not live:
+                    break
                 time.sleep(0.25)
             else:
                 visible = [(w.window_text(), w.element_info.class_name)
