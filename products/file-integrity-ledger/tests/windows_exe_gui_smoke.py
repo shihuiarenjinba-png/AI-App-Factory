@@ -201,12 +201,29 @@ try:
                             {"handle": h, "title": win32gui.GetWindowText(h),
                              "class": win32gui.GetClassName(h)}
                             for h in native_handles]}, indent=2), encoding="utf-8")
-                    assert len(native_handles) == 1, (
-                        f"{label}: disabled app without unique native modal")
-                    # This modal is reached only after the read-only Verify
-                    # action. Acknowledge the identified dialog, then require
-                    # the parent to become enabled and CSV evidence to match.
-                    modal = Desktop(backend="win32").window(handle=native_handles[0])
+                    # A Tk showwarning(parent=root) is an owned popup.
+                    # On hosted Windows runners EnumWindows can omit its
+                    # transient dialog; GW_ENABLEDPOPUP resolves the actual
+                    # enabled owned popup without relying on its title/PID.
+                    import win32con
+                    popup = win32gui.GetWindow(window.handle, win32con.GW_ENABLEDPOPUP)
+                    popup_ok = (popup and popup != window.handle
+                                and win32gui.IsWindow(popup)
+                                and win32gui.IsWindowVisible(popup)
+                                and win32gui.IsWindowEnabled(popup))
+                    (out / f"{label}-enabled-popup.json").write_text(
+                        json.dumps({"popup": popup, "valid": bool(popup_ok),
+                                    "title": win32gui.GetWindowText(popup) if popup_ok else "",
+                                    "class": win32gui.GetClassName(popup) if popup_ok else "",
+                                    "enum_handles": native_handles}, indent=2), encoding="utf-8")
+                    # Prefer a unique enumerated modal; otherwise accept only
+                    # the enabled popup owned by this exact app window.
+                    if len(native_handles) == 1:
+                        modal_handle = native_handles[0]
+                    else:
+                        assert popup_ok, f"{label}: no verified enabled owned popup"
+                        modal_handle = popup
+                    modal = Desktop(backend="win32").window(handle=modal_handle)
                     modal.set_focus()
                     keyboard.send_keys("{ENTER}")
                     deadline_enabled = time.monotonic() + 8
