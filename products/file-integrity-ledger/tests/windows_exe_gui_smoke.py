@@ -87,9 +87,10 @@ try:
             if edits:
                 filename = next((e for e in edits if e.element_info.automation_id == "1148"), edits[-1])
                 filename.set_edit_text(str(baseline_path))
-                open_button = picker.child_window(auto_id="1", control_type="Button")
-                if open_button.exists(timeout=2):
-                    open_button.click_input()
+                open_buttons = [b for b in picker.descendants(control_type="Button")
+                                if b.element_info.automation_id == "1" and b.is_visible()]
+                if len(open_buttons) == 1:
+                    open_buttons[0].click_input()
                 else:
                     filename.set_focus()
                     keyboard.send_keys("{ENTER}")
