@@ -135,31 +135,63 @@ try:
             (out / "after-open-controls.json").write_text(
                 json.dumps({"visible_texts": texts, "target": str(target),
                             "window_title": window.window_text()}, indent=2), encoding="utf-8")
-            assert str(target) in " ".join(texts), (
-                "Snapshot load not proven by UIA; inspect 02-after-open.png and "
-                "after-open-controls.json before changing the assertion")
+            # UIA cannot read ttk.Treeview on hosted runners. Do not treat
+            # absent UIA text as a failed load; subsequent GUI-driven CSV
+            # exports must prove the actual loaded path and status instead.
+            receipt["steps"].append("post_open_screenshot_captured_csv_proof_pending")
 
         def verify_expected(label, expected):
             window.set_focus()
             keyboard.send_keys("^r")
-            time.sleep(0.7)
+            time.sleep(1)
             if expected != "UNCHANGED":
                 warning = Desktop(backend="uia").window(title_re=".*Verify now.*")
                 warning.wait("visible", timeout=12)
                 warning.child_window(title="OK", control_type="Button").click_input()
-                close_by = time.monotonic() + 10
-                while time.monotonic() < close_by:
-                    if not any(w.is_visible() and w.window_text() == warning.window_text()
-                               for w in Desktop(backend="uia").windows()):
-                        break
-                    time.sleep(0.2)
-                else:
-                    raise AssertionError("Verify warning did not close")
-            texts = [x.window_text() for x in window.descendants() if x.window_text()]
-            combined = " ".join(texts)
-            assert expected in combined, f"{label}: expected {expected}, observed {combined[:500]}"
+                time.sleep(0.5)
             window.capture_as_image().save(out / f"{label}.png")
-            receipt["steps"].append(f"{label}:{expected}")
+
+            # Activate the seventh toolbar button (Export CSV) through Tk's
+            # keyboard focus order: Add, Remove, Clear, Save, Open, Verify,
+            # Export. A click on the non-focusable heading resets the tab
+            # traversal to the first toolbar button.
+            window.click_input(coords=(40, 65))
+            keyboard.send_keys("{TAB 7}{SPACE}")
+            export_picker = None
+            deadline = time.monotonic() + 12
+            while time.monotonic() < deadline:
+                dialogs = [w for w in Desktop(backend="uia").windows()
+                           if w.is_visible() and w.element_info.class_name == "#32770"]
+                if dialogs:
+                    export_picker = dialogs[-1]
+                    break
+                time.sleep(0.25)
+            assert export_picker is not None, f"{label}: GUI CSV export picker not opened"
+            csv_path = work / f"{label}.csv"
+            edits = export_picker.descendants(control_type="Edit")
+            assert edits, f"{label}: CSV picker filename Edit not found"
+            filename = next((e for e in edits if e.element_info.automation_id == "1001"), edits[-1])
+            filename.set_edit_text(str(csv_path))
+            buttons = [b for b in export_picker.descendants(control_type="Button")
+                       if b.element_info.automation_id == "1" and b.is_visible()]
+            if len(buttons) == 1:
+                buttons[0].click_input()
+            else:
+                filename.set_focus()
+                keyboard.send_keys("{ENTER}")
+            deadline = time.monotonic() + 12
+            while time.monotonic() < deadline and not csv_path.exists():
+                time.sleep(0.25)
+            assert csv_path.exists(), f"{label}: GUI did not write CSV"
+            with csv_path.open(encoding="utf-8-sig", newline="") as stream:
+                rows = list(csv.DictReader(stream))
+            assert len(rows) == 1, f"{label}: expected exactly one CSV row, got {rows!r}"
+            assert rows[0]["path"] == str(target), f"{label}: wrong fixture path"
+            assert rows[0]["status"] == expected, (
+                f"{label}: expected {expected}, got {rows[0]['status']}")
+            receipt["steps"].append(f"{label}:{expected}:gui_csv_verified")
+            receipt.setdefault("csv_evidence", {})[label] = rows[0]
+            (out / f"{label}.csv").write_bytes(csv_path.read_bytes())
 
         open_baseline()
         receipt["steps"].append("native_snapshot_opened")
