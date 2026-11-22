@@ -198,9 +198,39 @@ try:
                     keyboard.send_keys("%n")
                     keyboard.send_keys(str(csv_path), with_spaces=True, vk_packet=True)
                     keyboard.send_keys("{ENTER}")
+            # A native Save As dialog may accept Enter as filename completion
+            # rather than Save. Explicitly activate Save when still open.
+            picker_handle = export_picker.handle
+            if not csv_path.exists():
+                live = [w for w in Desktop(backend="uia").windows()
+                        if w.handle == picker_handle and w.is_visible()]
+                if live:
+                    save_buttons = [b for b in live[0].descendants(control_type="Button")
+                                    if b.is_visible() and
+                                    (b.element_info.automation_id == "1" or
+                                     b.window_text().strip().lower() in ("save", "&save"))]
+                    if len(save_buttons) == 1:
+                        save_buttons[0].click_input()
+                    else:
+                        live[0].set_focus()
+                        keyboard.send_keys("%s")
             deadline = time.monotonic() + 12
             while time.monotonic() < deadline and not csv_path.exists():
                 time.sleep(0.25)
+            if not csv_path.exists():
+                # Preserve concrete evidence before failing closed; never
+                # substitute an independently generated CSV for GUI output.
+                visible = [(w.window_text(), w.element_info.class_name)
+                           for w in Desktop(backend="uia").windows() if w.is_visible()]
+                (out / f"{label}-save-diagnostic.json").write_text(
+                    json.dumps({"requested_path": str(csv_path),
+                                "work_files": [p.name for p in work.iterdir()],
+                                "visible_windows": visible}, indent=2), encoding="utf-8")
+                try:
+                    Desktop(backend="uia").window(handle=picker_handle).capture_as_image().save(
+                        out / f"{label}-save-picker.png")
+                except Exception:
+                    pass
             assert csv_path.exists(), f"{label}: GUI did not write CSV"
             with csv_path.open(encoding="utf-8-sig", newline="") as stream:
                 rows = list(csv.DictReader(stream))
