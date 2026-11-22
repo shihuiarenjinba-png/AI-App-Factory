@@ -173,9 +173,32 @@ try:
 
             # The app's explicit Ctrl+E binding is stable across Tk themes,
             # accessibility providers, and Windows runner focus traversal.
+            # A Tk messagebox may disable its parent without exposing the
+            # expected title or #32770 UIA class. Fail closed on unknown modals.
+            if not window.is_enabled():
+                modals = [w for w in Desktop(backend="uia").windows()
+                          if w.is_visible() and w.handle != window.handle
+                          and w.process_id() == proc.pid]
+                (out / f"{label}-blocking-modal.json").write_text(
+                    json.dumps({"windows": [(w.window_text(), w.element_info.class_name)
+                                            for w in modals]}, indent=2), encoding="utf-8")
+                assert modals, f"{label}: disabled app without identifiable modal"
+                modal = modals[-1]
+                modal.capture_as_image().save(out / f"{label}-blocking-modal.png")
+                ok = [b for b in modal.descendants(control_type="Button")
+                      if b.is_visible() and b.is_enabled()
+                      and (b.window_text().strip().lower().replace("&", "") in ("ok", "はい")
+                           or b.element_info.automation_id in ("1", "2"))]
+                assert len(ok) == 1, f"{label}: modal has no unambiguous OK button"
+                ok[0].click_input()
+                deadline_enabled = time.monotonic() + 8
+                while time.monotonic() < deadline_enabled and not window.is_enabled():
+                    time.sleep(0.2)
+                assert window.is_enabled(), f"{label}: app remains disabled after modal OK"
+                receipt["steps"].append(f"{label}:blocking_modal_acknowledged")
             window.set_focus()
             window.click_input(coords=(40, 65))
-            window.type_keys("^e", set_foreground=True)
+            keyboard.send_keys("^e")
             receipt["steps"].append(f"{label}:native_export_accelerator_sent")
             export_picker = None
             deadline = time.monotonic() + 12
