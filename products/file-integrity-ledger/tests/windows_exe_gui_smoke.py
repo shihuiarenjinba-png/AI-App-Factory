@@ -61,7 +61,7 @@ try:
             # after explicitly focusing the Tk client area (not the title bar).
             # The native picker below is the observable proof that it worked.
             window.click_input(coords=(40, 65))
-            keyboard.send_keys("^o")
+            window.type_keys("^o", set_foreground=True)
             receipt["steps"].append("native_open_accelerator_sent")
             # Wait for the actual native picker and interact with its edit control.
             # Sending Alt+N and Enter without verifying focus previously left the
@@ -69,7 +69,9 @@ try:
             picker = None
             deadline = time.monotonic() + 15
             while time.monotonic() < deadline:
-                dialogs = [w for w in Desktop(backend="uia").windows()
+                desktop = Desktop(backend="uia")
+                candidates = list(desktop.windows()) + list(window.descendants())
+                dialogs = [w for w in candidates
                            if w.is_visible() and w.element_info.class_name == "#32770"]
                 if dialogs:
                     picker = dialogs[-1]
