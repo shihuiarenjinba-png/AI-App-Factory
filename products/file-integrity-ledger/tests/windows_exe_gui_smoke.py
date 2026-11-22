@@ -166,7 +166,27 @@ try:
                     export_picker = dialogs[-1]
                     break
                 time.sleep(0.25)
-            assert export_picker is not None, f"{label}: GUI CSV export picker not opened"
+            if export_picker is None:
+                # Capture the actual desktop state before a bounded second
+                # accelerator attempt. This distinguishes focus loss from a
+                # missing picker without manufacturing CSV output.
+                visible = [(w.window_text(), w.element_info.class_name)
+                           for w in Desktop(backend="uia").windows() if w.is_visible()]
+                (out / f"{label}-export-not-open.json").write_text(
+                    json.dumps({"visible_windows": visible, "process_alive": proc.poll() is None,
+                                "target": str(target)}, indent=2), encoding="utf-8")
+                window.capture_as_image().save(out / f"{label}-export-not-open.png")
+                window.set_focus()
+                keyboard.send_keys("^e")
+                retry_deadline = time.monotonic() + 8
+                while time.monotonic() < retry_deadline:
+                    dialogs = [w for w in Desktop(backend="uia").windows()
+                               if w.is_visible() and w.element_info.class_name == "#32770"]
+                    if dialogs:
+                        export_picker = dialogs[-1]
+                        break
+                    time.sleep(0.25)
+            assert export_picker is not None, f"{label}: GUI CSV export picker not opened; diagnostic captured"
             csv_path = work / f"{label}.csv"
             edits = export_picker.descendants(control_type="Edit")
             if edits:
