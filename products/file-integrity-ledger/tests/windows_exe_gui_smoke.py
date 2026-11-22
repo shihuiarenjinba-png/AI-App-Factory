@@ -151,12 +151,12 @@ try:
                 time.sleep(0.5)
             window.capture_as_image().save(out / f"{label}.png")
 
-            # Activate the seventh toolbar button (Export CSV) through Tk's
-            # keyboard focus order: Add, Remove, Clear, Save, Open, Verify,
-            # Export. A click on the non-focusable heading resets the tab
-            # traversal to the first toolbar button.
+            # The app's explicit Ctrl+E binding is stable across Tk themes,
+            # accessibility providers, and Windows runner focus traversal.
+            window.set_focus()
             window.click_input(coords=(40, 65))
-            keyboard.send_keys("{TAB 7}{SPACE}")
+            window.type_keys("^e", set_foreground=True)
+            receipt["steps"].append(f"{label}:native_export_accelerator_sent")
             export_picker = None
             deadline = time.monotonic() + 12
             while time.monotonic() < deadline:
