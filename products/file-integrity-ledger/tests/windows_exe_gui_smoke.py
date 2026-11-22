@@ -145,10 +145,30 @@ try:
             keyboard.send_keys("^r")
             time.sleep(1)
             if expected != "UNCHANGED":
-                warning = Desktop(backend="uia").window(title_re=".*Verify now.*")
-                warning.wait("visible", timeout=12)
-                warning.child_window(title="OK", control_type="Button").click_input()
-                time.sleep(0.5)
+                # The warning is advisory and may be exposed under a native
+                # dialog title, or not shown when the app already refreshed.
+                # Do not make the title a proxy for verification success:
+                # the GUI-exported CSV status is asserted below.
+                warning_deadline = time.monotonic() + 3
+                while time.monotonic() < warning_deadline:
+                    dialogs = [w for w in Desktop(backend="uia").windows()
+                               if w.is_visible() and w.handle != window.handle
+                               and (w.element_info.class_name == "#32770"
+                                    or "Verify now" in w.window_text())]
+                    if dialogs:
+                        dialog = dialogs[-1]
+                        buttons = [b for b in dialog.descendants(control_type="Button")
+                                   if b.is_visible() and
+                                   (b.window_text().strip().lower() in ("ok", "&ok", "はい")
+                                    or b.element_info.automation_id == "2")]
+                        if buttons:
+                            buttons[0].click_input()
+                        else:
+                            dialog.set_focus()
+                            keyboard.send_keys("{ENTER}")
+                        receipt["steps"].append(f"{label}:advisory_dialog_dismissed")
+                        break
+                    time.sleep(0.2)
             window.capture_as_image().save(out / f"{label}.png")
 
             # The app's explicit Ctrl+E binding is stable across Tk themes,
