@@ -169,16 +169,35 @@ try:
             assert export_picker is not None, f"{label}: GUI CSV export picker not opened"
             csv_path = work / f"{label}.csv"
             edits = export_picker.descendants(control_type="Edit")
-            assert edits, f"{label}: CSV picker filename Edit not found"
-            filename = next((e for e in edits if e.element_info.automation_id == "1001"), edits[-1])
-            filename.set_edit_text(str(csv_path))
-            buttons = [b for b in export_picker.descendants(control_type="Button")
-                       if b.element_info.automation_id == "1" and b.is_visible()]
-            if len(buttons) == 1:
-                buttons[0].click_input()
+            if edits:
+                filename = next((e for e in edits if e.element_info.automation_id in ("1001", "1148")), edits[-1])
+                filename.set_edit_text(str(csv_path))
+                buttons = [b for b in export_picker.descendants(control_type="Button")
+                           if b.element_info.automation_id == "1" and b.is_visible()]
+                if len(buttons) == 1:
+                    buttons[0].click_input()
+                else:
+                    filename.set_focus()
+                    keyboard.send_keys("{ENTER}")
             else:
-                filename.set_focus()
-                keyboard.send_keys("{ENTER}")
+                # Some native Save As dialogs expose no UIA Edit descendants.
+                # Try the Win32 filename field before a focused keyboard fallback.
+                from pywinauto import Application
+                win32_edits = []
+                try:
+                    native = Application(backend="win32").connect(handle=export_picker.handle).window(handle=export_picker.handle)
+                    win32_edits = native.descendants(class_name="Edit")
+                except Exception:
+                    pass
+                if win32_edits:
+                    win32_edits[-1].set_edit_text(str(csv_path))
+                    win32_edits[-1].set_focus()
+                    keyboard.send_keys("{ENTER}")
+                else:
+                    export_picker.set_focus()
+                    keyboard.send_keys("%n")
+                    keyboard.send_keys(str(csv_path), with_spaces=True, vk_packet=True)
+                    keyboard.send_keys("{ENTER}")
             deadline = time.monotonic() + 12
             while time.monotonic() < deadline and not csv_path.exists():
                 time.sleep(0.25)
