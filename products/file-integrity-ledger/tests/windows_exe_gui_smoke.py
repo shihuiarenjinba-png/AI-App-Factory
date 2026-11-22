@@ -160,8 +160,9 @@ try:
             export_picker = None
             deadline = time.monotonic() + 12
             while time.monotonic() < deadline:
-                dialogs = [w for w in Desktop(backend="uia").windows()
-                           if w.is_visible() and w.element_info.class_name == "#32770"]
+                dialogs = [w for w in Desktop(backend="uia").windows() + window.descendants()
+                           if w.is_visible() and (w.element_info.class_name == "#32770"
+                           or w.window_text().strip() in ("Export CSV", "CSV出力"))]
                 if dialogs:
                     export_picker = dialogs[-1]
                     break
@@ -180,8 +181,9 @@ try:
                 keyboard.send_keys("^e")
                 retry_deadline = time.monotonic() + 8
                 while time.monotonic() < retry_deadline:
-                    dialogs = [w for w in Desktop(backend="uia").windows()
-                               if w.is_visible() and w.element_info.class_name == "#32770"]
+                    dialogs = [w for w in Desktop(backend="uia").windows() + window.descendants()
+                               if w.is_visible() and (w.element_info.class_name == "#32770"
+                               or w.window_text().strip() in ("Export CSV", "CSV出力"))]
                     if dialogs:
                         export_picker = dialogs[-1]
                         break
