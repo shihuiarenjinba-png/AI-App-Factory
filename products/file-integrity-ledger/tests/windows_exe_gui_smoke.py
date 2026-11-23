@@ -1,6 +1,8 @@
 """Native Windows EXE first-use smoke; no source files or Store state changed."""
 import hashlib
 import csv
+import ctypes
+from ctypes import wintypes
 import tempfile
 import json
 import os
@@ -34,8 +36,19 @@ try:
     time.sleep(1)
     assert proc.poll() is None, "EXE exited before first-use capture"
     rect = window.rectangle()
-    assert rect.width() >= 850 and rect.height() >= 620, "Unexpected GUI geometry"
+    assert rect.width() >= 850 and rect.height() >= 520, "Unexpected GUI geometry"
+    work_area = wintypes.RECT()
+    assert ctypes.windll.user32.SystemParametersInfoW(
+        48, 0, ctypes.byref(work_area), 0
+    ), "Unable to query Windows work area"
+    assert (
+        rect.left >= work_area.left and rect.top >= work_area.top
+        and rect.right <= work_area.right and rect.bottom <= work_area.bottom
+    ), f"GUI window overlaps the taskbar or leaves the desktop work area: {rect!r}"
     receipt["window_rectangle"] = [rect.left, rect.top, rect.right, rect.bottom]
+    receipt["work_area"] = [
+        work_area.left, work_area.top, work_area.right, work_area.bottom
+    ]
     receipt["window_title"] = window.window_text()
     window.capture_as_image().save(out / "01-first-use.png")
     assert (out / "01-first-use.png").stat().st_size > 1000
