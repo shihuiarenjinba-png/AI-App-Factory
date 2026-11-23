@@ -1,0 +1,89 @@
+name: US-JP isolation raw-head CI
+
+on:
+  push:
+    branches:
+      - codex/issue64-us-jp-isolation-ci-fix-20261113
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Assert exact pushed HEAD
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD)"
+          echo "RAW_HEAD=$actual"
+          test "$actual" = "$GITHUB_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run full unit suite on exact raw HEAD
+        run: python -m unittest discover -s tests -v
+      - name: Compile core entry points
+        run: python -m py_compile factory.py scripts/simulate_clock.py tools/build_windows_exe.py tools/preidentity_product_select.py
+      - name: Simulate 96 quarter-hour ticks
+        run: python scripts/simulate_clock.py
+      - name: Exercise isolated no-network sandbox
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges --pids-limit 64 \
+            --memory 512m --cpus 1 --user 65534:65534 \
+            python:3.12-slim python -c "print('sandbox-smoke: ok')"
+
+  windows-contracts:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Assert exact pushed HEAD
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          Write-Host "RAW_HEAD=$actual"
+          if ($actual -ne $env:GITHUB_SHA) { throw "Checkout is not the exact pushed HEAD" }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run full unit and Windows contract suite on exact raw HEAD
+        run: python -m unittest discover -s tests -v
+      - name: Compile Windows pre-Identity builder
+        run: python -m py_compile tools/build_windows_exe.py tools/preidentity_product_select.py
+
+  windows-exe-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Assert exact pushed HEAD
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          Write-Host "RAW_HEAD=$actual"
+          if ($actual -ne $env:GITHUB_SHA) { throw "Checkout is not the exact pushed HEAD" }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned PyInstaller without AI APIs
+        run: python -m pip install --disable-pip-version-check "pyinstaller==6.16.0"
+      - name: Build isolated QA-only Windows PE
+        run: python -m tools.windows_exe_build_smoke --output dist/qa-exe
+      - name: Upload QA-only PE and SHA receipt (not a Store product)
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-preidentity-real-pe-smoke-NOT_PRODUCT-raw-head
+          path: dist/qa-exe/
+          if-no-files-found: error
+          retention-days: 3
