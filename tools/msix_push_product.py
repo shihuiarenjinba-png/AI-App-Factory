@@ -11,6 +11,12 @@ SHA40 = re.compile(r"[0-9a-f]{40}\Z")
 SLUG = re.compile(r"[a-z][a-z0-9-]{3,39}\Z")
 
 
+try:
+    from tools.market_fit_gate import MarketFitHold, assert_market_fit
+except ModuleNotFoundError:
+    from market_fit_gate import MarketFitHold, assert_market_fit
+
+
 class SelectionHold(ValueError):
     """A push cannot be safely mapped to exactly one product."""
 
@@ -82,7 +88,8 @@ def main() -> int:
         )
         if not (Path("products") / slug / "store" / "approved-identity.json").is_file():
             raise SelectionHold("approved Identity absent; do not invent Store IDs")
-    except (SelectionHold, subprocess.TimeoutExpired, OSError) as exc:
+        assert_market_fit(Path("."), slug)
+    except (SelectionHold, MarketFitHold, subprocess.TimeoutExpired, OSError) as exc:
         reason = str(exc).replace("\r", " ").replace("\n", " ")[:200]
         print("MSIX_SELECTION_HOLD: " + reason)
         with open(output, "a", encoding="utf-8") as handle:
