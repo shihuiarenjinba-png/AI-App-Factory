@@ -1,35 +1,53 @@
-"""Native Windows modal evidence for US-only PyInstaller EXE. No dialog mocking."""
+"""Native Windows modal evidence for the US-only PyInstaller EXE.
+
+Consent is exercised through the real Yes/No message box. After approval,
+the actual Tk entry dialogs receive a small deterministic sales-tax example;
+the final native result dialog is checked for USD output and REVIEW REQUIRED.
+No ledger transaction is posted and no Store/MSIX state is touched.
+"""
 import hashlib
 import json
 import os
 from pathlib import Path
+import sqlite3
 import subprocess
 import time
 
 from PIL import ImageGrab
-from pywinauto import Desktop, Application
+from pywinauto import Desktop, keyboard
 
 OUT = Path("app-smoke-evidence")
 OUT.mkdir(exist_ok=True)
 EXE = Path("app-smoke-dist/USFreelanceLedgerSmoke.exe").resolve()
-os.environ["APPDATA"] = str(Path(os.environ["RUNNER_TEMP"]) / "us-ledger-native")
-Path(os.environ["APPDATA"]).mkdir(parents=True, exist_ok=True)
+APPDATA = Path(os.environ["RUNNER_TEMP"]) / "us-ledger-native"
+os.environ["APPDATA"] = str(APPDATA)
+APPDATA.mkdir(parents=True, exist_ok=True)
+DB_PATH = APPDATA / "USFreelanceLedger" / "books.sqlite3"
 records = []
+
 
 def capture(label):
     path = OUT / (label + ".png")
     ImageGrab.grab().save(path)
     return {"file": path.name, "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
+
 def wait_window(title, timeout=25):
     end = time.monotonic() + timeout
     while time.monotonic() < end:
-        matches = [w for w in Desktop(backend="win32").windows()
-                   if title.lower() in w.window_text().lower() and w.is_visible()]
+        matches = [
+            w for w in Desktop(backend="win32").windows()
+            if title.lower() in w.window_text().lower() and w.is_visible()
+        ]
         if matches:
             return matches[0]
-        time.sleep(.4)
-    raise AssertionError("Native window not found: " + title)
+        time.sleep(.3)
+    visible = [
+        w.window_text() for w in Desktop(backend="win32").windows()
+        if w.is_visible() and w.window_text()
+    ]
+    raise AssertionError(f"Native/Tk window not found: {title}; visible={visible[:20]}")
+
 
 def find_tax_button(main):
     """ttk buttons are not necessarily native Win32 Button children."""
@@ -38,46 +56,58 @@ def find_tax_button(main):
     matches = [c for c in controls if "US tax / fixed assets" in c.window_text()]
     if len(matches) == 1 and matches[0].is_visible() and matches[0].is_enabled():
         return matches[0]
-    diagnostics = {"uia_buttons": [{"name": c.window_text(), "type": c.element_info.control_type,
-                                      "rectangle": str(c.rectangle())} for c in controls],
-                   "win32_children": [{"class": c.class_name(), "text": c.window_text(),
-                                       "rectangle": str(c.rectangle())} for c in main.descendants()]}
-    (OUT / "native_controls_diagnostic.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
+    diagnostics = {
+        "uia_buttons": [
+            {"name": c.window_text(), "type": c.element_info.control_type,
+             "rectangle": str(c.rectangle())}
+            for c in controls
+        ],
+        "win32_children": [
+            {"class": c.class_name(), "text": c.window_text(),
+             "rectangle": str(c.rectangle())}
+            for c in main.descendants()
+        ],
+    }
+    (OUT / "native_controls_diagnostic.json").write_text(
+        json.dumps(diagnostics, indent=2), encoding="utf-8"
+    )
     capture("native_tax_button_missing")
     # Tk/ttk widgets appear as unnamed TkChild HWNDs on this runner.
-    # The captured runner screenshot and Win32 tree identify the tax action
-    # between Add transaction and Export CSV in the left Transaction pane.
-    # Derive the target from the live pane geometry, never screen pixels.
-    pane_candidates = [c for c in main.descendants()
-                       if c.class_name() == "TkChild" and
-                       170 <= c.rectangle().width() <= 260 and
-                       c.rectangle().height() >= 400]
+    pane_candidates = [
+        c for c in main.descendants()
+        if c.class_name() == "TkChild"
+        and 170 <= c.rectangle().width() <= 260
+        and c.rectangle().height() >= 400
+    ]
     if len(pane_candidates) != 1:
         raise AssertionError(f"Transaction pane ambiguous: {len(pane_candidates)}")
     pane = pane_candidates[0].rectangle()
-    buttons = [c for c in main.descendants()
-               if c.class_name() == "TkChild" and
-               c.rectangle().left >= pane.left and
-               c.rectangle().right <= pane.right and
-               c.rectangle().width() >= pane.width() * .70 and
-               20 <= c.rectangle().height() <= 32]
+    buttons = [
+        c for c in main.descendants()
+        if c.class_name() == "TkChild"
+        and c.rectangle().left >= pane.left
+        and c.rectangle().right <= pane.right
+        and c.rectangle().width() >= pane.width() * .70
+        and 20 <= c.rectangle().height() <= 32
+    ]
     buttons.sort(key=lambda c: c.rectangle().top)
-    # The four consecutive full-width actions are Browse, Suggest,
-    # Add transaction, Tax review; the next row is split Export/Backup.
     if len(buttons) != 4:
         raise AssertionError(f"Unexpected transaction action layout: {len(buttons)}")
-    if not all(25 <= buttons[i+1].rectangle().top - buttons[i].rectangle().top <= 40
-               for i in range(3)):
+    if not all(
+        25 <= buttons[i + 1].rectangle().top - buttons[i].rectangle().top <= 40
+        for i in range(3)
+    ):
         raise AssertionError("Transaction action row spacing changed")
     target = buttons[-1]
     if not target.is_visible() or not target.is_enabled():
         raise AssertionError("Tax action not visible/enabled")
     return target
 
+
 def click_named(window, label):
-    """Use a verified native control, including UIA and mnemonic-prefixed labels."""
-    def normalized(text):
-        return text.replace("&", "").replace("_", "").strip().lower()
+    """Click a visible native Win32/UIA button by its accessible label."""
+    def normalized(value):
+        return value.replace("&", "").replace("_", "").strip().lower()
 
     candidates = []
     for backend in ("win32", "uia"):
@@ -97,66 +127,184 @@ def click_named(window, label):
                     continue
         except Exception:
             continue
-    if candidates:
-        # Both backends may expose the same button; prefer Win32.
-        candidates[0][1].click_input()
-        return
+    if not candidates:
+        raise AssertionError(
+            f"Expected visible enabled native {label} button in {window.window_text()}"
+        )
+    # Both backends may expose the same button; prefer Win32.
+    candidates[0][1].click_input()
 
-    diagnostics = {"label": label, "modal_title": window.window_text(),
-                   "modal_handle": window.handle, "controls": {}}
+
+def enter_tk_dialog(title, value):
+    """Enter deterministic text in the real Tk simpledialog and submit it.
+
+    Tk simpledialog buttons are not consistently exposed with accessible names
+    by the hosted Windows runner. The entry has focus on creation, so keyboard
+    input is more reliable than guessing the unnamed Cancel/OK HWND.
+    """
+    dialog = wait_window(title, timeout=20)
+    dialog.set_focus()
+    keyboard.send_keys(value, with_spaces=True, pause=0.025)
+    keyboard.send_keys("{ENTER}")
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        try:
+            if not dialog.is_visible():
+                return
+        except Exception:
+            return
+        time.sleep(.2)
+    raise AssertionError(f"Tk dialog did not close after input: {title}")
+
+
+def read_dialog_text(window):
+    values = [window.window_text()]
     for backend in ("win32", "uia"):
         try:
             dialog = Desktop(backend=backend).window(handle=window.handle)
-            diagnostics["controls"][backend] = [
-                {"text": c.window_text(), "class": c.class_name(),
-                 "rectangle": str(c.rectangle())}
-                for c in dialog.descendants()
-            ]
-        except Exception as exc:
-            diagnostics["controls"][backend] = {"error": repr(exc)}
-    (OUT / ("native_modal_" + label.lower() + "_diagnostic.json")).write_text(
-        json.dumps(diagnostics, indent=2), encoding="utf-8")
-    capture("native_modal_" + label.lower() + "_missing")
-    raise AssertionError(f"Expected one visible enabled native {label} button; found 0")
+            for control in dialog.descendants():
+                try:
+                    value = control.window_text().strip()
+                    if value:
+                        values.append(value)
+                except Exception:
+                    continue
+        except Exception:
+            continue
+    return "\n".join(dict.fromkeys(values))
+
+
+def transaction_count():
+    if not DB_PATH.is_file():
+        raise AssertionError(f"US database was not created: {DB_PATH}")
+    connection = sqlite3.connect(DB_PATH)
+    try:
+        return int(connection.execute("SELECT COUNT(*) FROM transactions").fetchone()[0])
+    finally:
+        connection.close()
+
+
+def stop_app(main, process):
+    try:
+        if main is not None and main.is_visible():
+            main.close()
+    except Exception:
+        pass
+    try:
+        process.wait(timeout=8)
+    except subprocess.TimeoutExpired:
+        subprocess.run(
+            ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+            capture_output=True, text=True, timeout=15
+        )
+        try:
+            process.wait(timeout=8)
+        except subprocess.TimeoutExpired:
+            raise AssertionError("US Ledger EXE process tree did not stop")
+
 
 def run_case(accept):
-    p = subprocess.Popen([str(EXE)], cwd=str(EXE.parent))
+    process = subprocess.Popen([str(EXE)], cwd=str(EXE.parent))
+    main = None
     try:
         main = wait_window("Freelance Ledger US")
         main.set_focus()
         find_tax_button(main).click_input()
-        modal = wait_window("REVIEW REQUIRED")
-        if "manual estimate" not in modal.window_text().lower() and not any(
-            "manual estimate" in c.window_text().lower() for c in modal.descendants()
-        ):
-            raise AssertionError("Tax review warning text missing")
+        review = wait_window("REVIEW REQUIRED — US tax calculation")
+        review_text = read_dialog_text(review)
+        assert "manual estimate" in review_text.lower(), review_text
+        assert "not a tax return or filing" in review_text.lower(), review_text
         before = capture("native_review_" + ("approve" if accept else "decline"))
-        click_named(modal, "Yes" if accept else "No")
-        time.sleep(.8)
-        if accept:
-            mode = wait_window("Tax / fixed assets")
-            after = capture("native_approved_mode")
-            # Cancel the mode prompt: verify native consent without posting.
-            click_named(mode, "Cancel")
-            time.sleep(.5)
-        else:
+        click_named(review, "Yes" if accept else "No")
+        time.sleep(.5)
+
+        if not accept:
             after = capture("native_declined_main")
-            assert not any("Tax / fixed assets" in w.window_text()
-                           for w in Desktop(backend="win32").windows()
-                           if w.is_visible() and w.handle != main.handle)
-        records.append({"case": "approve" if accept else "decline",
-                        "dialog_method": "native Win32 click_input, no monkeypatch",
-                        "before": before, "after": after, "no_posting": True})
+            visible_titles = [
+                w.window_text() for w in Desktop(backend="win32").windows()
+                if w.is_visible()
+            ]
+            assert not any(
+                title in ("Tax / fixed assets", "Sales tax") for title in visible_titles
+            ), f"Decline opened a calculator: {visible_titles}"
+            stop_app(main, process)
+            count = transaction_count()
+            assert count == 0, f"Decline path posted {count} transaction(s)"
+            records.append({
+                "case": "decline",
+                "consent_dialog": "native Win32 Yes/No",
+                "decision": "No",
+                "before": before,
+                "after": after,
+                "transaction_count": count,
+                "no_posting": count == 0,
+            })
+            return
+
+        # Approval must open the actual calculator; then exercise a small,
+        # deterministic USD calculation and verify its visible result.
+        enter_tk_dialog("Tax / fixed assets", "sales tax")
+        enter_tk_dialog("Sales tax", "100")
+        enter_tk_dialog("Sales tax", "7.5")
+        enter_tk_dialog("Sales tax", "California")
+        result = wait_window("REVIEW REQUIRED — Sales tax")
+        result_text = read_dialog_text(result)
+        for required in (
+            "Jurisdiction: California",
+            "Tax USD 7.50",
+            "Gross USD 107.50",
+            "REVIEW REQUIRED",
+            "nexus/taxability is not determined",
+            "No posting",
+        ):
+            assert required in result_text, f"Missing {required!r} in result: {result_text}"
+        after = capture("native_approved_usd_result")
+        click_named(result, "OK")
+        stop_app(main, process)
+        count = transaction_count()
+        assert count == 0, f"Review-only calculation posted {count} transaction(s)"
+        records.append({
+            "case": "approve",
+            "consent_dialog": "native Win32 Yes/No",
+            "decision": "Yes",
+            "before": before,
+            "after": after,
+            "result_text": result_text,
+            "expected": {"net_usd": "100.00", "rate_percent": "7.5",
+                         "tax_usd": "7.50", "gross_usd": "107.50"},
+            "transaction_count": count,
+            "no_posting": count == 0,
+        })
     finally:
-        subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
-                       capture_output=True, text=True, timeout=15)
+        if process.poll() is None:
+            stop_app(main, process)
+
 
 try:
     run_case(False)
     run_case(True)
 finally:
-    (OUT / "native_receipt.json").write_text(json.dumps({
-        "source_sha": os.environ.get("GITHUB_SHA"), "scenarios": records,
-        "exe_sha256": hashlib.sha256(EXE.read_bytes()).hexdigest(),
-        "scope": "native modal consent only; USD calculation result not yet validated"
-    }, indent=2), encoding="utf-8")
+    checkout_sha = subprocess.check_output(
+        ["git", "rev-parse", "HEAD"], text=True
+    ).strip()
+    event_head_sha = None
+    event_path = os.environ.get("GITHUB_EVENT_PATH")
+    if event_path and Path(event_path).is_file():
+        try:
+            event = json.loads(Path(event_path).read_text(encoding="utf-8"))
+            event_head_sha = event.get("pull_request", {}).get("head", {}).get("sha")
+        except (OSError, ValueError, AttributeError):
+            event_head_sha = None
+    receipt = {
+        "checkout_sha": checkout_sha,
+        "pr_head_sha": event_head_sha,
+        "scenarios": records,
+        "exe_sha256": hashlib.sha256(EXE.read_bytes()).hexdigest() if EXE.is_file() else None,
+        "smoke_script_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "result": "PASS" if len(records) == 2 and all(r["no_posting"] for r in records) else "FAIL",
+        "scope": "native consent Yes/No plus visible USD review result; no posting; no MSIX/Store",
+    }
+    (OUT / "native_receipt.json").write_text(
+        json.dumps(receipt, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+print(json.dumps(receipt, ensure_ascii=False))
