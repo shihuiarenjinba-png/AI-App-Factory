@@ -37,6 +37,29 @@ jobs:
         run: python -m unittest discover -s tests -v
       - name: Compile Windows pre-Identity builder
         run: python -m py_compile tools/build_windows_exe.py tools/preidentity_product_select.py
+  us-jp-isolation-exact-head:
+    if: github.event_name == 'pull_request' && github.head_ref == 'codex/us-jp-isolation-windows-contract-fix-20261123'
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Assert raw PR head checkout
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          $expected = '${{ github.event.pull_request.head.sha }}'
+          if ($actual -ne $expected) { throw "Exact-head mismatch: $actual != $expected" }
+          "EXACT_HEAD=$actual" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run complete APP unit suite on exact head
+        run: python -m unittest discover -s tests -v
+      - name: Compile Windows pre-Identity builder on exact head
+        run: python -m py_compile tools/build_windows_exe.py tools/preidentity_product_select.py
   windows-exe-smoke:
     if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'codex/app-preidentity-')
     runs-on: windows-latest

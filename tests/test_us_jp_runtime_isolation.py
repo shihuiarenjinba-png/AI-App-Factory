@@ -33,9 +33,16 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
             jp = base / "JPFreelanceLedger"
             jp.mkdir()
             jp_db = jp / "books.sqlite3"
-            with sqlite3.connect(jp_db) as connection:
-                connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
-                connection.execute("INSERT INTO sentinel VALUES ('JP-KEEP')")
+            # sqlite3.Connection's context manager commits/rolls back but does
+            # not close the handle. Close explicitly so Windows can remove the
+            # temporary directory after the assertion completes.
+            jp_connection = sqlite3.connect(jp_db)
+            try:
+                jp_connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
+                jp_connection.execute("INSERT INTO sentinel VALUES ('JP-KEEP')")
+                jp_connection.commit()
+            finally:
+                jp_connection.close()
             before = jp_db.read_bytes()
             with patch.dict(os.environ, {"APPDATA": str(base)}):
                 store = core.Store()
@@ -48,7 +55,12 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
                 finally:
                     store.conn.close()
             self.assertEqual(jp_db.read_bytes(), before, "US write changed JP database")
-            self.assertEqual([p.name for p in base.iterdir()], ["JPFreelanceLedger", "USFreelanceLedger"])
+            # Directory enumeration order is filesystem-dependent (notably
+            # different between ext4 and NTFS); assert membership, not order.
+            self.assertEqual(
+                sorted(p.name for p in base.iterdir()),
+                ["JPFreelanceLedger", "USFreelanceLedger"],
+            )
 
     def test_us_default_path_cannot_fall_back_to_jp_directory(self):
         core = load_us_core()
