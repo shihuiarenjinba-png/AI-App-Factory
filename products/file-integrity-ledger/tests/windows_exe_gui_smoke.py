@@ -57,11 +57,32 @@ try:
         def open_baseline():
             window.set_focus()
             keyboard.send_keys("^o")
-            dialog = Desktop(backend="uia").window(title_re=".*Open.*")
+            # Tk's Open snapshot chooser is a native Windows common dialog.
+            # Use the Win32 backend for this #32770 dialog; UIA did not expose
+            # it consistently on the hosted Windows runner even though it was
+            # visibly open (the prior run timed out while the dialog remained).
+            dialog = Desktop(backend="win32").window(title_re=".*Open snapshot.*")
             dialog.wait("visible", timeout=15)
-            edits = dialog.descendants(control_type="Edit")
-            assert edits, "Open snapshot dialog has no filename edit"
-            edits[-1].set_edit_text(str(baseline_path))
+            receipt["steps"].append("native_open_snapshot_dialog_visible")
+            dialog.capture_as_image().save(out / "02-open-snapshot-dialog.png")
+            edits = dialog.descendants(class_name="Edit")
+            if not edits:
+                diagnostic = []
+                for control in dialog.descendants():
+                    try:
+                        diagnostic.append({
+                            "class": control.class_name(),
+                            "text": control.window_text(),
+                            "visible": control.is_visible(),
+                        })
+                    except Exception:
+                        continue
+                (out / "open-dialog-controls.json").write_text(
+                    json.dumps(diagnostic, indent=2, ensure_ascii=False), encoding="utf-8")
+                raise AssertionError("Open snapshot dialog has no native filename edit control")
+            filename_edit = edits[-1]
+            filename_edit.set_focus()
+            filename_edit.set_edit_text(str(baseline_path))
             keyboard.send_keys("{ENTER}")
             dialog.wait_not("visible", timeout=15)
             time.sleep(0.7)
@@ -83,11 +104,11 @@ try:
 
         open_baseline()
         receipt["steps"].append("native_snapshot_opened")
-        verify_expected("02-unchanged", "UNCHANGED")
+        verify_expected("03-unchanged", "UNCHANGED")
         target.write_bytes(b"integrity-changed\\n")
-        verify_expected("03-modified", "MODIFIED")
+        verify_expected("04-modified", "MODIFIED")
         target.unlink()
-        verify_expected("04-missing", "MISSING")
+        verify_expected("05-missing", "MISSING")
         assert not target.exists(), "Fixture deletion did not occur"
         receipt["steps"].append("fixture_only_no_user_files_accessed")
     window.close()
