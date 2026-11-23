@@ -3,6 +3,7 @@
 No source file is modified. Snapshot/CSV destinations are explicit user choices.
 """
 import csv
+import ctypes
 import hashlib
 import io
 import json
@@ -10,6 +11,7 @@ import os
 from pathlib import Path
 import re
 import stat
+import sys
 import tempfile
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -218,6 +220,41 @@ def export_csv(path, data, results=None):
     _atomic_write(path, ("\ufeff" + buffer.getvalue()).encode("utf-8"))
 
 
+def _desktop_work_area(root):
+    """Return the desktop work area in Tk coordinates, excluding the taskbar."""
+    if sys.platform == "win32":
+        try:
+            from ctypes import wintypes
+            area = wintypes.RECT()
+            if ctypes.windll.user32.SystemParametersInfoW(
+                48, 0, ctypes.byref(area), 0
+            ) and area.right > area.left and area.bottom > area.top:
+                return (area.left, area.top,
+                        area.right - area.left, area.bottom - area.top)
+        except (AttributeError, OSError, TypeError, ValueError):
+            pass
+    width, height = root.winfo_screenwidth(), root.winfo_screenheight()
+    if sys.platform == "win32":
+        # A failed work-area query is not evidence that the taskbar is absent.
+        return 64, 64, max(1, width - 128), max(1, height - 128)
+    return 0, 0, width, height
+
+
+def _window_bounds(area):
+    """Fit the initial window inside the available work area with decoration margins."""
+    x, y, available_width, available_height = area
+    if available_width <= 0 or available_height <= 0:
+        raise ValueError("Invalid desktop work area")
+    horizontal_reserve = 64 if sys.platform == "win32" else 24
+    vertical_reserve = 96 if sys.platform == "win32" else 48
+    width = min(1100, max(1, available_width - horizontal_reserve))
+    height = min(720, max(1, available_height - vertical_reserve))
+    left = x + max(0, (available_width - width) // 2)
+    top = y + max(0, (available_height - height) // 2)
+    return (f"{width}x{height}+{left}+{top}",
+            min(850, width), min(620, height))
+
+
 class LedgerApp:
     def __init__(self, root):
         self.root = root
@@ -225,8 +262,9 @@ class LedgerApp:
         self.entries = []
         self.results = []
         self.status = tk.StringVar()
-        self.root.geometry("980x690")
-        self.root.minsize(850, 620)
+        geometry, min_width, min_height = _window_bounds(_desktop_work_area(root))
+        self.root.geometry(geometry)
+        self.root.minsize(min_width, min_height)
         self.frame = ttk.Frame(root, padding=12)
         self.frame.pack(fill="both", expand=True)
         self.heading = ttk.Label(self.frame, font=("Segoe UI", 17, "bold"))
