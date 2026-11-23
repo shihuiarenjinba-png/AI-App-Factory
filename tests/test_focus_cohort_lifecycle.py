@@ -73,8 +73,12 @@ class FocusCohortLifecycleTests(unittest.TestCase):
                 env=env, capture_output=True, text=True, timeout=90, check=False
             )
             self.assertEqual(result.returncode, 0, result.stdout + "\n" + result.stderr)
-            self.assertIn("Ran 18 tests in", result.stderr)
-            print("FOCUS_CANDIDATE_TESTS=18 PASS (headless; not Windows GUI QA)")
+            import re
+            count = re.search(r"Ran (\d+) tests in", result.stderr)
+            self.assertIsNotNone(count, result.stderr)
+            self.assertGreaterEqual(int(count.group(1)), 18)
+            print("FOCUS_CANDIDATE_TESTS=" + count.group(1)
+                  + " PASS (headless; not Windows GUI QA)")
             self.assertNotIn("skipped=", result.stderr)
             self.assertNotIn("expected failures=", result.stderr)
 
