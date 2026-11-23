@@ -11,7 +11,7 @@ from pathlib import Path
 
 from pywinauto import Desktop
 from pywinauto.keyboard import send_keys
-from pywinauto.mouse import click
+from pywinauto.mouse import click, double_click
 
 exe = Path(sys.argv[1]).resolve()
 out = Path(sys.argv[2]).resolve()
@@ -139,22 +139,70 @@ try:
         assert saved["session"] == ("interrupted" if expected in ("running", "paused") else "idle"), (label, saved)
         receipt["steps"].append("native_" + label.lower())
     window.capture_as_image().save(out / "04-reset.png")
-    # Tk labels are unnamed Pane peers on this Windows runner, so UIA
-    # window_text() cannot verify the progress string. Preserve a real native
-    # screenshot for visual review and independently assert persisted counts.
-    # Do not misreport this as machine-verified GUI text.
-    saved = json.loads(state.read_text(encoding="utf-8"))
-    assert len(saved["tasks"]) == 1 and not saved["tasks"][0]["done"], saved["tasks"]
-    progress_image = window.capture_as_image()
-    progress_image.save(out / "05-progress-review-required.png")
-    receipt["progress_expected_text"] = "Progress: 0/1 complete (0%)"
-    receipt["progress_evidence"] = "05-progress-review-required.png"
+    # Complete the one fixture task using the real native Treeview double-click.
+    # Prefer the exact visible task text; fall back to the first-row geometry of
+    # the unique native Tree control when Tk does not expose a named TreeItem.
+    matches = [
+        control for control in window.descendants()
+        if control.window_text().strip() == "Focus smoke task"
+    ]
+    if len(matches) == 1:
+        matches[0].double_click_input()
+        receipt["task_completion_target"] = "uia_exact_task_text"
+    else:
+        trees = [
+            control for control in window.descendants()
+            if control.element_info.control_type == "Tree"
+        ]
+        assert len(trees) == 1, "Expected one native task Tree; found " + str(len(trees))
+        tree_rect = trees[0].rectangle()
+        x, y = tree_rect.left + 110, tree_rect.top + 34
+        double_click(coords=(x, y))
+        receipt["task_completion_target"] = "tree_first_row_geometry"
+        receipt["task_completion_click_xy"] = [x, y]
+        receipt["task_tree_rectangle"] = [
+            tree_rect.left, tree_rect.top, tree_rect.right, tree_rect.bottom
+        ]
+    deadline = time.time() + 8
+    while time.time() < deadline:
+        saved = json.loads(state.read_text(encoding="utf-8"))
+        if len(saved["tasks"]) == 1 and saved["tasks"][0]["done"] is True:
+            break
+        time.sleep(0.2)
+    else:
+        raise AssertionError("Native task toggle did not persist done=true: " + repr(saved["tasks"]))
+    receipt["steps"].append("native_task_completed_100_percent")
+    window.capture_as_image().save(out / "05-progress-100.png")
+    receipt["progress_expected_text"] = "Progress: 1/1 complete (100%)"
+    receipt["progress_evidence"] = "05-progress-100.png"
     receipt["progress_visual_review_required"] = True
-    receipt["steps"].append("progress_state_verified_screenshot_captured")
+
+    # Close normally, then relaunch the same EXE against the same isolated APPDATA.
+    # The restart proves language and completed-task persistence, not just in-memory UI.
     window.close()
     proc.wait(timeout=15)
     assert proc.returncode == 0, f"EXE exited with {proc.returncode}"
-    receipt["steps"].append("native_normal_exit")
+    receipt["steps"].append("native_first_process_normal_exit")
+
+    proc = subprocess.Popen([str(exe)], cwd=str(exe.parent))
+    window = Desktop(backend="uia").window(title_re=".*集中セッション.*|.*Focus Session Desk.*")
+    window.wait("visible", timeout=45)
+    window.set_focus()
+    saved = json.loads(state.read_text(encoding="utf-8"))
+    assert saved["language"] == "en", "English language did not persist across restart"
+    assert len(saved["tasks"]) == 1 and saved["tasks"][0]["done"] is True, (
+        "Completed task did not persist across restart", saved["tasks"]
+    )
+    assert saved["session"] == "idle", "Reset timer state did not persist as idle"
+    receipt["restart_language_observed"] = saved["language"]
+    receipt["restart_task_done_observed"] = saved["tasks"][0]["done"]
+    receipt["restart_progress_expected_text"] = "Progress: 1/1 complete (100%)"
+    receipt["steps"].append("native_restart_language_en_and_100_percent_task_persisted")
+    window.capture_as_image().save(out / "06-restart-persistence-100.png")
+    window.close()
+    proc.wait(timeout=15)
+    assert proc.returncode == 0, f"Restarted EXE exited with {proc.returncode}"
+    receipt["steps"].append("native_restarted_process_normal_exit")
     receipt["result"] = "PASS"
 finally:
     # Preserve actionable evidence even if UIA cannot expose Tkinter widgets.
