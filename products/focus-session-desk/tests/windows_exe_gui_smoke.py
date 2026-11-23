@@ -150,15 +150,26 @@ try:
         matches[0].double_click_input()
         receipt["task_completion_target"] = "uia_exact_task_text"
     else:
-        trees = [
-            control for control in window.descendants()
-            if control.element_info.control_type == "Tree"
-        ]
-        assert len(trees) == 1, "Expected one native task Tree; found " + str(len(trees))
-        tree_rect = trees[0].rectangle()
+        win_rect = window.rectangle()
+        panes = []
+        for control in window.descendants(control_type="Pane"):
+            rect = control.rectangle()
+            width, height = rect.right - rect.left, rect.bottom - rect.top
+            # Tk Treeview is exposed as a large unnamed Pane on this hosted
+            # Windows runner, not as UIA control_type=Tree. Distinguish it from
+            # the containing Tasks frame by lower-half position and height.
+            if (width >= 0.85 * win_rect.width()
+                    and height >= 150
+                    and rect.top > win_rect.top + 0.50 * win_rect.height()
+                    and rect.bottom < win_rect.bottom - 50):
+                panes.append(rect)
+        assert len(panes) == 1, "Expected one native task-list Pane; found " + repr(
+            [[r.left, r.top, r.right, r.bottom] for r in panes])
+        tree_rect = panes[0]
         x, y = tree_rect.left + 110, tree_rect.top + 34
+        assert tree_rect.left < x < tree_rect.right and tree_rect.top < y < tree_rect.bottom
         double_click(coords=(x, y))
-        receipt["task_completion_target"] = "tree_first_row_geometry"
+        receipt["task_completion_target"] = "geometry_verified_task_list_pane"
         receipt["task_completion_click_xy"] = [x, y]
         receipt["task_tree_rectangle"] = [
             tree_rect.left, tree_rect.top, tree_rect.right, tree_rect.bottom
