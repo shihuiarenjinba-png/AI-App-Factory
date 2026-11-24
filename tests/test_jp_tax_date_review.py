@@ -15,22 +15,54 @@ class TaxDateReviewTests(unittest.TestCase):
     def test_current_standard_and_reduced_reference_arithmetic(self):
         standard = tax.consumption_tax_review(10000, "2026-11-01", "標準課税")
         food = tax.consumption_tax_review(10000, "2026-11-01", "飲食料品（酒類・外食を除く）")
+        food_before_change = tax.consumption_tax_review(
+            10000, "2027-03-31", "飲食料品（酒類・外食を除く）"
+        )
         paper = tax.consumption_tax_review(10000, "2027-03-31", "定期購読新聞")
         self.assertFalse(standard["review_required"])
         self.assertEqual((standard["tax"], standard["gross"]), (1000, 11000))
         self.assertEqual(food["tax"], 800)
+        self.assertFalse(food_before_change["review_required"])
+        self.assertEqual(
+            (food_before_change["rate"], food_before_change["tax"], food_before_change["gross"]),
+            ("0.08", 800, 10800),
+        )
         self.assertEqual(paper["tax"], 800)
         self.assertEqual(standard["source_url"], tax.JP_TAX_RATE_SOURCE)
 
-    def test_future_rate_change_requires_review_without_numeric_guess(self):
-        for when in ("2027-04-01", "2028-07-01", "2029-03-31", "2029-04-01"):
-            for category in ("標準課税", "飲食料品（酒類・外食を除く）"):
-                with self.subTest(when=when, category=category):
-                    result = tax.consumption_tax_review(10000, when, category)
-                    self.assertTrue(result["review_required"])
-                    self.assertIsNone(result["tax"])
-                    self.assertIsNone(result["gross"])
-                    self.assertIsNone(result["rate"])
+    def test_food_rate_change_requires_review_without_numeric_guess(self):
+        for when in ("2027-04-01", "2028-07-01", "2029-03-31"):
+            with self.subTest(when=when):
+                result = tax.consumption_tax_review(
+                    10000, when, "飲食料品（酒類・外食を除く）"
+                )
+                self.assertTrue(result["review_required"])
+                self.assertIsNone(result["tax"])
+                self.assertIsNone(result["gross"])
+                self.assertIsNone(result["rate"])
+                self.assertIn("改正案", result["reason"])
+                self.assertEqual(result["proposal_source_url"], tax.JP_TAX_CHANGE_SOURCE)
+
+    def test_non_food_categories_keep_published_rates_during_food_only_window(self):
+        for when in ("2027-04-01", "2028-07-01", "2029-03-31"):
+            with self.subTest(when=when):
+                standard = tax.consumption_tax_review(10000, when, "標準課税")
+                newspaper = tax.consumption_tax_review(10000, when, "定期購読新聞")
+                self.assertFalse(standard["review_required"])
+                self.assertEqual((standard["rate"], standard["tax"], standard["gross"]),
+                                 ("0.10", 1000, 11000))
+                self.assertFalse(newspaper["review_required"])
+                self.assertEqual((newspaper["rate"], newspaper["tax"], newspaper["gross"]),
+                                 ("0.08", 800, 10800))
+
+    def test_all_categories_require_review_after_announced_window(self):
+        for category in ("標準課税", "飲食料品（酒類・外食を除く）", "定期購読新聞"):
+            with self.subTest(category=category):
+                result = tax.consumption_tax_review(10000, "2029-04-01", category)
+                self.assertTrue(result["review_required"])
+                self.assertIsNone(result["tax"])
+                self.assertIsNone(result["gross"])
+                self.assertIsNone(result["rate"])
 
     def test_old_date_exempt_uncertain_and_invalid_input(self):
         for when, category in [

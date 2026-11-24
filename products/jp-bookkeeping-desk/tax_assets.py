@@ -163,11 +163,17 @@ def retrospective_adjustment(schedule, posted_by_year: dict[int,int]):
     }
 
 
-# Reviewed 2026-11-01 against NTA No.6303/6102. This is a cautious
-# calculator gate, not a taxability or deduction determination.
+# Reviewed 2026-11-25 against NTA No.6303/6102 and the NTA special site.
+# The special site describes the 2027-04-01 to 2029-03-31 food-only reduction
+# as a draft amendment conditional on Diet passage and enactment. Do not label
+# it enacted or infer a future food rate; food remains REVIEW_REQUIRED during
+# that proposed window. Published non-food rates are references only through
+# 2029-03-31.
 JP_TAX_RATE_SOURCE = "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shohi/6303.htm"
-JP_TAX_REVIEWED_ON = "2026-11-01"
-JP_TAX_AUTOCALC_UNTIL = date(2027, 3, 31)
+JP_TAX_CHANGE_SOURCE = "https://www.nta.go.jp/taxes/shiraberu/zeimokubetsu/shohi/keigenzeiritsu/zeiritsuhikisage.htm"
+JP_TAX_REVIEWED_ON = "2026-11-25"
+JP_TAX_AUTOCALC_UNTIL = date(2027, 3, 31)  # Food category only
+JP_NON_FOOD_TAX_AUTOCALC_UNTIL = date(2029, 3, 31)
 JP_TAX_CATEGORIES = {
     "標準課税": Decimal("0.10"),
     "飲食料品（酒類・外食を除く）": Decimal("0.08"),
@@ -178,8 +184,11 @@ JP_TAX_CATEGORIES = {
 def assess_jp_consumption_tax(transaction_date: str, category: str) -> dict:
     """Rate hint only for explicitly user-selected category in verified period.
 
-    NTA announces a food-rate change starting 2027-04-01. No numeric rate is
-    inferred for that period or for dates beyond our reviewed rate window.
+    The NTA special site describes a proposed food-only rate reduction from
+    2027-04-01 through 2029-03-31, conditional on legislation being passed.
+    Food is REVIEW_REQUIRED during that proposed period; no future food rate
+    is inferred. Non-food categories retain published reference rates only
+    through 2029-03-31. All categories require review after that window.
     """
     try:
         when = date.fromisoformat(transaction_date)
@@ -194,10 +203,13 @@ def assess_jp_consumption_tax(transaction_date: str, category: str) -> dict:
     }
     if when < date(2019, 10, 1):
         result["reason"] = "旧税率・経過措置の可能性があるため、過去の取引は個別確認してください。"
-    elif when > JP_TAX_AUTOCALC_UNTIL:
-        result["reason"] = "2027年4月から飲食料品の税率変更が告知されています。新しい公式税率と適用時期を確認してください。"
     elif category == "要確認":
         result["reason"] = "非課税・免税・対象外かどうかは自動判定しません。取引内容を確認してください。"
+    elif category == "飲食料品（酒類・外食を除く）" and when > JP_TAX_AUTOCALC_UNTIL:
+        result["reason"] = "2027年4月〜2029年3月の飲食料品税率引下げは改正案に基づくため、成立・施行状況と公式税率を確認してください。"
+        result["proposal_source_url"] = JP_TAX_CHANGE_SOURCE
+    elif when > JP_NON_FOOD_TAX_AUTOCALC_UNTIL:
+        result["reason"] = "2029年4月以降の税率は現在の確認済み期間外です。最新の国税庁資料を確認してください。"
     else:
         result["review_required"] = False
         result["rate"] = str(JP_TAX_CATEGORIES[category])
