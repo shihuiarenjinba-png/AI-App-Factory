@@ -62,10 +62,13 @@ try:
             keyboard.send_keys("^o")
             dialog = Desktop(backend="win32").window(title_re=".*Open snapshot.*")
             dialog.wait("visible", timeout=15)
-            edits = dialog.descendants(control_type="Edit")
-            assert edits, "Open snapshot dialog has no filename edit"
-            edits[-1].set_edit_text(str(baseline_path))
-            dialog.child_window(title="Open", control_type="Button").click_input()
+            # The Windows 11 common picker exposes the filename combo as a
+            # non-Edit control to Win32/UIA. Its File name field is focused on
+            # open; use the native keyboard path rather than a guessed control ID.
+            keyboard.send_keys("%n")
+            keyboard.send_keys("^a")
+            keyboard.send_keys(str(baseline_path), with_spaces=True)
+            keyboard.send_keys("{ENTER}")
             dialog.wait_not("visible", timeout=15)
             time.sleep(0.7)
             texts = [x.window_text() for x in window.descendants() if x.window_text()]
@@ -82,7 +85,8 @@ try:
                 warning = Desktop(backend="win32").window(title_re=".*Verify now.*")
                 warning.wait("visible", timeout=12)
                 warning.capture_as_image().save(out / f"{label}-warning.png")
-                warning.child_window(title="OK", control_type="Button").click_input()
+                warning.set_focus()
+                keyboard.send_keys("{ENTER}")
                 warning.wait_not("visible", timeout=10)
             texts = [x.window_text() for x in window.descendants() if x.window_text()]
             combined = " ".join(texts)
