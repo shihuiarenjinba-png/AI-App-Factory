@@ -55,6 +55,16 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
                 finally:
                     store.conn.close()
             self.assertEqual(jp_db.read_bytes(), before, "US write changed JP database")
+            # Re-open the sentinel read-only and close explicitly; byte equality
+            # alone would not prove the sentinel remains a valid readable DB.
+            verification = sqlite3.connect(jp_db)
+            try:
+                self.assertEqual(
+                    verification.execute("SELECT value FROM sentinel").fetchone(),
+                    ("JP-KEEP",),
+                )
+            finally:
+                verification.close()
             self.assertEqual([p.name for p in base.iterdir()], ["JPFreelanceLedger", "USFreelanceLedger"])
 
     def test_us_default_path_cannot_fall_back_to_jp_directory(self):
