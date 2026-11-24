@@ -6,6 +6,9 @@ on:
       - 'products/file-integrity-ledger/main.py'
       - 'products/file-integrity-ledger/tests/windows_exe_gui_smoke.py'
       - '.github/workflows/integrity-native-gui.yml'
+      - 'package_handoff_request.py'
+      - 'tests/test_package_handoff_request.py'
+      - '.github/workflows/integrity-package-request.yml'
   workflow_dispatch:
 
 permissions:
@@ -48,10 +51,13 @@ jobs:
       - name: Build real Windows EXE with shared fail-closed APP builder
         shell: pwsh
         run: |
-          python tools/build_windows_exe.py --slug file-integrity-ledger --expected-sha $env:EXPECTED_SOURCE_SHA --source-branch $env:SOURCE_BRANCH --output dist/preidentity
+          $requestId = "app-file-integrity-ledger-" + $env:EXPECTED_SOURCE_SHA.Substring(0, 12)
+          python tools/build_windows_exe.py --slug file-integrity-ledger --expected-sha $env:EXPECTED_SOURCE_SHA --source-branch $env:SOURCE_BRANCH --request-id $requestId --output dist/preidentity
           if ($LASTEXITCODE -ne 0) { throw "Shared pre-Identity EXE builder failed" }
           if (-not (Test-Path dist/preidentity/file-integrity-ledger.exe)) { throw "Missing shared-builder EXE" }
           if (-not (Test-Path dist/preidentity/exe-receipt.json)) { throw "Missing shared-builder receipt" }
+          $builder = Get-Content -Raw dist/preidentity/exe-receipt.json | ConvertFrom-Json
+          if ($builder.request_id -ne $requestId) { throw "Builder receipt request_id mismatch" }
       - name: Native first-use GUI smoke and receipt against the built EXE
         shell: pwsh
         timeout-minutes: 8
@@ -74,13 +80,29 @@ jobs:
           if (Test-Path $builderPath) {
             Copy-Item $builderPath integrity-gui-evidence/exe-receipt.json
           }
+          $requestId = "app-file-integrity-ledger-" + $env:EXPECTED_SOURCE_SHA.Substring(0, 12)
+          $requestId | Out-File -Encoding utf8 integrity-gui-evidence/request-id.txt
           if ((Test-Path $exePath) -and (Test-Path $builderPath) -and (Test-Path integrity-gui-evidence/receipt.json)) {
             $builder = Get-Content -Raw $builderPath | ConvertFrom-Json
             $gui = Get-Content -Raw integrity-gui-evidence/receipt.json | ConvertFrom-Json
             if ($builder.source_sha -ne $env:EXPECTED_SOURCE_SHA) { throw "Builder receipt source SHA mismatch" }
+            if ($builder.request_id -ne $requestId) { throw "Builder receipt request_id mismatch" }
             if ($gui.source_sha -ne $env:EXPECTED_SOURCE_SHA) { throw "GUI receipt source SHA mismatch" }
             if ($builder.executable_sha256 -ne $gui.exe_sha256) { throw "GUI tested EXE differs from builder receipt" }
             if ($builder.executable_sha256 -ne $exeHash) { throw "Copied EXE SHA differs from builder receipt" }
+            $gui | Add-Member -NotePropertyName request_id -NotePropertyValue $requestId -Force
+            $gui | ConvertTo-Json -Depth 20 | Set-Content -Encoding utf8 integrity-gui-evidence/receipt.json
+            $guiSha = (Get-FileHash integrity-gui-evidence/receipt.json -Algorithm SHA256).Hash.ToLowerInvariant()
+            $builderSha = (Get-FileHash $builderPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $provenance = [ordered]@{
+              source_sha = $env:EXPECTED_SOURCE_SHA
+              request_id = $requestId
+              registration_route = 'MSIX_OR_PWA_APP'
+              exe_sha256 = $exeHash
+              builder_receipt_sha256 = $builderSha
+              gui_receipt_sha256 = $guiSha
+            }
+            $provenance | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 integrity-gui-evidence/provenance.json
           }
           $assets = 'StoreLogo.png','Square150.png','Square44.png'
           foreach ($asset in $assets) {
