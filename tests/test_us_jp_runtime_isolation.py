@@ -6,6 +6,7 @@ a separate JP sentinel database. This does not replace Windows GUI smoke.
 """
 import importlib.util
 import os
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import sys
@@ -33,9 +34,13 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
             jp = base / "JPFreelanceLedger"
             jp.mkdir()
             jp_db = jp / "books.sqlite3"
-            with sqlite3.connect(jp_db) as connection:
-                connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
-                connection.execute("INSERT INTO sentinel VALUES ('JP-KEEP')")
+            # sqlite3.Connection's context manager commits/rolls back but does
+            # not close the handle. Explicit closing is required on Windows,
+            # where TemporaryDirectory cannot remove an open SQLite file.
+            with closing(sqlite3.connect(jp_db)) as connection:
+                with connection:
+                    connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
+                    connection.execute("INSERT INTO sentinel VALUES ('JP-KEEP')")
             before = jp_db.read_bytes()
             with patch.dict(os.environ, {"APPDATA": str(base)}):
                 store = core.Store()
