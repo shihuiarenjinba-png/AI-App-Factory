@@ -19,6 +19,18 @@ BANK_FINALIZE_WARNING = (
     "Undo leaves ledger amounts unchanged, returns matches to review, and saves an audit record."
 )
 
+TAX_REVIEW_TITLE = "REVIEW REQUIRED — US tax calculation"
+TAX_REVIEW_TEXT = (
+    "United States (USD) only. This is a manual estimate, NOT a tax return or filing.\n"
+    "Verify tax year, jurisdiction, IRS publication, method and business-use percentage.\n"
+    "No tax amounts are posted automatically. Continue to the manual calculator?"
+)
+
+def confirm_us_tax_review(parent, askyesno=messagebox.askyesno):
+    """Require explicit confirmation before any US tax calculator is opened."""
+    return askyesno(TAX_REVIEW_TITLE, TAX_REVIEW_TEXT, parent=parent) is True
+
+
 def _work_area(root):
     """Return Tk-coordinate desktop work area; exclude the Windows taskbar."""
     if sys.platform == "win32":
@@ -87,7 +99,7 @@ class App(tk.Tk):
         ttk.Button(f,text="Browse supporting file",command=self.pick).grid(row=9,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="Suggest category",command=self.suggest).grid(row=10,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="Add transaction",command=self.add).grid(row=11,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="Tax / fixed assets",command=self.tax_assets).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="US tax / fixed assets — REVIEW REQUIRED",command=self.tax_assets).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="Export CSV",command=self.export).grid(row=13,column=0,sticky="ew",pady=4)
         ttk.Button(f,text="Backup",command=self.backup).grid(row=13,column=1,sticky="ew",pady=4)
         f.columnconfigure(1,weight=1)
@@ -439,18 +451,20 @@ class App(tk.Tk):
         )
 
     def tax_assets(self):
+        if not confirm_us_tax_review(self):
+            return
         mode=simpledialog.askstring("Tax / fixed assets","Enter sales tax, book depreciation, or tax depreciation")
         if not mode:return
         try:
-            lower=mode.lower()
-            if "sales" in lower:
+            lower=mode.strip().lower()
+            if lower == "sales tax":
                 amount=simpledialog.askfloat("Sales tax","Amount before tax",minvalue=0)
                 rate=simpledialog.askfloat("Sales tax","Jurisdiction rate (%) — enter manually",minvalue=0)
                 jurisdiction=simpledialog.askstring("Sales tax","Jurisdiction name")
                 if amount is None or rate is None:return
                 x=manual_sales_tax(amount,rate)
-                messagebox.showinfo("Sales tax",f'Jurisdiction: {jurisdiction or "manual"}\nTax USD {x["tax"]}\nGross USD {x["gross"]}\n\nArithmetic only; nexus/taxability is not determined.')
-            elif "tax dep" in lower:
+                messagebox.showinfo("REVIEW REQUIRED — Sales tax",f'Jurisdiction: {jurisdiction or "manual"}\nTax USD {x["tax"]}\nGross USD {x["gross"]}\n\nREVIEW REQUIRED: Arithmetic only; nexus/taxability is not determined. No posting.')
+            elif lower == "tax depreciation":
                 source=simpledialog.askstring("Tax depreciation","IRS source URL",initialvalue="https://www.irs.gov/publications/p946")
                 tax_year=simpledialog.askinteger("Tax depreciation","Tax year",initialvalue=date.today().year,minvalue=2000)
                 method=simpledialog.askstring("Tax depreciation","Method/profile name")
@@ -461,8 +475,8 @@ class App(tk.Tk):
                 if cost is None or start is None or not raw:return
                 vals=[v.strip() for v in raw.split(",") if v.strip()]
                 rows=custom_tax_depreciation_schedule(cost,{start+i:v for i,v in enumerate(vals)})
-                messagebox.showinfo("Tax depreciation","\n".join(f'{r["year"]}: USD {r["business_depreciation"]}' for r in rows[:12])+"\n\nReview IRS tax-year rules before use.")
-            else:
+                messagebox.showinfo("REVIEW REQUIRED — Tax depreciation","\n".join(f'{r["year"]}: USD {r["business_depreciation"]}' for r in rows[:12])+"\n\nREVIEW REQUIRED: Verify IRS tax-year rules before use. No posting.")
+            elif lower == "book depreciation":
                 cost=simpledialog.askfloat("Book depreciation","Asset cost (USD)",minvalue=0)
                 first=simpledialog.askstring("Book depreciation","Placed-in-service date YYYY-MM-DD",initialvalue=date.today().isoformat())
                 life=simpledialog.askinteger("Book depreciation","Useful life in years",minvalue=1)
@@ -470,7 +484,11 @@ class App(tk.Tk):
                 use=simpledialog.askfloat("Book depreciation","Business-use percent",initialvalue=100,minvalue=0,maxvalue=100)
                 if cost is None or not first or life is None:return
                 rows=straight_line_book_schedule(cost,first,life,salvage_value=salvage or 0,business_use_percent=use or 0,through_year=date.today().year+life)
-                messagebox.showinfo("Book depreciation","\n".join(f'{r["year"]}: USD {r["business_depreciation"]}' for r in rows[:12])+"\n\nBook and tax depreciation are separate.")
+                messagebox.showinfo("REVIEW REQUIRED — Book depreciation","\n".join(f'{r["year"]}: USD {r["business_depreciation"]}' for r in rows[:12])+"\n\nREVIEW REQUIRED: Book and tax depreciation are separate. No posting.")
+            else:
+                messagebox.showwarning("REVIEW REQUIRED — Unknown calculation",
+                    "Choose exactly one supported calculation: sales tax, book depreciation, or tax depreciation. Nothing was calculated or posted.")
+                return
         except Exception as e:messagebox.showerror("Calculation error",str(e))
     def export(self):
         x=filedialog.asksaveasfilename(defaultextension=".csv",filetypes=[("CSV","*.csv")])
