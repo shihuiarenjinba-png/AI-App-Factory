@@ -6,6 +6,9 @@ on:
       - 'products/file-integrity-ledger/main.py'
       - 'products/file-integrity-ledger/tests/windows_exe_gui_smoke.py'
       - '.github/workflows/integrity-native-gui.yml'
+      - 'package_handoff_request.py'
+      - 'tests/test_package_handoff_request.py'
+      - '.github/workflows/integrity-package-request.yml'
   workflow_dispatch:
 
 permissions:
