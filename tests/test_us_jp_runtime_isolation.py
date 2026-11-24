@@ -57,7 +57,11 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
                 finally:
                     store.conn.close()
             self.assertEqual(jp_db.read_bytes(), before, "US write changed JP database")
-            self.assertEqual([p.name for p in base.iterdir()], ["JPFreelanceLedger", "USFreelanceLedger"])
+            # Filesystem iteration order is not stable across platforms or runs.
+            self.assertEqual(
+                {p.name for p in base.iterdir()},
+                {"JPFreelanceLedger", "USFreelanceLedger"},
+            )
 
     def test_us_default_path_cannot_fall_back_to_jp_directory(self):
         core = load_us_core()
