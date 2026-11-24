@@ -55,24 +55,33 @@ try:
         baseline_path.write_text(json.dumps(baseline), encoding="utf-8")
 
         def open_baseline():
+            # Tk's common file picker is a native Win32 dialog, not a child of
+            # the app's UIA tree. Use the Win32 backend for dialogs and keep UIA
+            # for the main application window.
             window.set_focus()
             keyboard.send_keys("^o")
-            dialog = Desktop(backend="uia").window(title_re=".*Open.*")
+            dialog = Desktop(backend="win32").window(title_re=".*Open snapshot.*")
             dialog.wait("visible", timeout=15)
             edits = dialog.descendants(control_type="Edit")
             assert edits, "Open snapshot dialog has no filename edit"
             edits[-1].set_edit_text(str(baseline_path))
-            keyboard.send_keys("{ENTER}")
+            dialog.child_window(title="Open", control_type="Button").click_input()
             dialog.wait_not("visible", timeout=15)
             time.sleep(0.7)
+            texts = [x.window_text() for x in window.descendants() if x.window_text()]
+            combined = " ".join(texts)
+            assert "Snapshot loaded" in combined, (
+                "Snapshot open did not reach the loaded state: " + combined[:500]
+            )
 
         def verify_expected(label, expected):
             window.set_focus()
             keyboard.send_keys("^r")
             time.sleep(0.7)
             if expected != "UNCHANGED":
-                warning = Desktop(backend="uia").window(title_re=".*Verify now.*")
+                warning = Desktop(backend="win32").window(title_re=".*Verify now.*")
                 warning.wait("visible", timeout=12)
+                warning.capture_as_image().save(out / f"{label}-warning.png")
                 warning.child_window(title="OK", control_type="Button").click_input()
                 warning.wait_not("visible", timeout=10)
             texts = [x.window_text() for x in window.descendants() if x.window_text()]
