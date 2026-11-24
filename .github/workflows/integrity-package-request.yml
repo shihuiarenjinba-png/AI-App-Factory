@@ -6,6 +6,8 @@ on:
       - 'package_handoff_request.py'
       - 'tests/test_package_handoff_request.py'
       - '.github/workflows/integrity-package-request.yml'
+      - '.github/workflows/integrity-native-gui.yml'
+      - '.github/workflows/integrity-store-assets-gate.yml'
       - 'proposals/file-integrity-ledger.json'
       - 'products/file-integrity-ledger/**'
   workflow_dispatch:
@@ -42,7 +44,7 @@ jobs:
       - name: Generate deterministic read-only Factory request
         run: |
           python package_handoff_request.py --slug file-integrity-ledger > package-request.json
-          python -c "import json; j=json.load(open('package-request.json', encoding='utf-8')); assert j['source_sha'] == '$EXPECTED_SOURCE_SHA'; assert j['source_branch'] == '$SOURCE_BRANCH'; assert j['dry_run'] is True"
+          python -c "import json; j=json.load(open('package-request.json', encoding='utf-8')); assert j['source_sha'] == '$EXPECTED_SOURCE_SHA'; assert j['source_branch'] == '$SOURCE_BRANCH'; assert j['dry_run'] is True; assert j['request_id'] == 'app-file-integrity-ledger-' + j['source_sha'][:12]"
       - name: Pin and validate the existing Provisioner intake contract
         env:
           GITHUB_TOKEN: ${{ github.token }}
