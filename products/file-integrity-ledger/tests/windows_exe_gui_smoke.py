@@ -65,9 +65,10 @@ try:
             # The Windows 11 common picker exposes the filename combo as a
             # non-Edit control to Win32/UIA. Its File name field is focused on
             # open; use the native keyboard path rather than a guessed control ID.
+            dialog.set_focus()
             keyboard.send_keys("%n")
             keyboard.send_keys("^a")
-            keyboard.send_keys(str(baseline_path), with_spaces=True)
+            keyboard.send_keys(str(baseline_path), with_spaces=True, vk_packet=True)
             keyboard.send_keys("{ENTER}")
             dialog.wait_not("visible", timeout=15)
             time.sleep(0.7)
