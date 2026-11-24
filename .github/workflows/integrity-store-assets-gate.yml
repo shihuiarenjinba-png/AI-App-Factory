@@ -8,6 +8,7 @@ on:
       - 'package_handoff_request.py'
       - 'tests/test_package_handoff_request.py'
       - '.github/workflows/integrity-package-request.yml'
+      - '.github/workflows/integrity-native-gui.yml'
   workflow_dispatch:
 permissions:
   contents: read
