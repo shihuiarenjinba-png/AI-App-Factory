@@ -1,5 +1,6 @@
 """Windows-only US accounting GUI smoke; never touches JP storage or Store packaging."""
 # Kept on the exact PR head so CI can bind GUI receipts to this source revision.
+# Core CI also checks out this same head SHA rather than the synthetic merge ref.
 import hashlib
 import json
 import os
