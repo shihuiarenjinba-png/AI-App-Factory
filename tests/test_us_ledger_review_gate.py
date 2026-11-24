@@ -41,7 +41,9 @@ class USReviewGateTests(unittest.TestCase):
         self.assertTrue(gate(None, lambda *a, **k: True))
 
     def test_us_label_and_review_result_are_visible(self):
-        self.assertIn("US tax / fixed assets — REVIEW REQUIRED", self.source)
+        label = "US tax review (required)"
+        self.assertIn(label, self.source)
+        self.assertLessEqual(len(label), 24, "Narrow transaction pane label must remain readable")
         for title in ("REVIEW REQUIRED — Sales tax", "REVIEW REQUIRED — Tax depreciation",
                       "REVIEW REQUIRED — Book depreciation"):
             self.assertIn(title, self.source)
@@ -139,7 +141,7 @@ class USReviewGateTests(unittest.TestCase):
             label = next((k.value.value for k in node.keywords
                           if k.arg == "text" and isinstance(k.value, ast.Constant)
                           and isinstance(k.value.value, str)), None)
-            if label == "US tax / fixed assets — REVIEW REQUIRED":
+            if label == "US tax review (required)":
                 matches.append(node)
         self.assertEqual(len(matches), 1, "Exactly one visible US review entrypoint is required")
         command = next((k.value for k in matches[0].keywords if k.arg == "command"), None)
