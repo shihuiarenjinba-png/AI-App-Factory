@@ -1,4 +1,5 @@
 """Windows-only US accounting GUI smoke; never touches JP storage or Store packaging."""
+# Kept on the exact PR head so CI can bind GUI receipts to this source revision.
 import hashlib
 import json
 import os
