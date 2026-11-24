@@ -28,7 +28,7 @@ def main():
         buttons = []
         def walk(widget):
             for child in widget.winfo_children():
-                if isinstance(child, ttk.Button) and child.cget("text") == "US tax / fixed assets — REVIEW REQUIRED":
+                if isinstance(child, ttk.Button) and child.cget("text") == "US tax — REVIEW REQUIRED":
                     buttons.append(child)
                 walk(child)
         walk(app)
