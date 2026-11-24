@@ -42,7 +42,10 @@ try:
     receipt["steps"].append("native_exe_first_use_visible_and_screenshot_saved")
 
     # Exercise native GUI against disposable fixtures only, never real user files.
-    with tempfile.TemporaryDirectory(prefix="integrity-native-e2e-") as folder:
+    # Use the runner's short workspace temp path rather than the Windows
+    # profile short-name path (RUNNER~1), which is a keyboard metacharacter.
+    temp_root = os.environ.get("RUNNER_TEMP") or str(exe.parent)
+    with tempfile.TemporaryDirectory(prefix="integrity-native-e2e-", dir=temp_root) as folder:
         work = Path(folder)
         target = work / "fixture.txt"
         target.write_bytes(b"integrity-original\\n")
