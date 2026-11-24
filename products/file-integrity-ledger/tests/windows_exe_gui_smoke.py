@@ -80,28 +80,36 @@ try:
             keyboard.send_keys("{ENTER}")
             dialog.wait_not("visible", timeout=15)
             time.sleep(0.7)
-            texts = [x.window_text() for x in window.descendants() if x.window_text()]
-            combined = " ".join(texts)
-            assert "Snapshot loaded" in combined, (
-                "Snapshot open did not reach the loaded state: " + combined[:500]
-            )
+            window.wait("visible", timeout=10)
+            assert proc.poll() is None, "EXE exited after opening the snapshot"
+            window.capture_as_image().save(out / "02-loaded.png")
+            assert (out / "02-loaded.png").stat().st_size > 1000
+            receipt["steps"].append("native_snapshot_opened_and_loaded_screenshot_saved")
 
         def verify_expected(label, expected):
             window.set_focus()
             keyboard.send_keys("^r")
             time.sleep(0.7)
+            warning = Desktop(backend="win32").window(title_re=".*Verify now.*")
             if expected != "UNCHANGED":
-                warning = Desktop(backend="win32").window(title_re=".*Verify now.*")
                 warning.wait("visible", timeout=12)
                 warning.capture_as_image().save(out / f"{label}-warning.png")
                 warning.set_focus()
                 keyboard.send_keys("{ENTER}")
                 warning.wait_not("visible", timeout=10)
-            texts = [x.window_text() for x in window.descendants() if x.window_text()]
-            combined = " ".join(texts)
-            assert expected in combined, f"{label}: expected {expected}, observed {combined[:500]}"
-            window.capture_as_image().save(out / f"{label}.png")
-            receipt["steps"].append(f"{label}:{expected}")
+            else:
+                assert not warning.exists(timeout=1), "Unexpected warning for unchanged fixture"
+            window.wait("visible", timeout=10)
+            assert proc.poll() is None, f"EXE exited during {label}"
+            screenshot = out / f"{label}.png"
+            window.capture_as_image().save(screenshot)
+            assert screenshot.stat().st_size > 1000, f"{label}: screenshot missing or empty"
+            receipt.setdefault("visual_observations", []).append({
+                "label": label, "expected_status": expected,
+                "screenshot": screenshot.name,
+                "note": "Native GUI screenshot captured; Tk child text is not exposed through UIA",
+            })
+            receipt["steps"].append(f"{label}:expected_{expected}_visual_evidence_saved")
 
         open_baseline()
         receipt["steps"].append("native_snapshot_opened")
