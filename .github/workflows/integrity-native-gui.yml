@@ -6,6 +6,9 @@ on:
       - 'products/file-integrity-ledger/main.py'
       - 'products/file-integrity-ledger/tests/windows_exe_gui_smoke.py'
       - '.github/workflows/integrity-native-gui.yml'
+      - 'package_handoff_request.py'
+      - 'tests/test_package_handoff_request.py'
+      - '.github/workflows/integrity-package-request.yml'
   workflow_dispatch:
 
 permissions:
@@ -17,43 +20,89 @@ jobs:
     timeout-minutes: 25
     env:
       EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOURCE_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
     steps:
       - name: Checkout raw source HEAD
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - name: Verify exact source SHA
+      - name: Verify exact source SHA and codex branch
         shell: pwsh
         run: |
           $actual = (git rev-parse HEAD).Trim()
           if ($actual -ne $env:EXPECTED_SOURCE_SHA) { throw "Source SHA mismatch: $actual" }
+          if ($env:SOURCE_BRANCH -notmatch '^codex/[A-Za-z0-9._/-]+$' -or $env:SOURCE_BRANCH.Contains('..') -or $env:SOURCE_BRANCH.Contains('//') -or $env:SOURCE_BRANCH.EndsWith('/') -or $env:SOURCE_BRANCH.EndsWith('.')) {
+            throw "Unsafe or non-codex source branch"
+          }
+          $refspec = "+refs/heads/$($env:SOURCE_BRANCH):refs/remotes/origin/$($env:SOURCE_BRANCH)"
+          git fetch --no-tags origin $refspec
+          if ($LASTEXITCODE -ne 0) { throw "Could not fetch source branch tracking ref" }
+          $tracked = (git rev-parse "refs/remotes/origin/$($env:SOURCE_BRANCH)").Trim()
+          if ($tracked -ne $actual) { throw "Source branch moved away from exact checked-out SHA: $tracked" }
           Write-Output "exact_source_sha=$actual"
+          Write-Output "exact_source_branch=$env:SOURCE_BRANCH"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
       - name: Install pinned Windows EXE and GUI tools
         run: python -m pip install --disable-pip-version-check pyinstaller==6.16.0 pywinauto==0.6.9 pillow==11.3.0
-      - name: Build real Windows EXE
+      - name: Build real Windows EXE with shared fail-closed APP builder
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name FileIntegrityLedger --distpath dist --workpath build/integrity-gui --specpath build/integrity-gui products/file-integrity-ledger/main.py
-          if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
-          if (-not (Test-Path dist/FileIntegrityLedger.exe)) { throw "Missing EXE" }
-      - name: Native first-use GUI smoke and receipt
+          $requestId = "app-file-integrity-ledger-" + $env:EXPECTED_SOURCE_SHA.Substring(0, 12)
+          python tools/build_windows_exe.py --slug file-integrity-ledger --expected-sha $env:EXPECTED_SOURCE_SHA --source-branch $env:SOURCE_BRANCH --request-id $requestId --output dist/preidentity
+          if ($LASTEXITCODE -ne 0) { throw "Shared pre-Identity EXE builder failed" }
+          if (-not (Test-Path dist/preidentity/file-integrity-ledger.exe)) { throw "Missing shared-builder EXE" }
+          if (-not (Test-Path dist/preidentity/exe-receipt.json)) { throw "Missing shared-builder receipt" }
+          $builder = Get-Content -Raw dist/preidentity/exe-receipt.json | ConvertFrom-Json
+          if ($builder.request_id -ne $requestId) { throw "Builder receipt request_id mismatch" }
+      - name: Native first-use GUI smoke and receipt against the built EXE
         shell: pwsh
         timeout-minutes: 8
         run: |
-          python products/file-integrity-ledger/tests/windows_exe_gui_smoke.py dist/FileIntegrityLedger.exe integrity-gui-evidence
+          python products/file-integrity-ledger/tests/windows_exe_gui_smoke.py dist/preidentity/file-integrity-ledger.exe integrity-gui-evidence
           if ($LASTEXITCODE -ne 0) { throw "GUI smoke failed" }
-      - name: Capture source EXE and PNG SHA256
+      - name: Capture tested EXE, builder receipt, and PNG SHA256
         if: always()
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path integrity-gui-evidence | Out-Null
           git rev-parse HEAD | Out-File -Encoding utf8 integrity-gui-evidence/source-sha.txt
-          if (Test-Path dist/FileIntegrityLedger.exe) {
-            (Get-FileHash dist/FileIntegrityLedger.exe -Algorithm SHA256).Hash | Out-File -Encoding utf8 integrity-gui-evidence/exe-sha256.txt
+          $exePath = 'dist/preidentity/file-integrity-ledger.exe'
+          $builderPath = 'dist/preidentity/exe-receipt.json'
+          if (Test-Path $exePath) {
+            $exeHash = (Get-FileHash $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $exeHash | Out-File -Encoding utf8 integrity-gui-evidence/exe-sha256.txt
+            Copy-Item $exePath integrity-gui-evidence/file-integrity-ledger.exe
+          }
+          if (Test-Path $builderPath) {
+            Copy-Item $builderPath integrity-gui-evidence/exe-receipt.json
+          }
+          $requestId = "app-file-integrity-ledger-" + $env:EXPECTED_SOURCE_SHA.Substring(0, 12)
+          $requestId | Out-File -Encoding utf8 integrity-gui-evidence/request-id.txt
+          if ((Test-Path $exePath) -and (Test-Path $builderPath) -and (Test-Path integrity-gui-evidence/receipt.json)) {
+            $builder = Get-Content -Raw $builderPath | ConvertFrom-Json
+            $gui = Get-Content -Raw integrity-gui-evidence/receipt.json | ConvertFrom-Json
+            if ($builder.source_sha -ne $env:EXPECTED_SOURCE_SHA) { throw "Builder receipt source SHA mismatch" }
+            if ($builder.request_id -ne $requestId) { throw "Builder receipt request_id mismatch" }
+            if ($gui.source_sha -ne $env:EXPECTED_SOURCE_SHA) { throw "GUI receipt source SHA mismatch" }
+            if ($builder.executable_sha256 -ne $gui.exe_sha256) { throw "GUI tested EXE differs from builder receipt" }
+            if ($builder.executable_sha256 -ne $exeHash) { throw "Copied EXE SHA differs from builder receipt" }
+            $gui | Add-Member -NotePropertyName request_id -NotePropertyValue $requestId -Force
+            $gui | ConvertTo-Json -Depth 20 | Set-Content -Encoding utf8 integrity-gui-evidence/receipt.json
+            $guiSha = (Get-FileHash integrity-gui-evidence/receipt.json -Algorithm SHA256).Hash.ToLowerInvariant()
+            $builderSha = (Get-FileHash $builderPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $provenance = [ordered]@{
+              source_sha = $env:EXPECTED_SOURCE_SHA
+              request_id = $requestId
+              registration_route = 'MSIX_OR_PWA_APP'
+              exe_sha256 = $exeHash
+              builder_receipt_sha256 = $builderSha
+              gui_receipt_sha256 = $guiSha
+            }
+            $provenance | ConvertTo-Json -Depth 5 | Set-Content -Encoding utf8 integrity-gui-evidence/provenance.json
           }
           $assets = 'StoreLogo.png','Square150.png','Square44.png'
           foreach ($asset in $assets) {
@@ -62,7 +111,7 @@ jobs:
             $sha = (Get-FileHash $path -Algorithm SHA256).Hash
             "$asset $sha" | Out-File -Append -Encoding utf8 integrity-gui-evidence/png-sha256.txt
           }
-      - name: Upload GUI and provenance evidence
+      - name: Upload GUI, exact tested EXE, and provenance evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
