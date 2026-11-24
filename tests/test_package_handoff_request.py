@@ -39,8 +39,7 @@ class PackageHandoffTests(unittest.TestCase):
                               check=True, capture_output=True, text=True).stdout.strip()
 
     def request(self, **changes):
-        args = {"root": self.root, "slug": "example-product",
-                "request_id": "app-20261026-001"}
+        args = {"root": self.root, "slug": "example-product"}
         args.update(changes)
         return make_request(**args)
 
@@ -54,6 +53,7 @@ class PackageHandoffTests(unittest.TestCase):
         self.assertEqual(job["product_type"], "APP")
         self.assertEqual(job["source_branch"], BRANCH)
         self.assertEqual(job["source_sha"], self.git("rev-parse", "HEAD"))
+        self.assertEqual(job["request_id"], "app-example-product-" + job["source_sha"][:12])
         self.assertEqual(job["display_name"], "Example Utility")
         self.assertIs(job["dry_run"], True)
         self.assertEqual(job["requested_actions"], [
@@ -75,9 +75,16 @@ class PackageHandoffTests(unittest.TestCase):
             self.request()
 
     def test_reject_wrong_branch(self):
-        self.git("switch", "-qc", "codex/unapproved")
+        self.git("switch", "-qc", "main")
         with self.assertRaises(ValueError):
             self.request()
+
+    def test_accepts_current_safe_codex_branch(self):
+        branch = "codex/integrity-pr95-dialog-workarea-fix-20261124"
+        self.git("switch", "-qc", branch)
+        job = self.request()
+        self.assertEqual(job["source_branch"], branch)
+        self.assertEqual(job["request_id"], "app-example-product-" + job["source_sha"][:12])
 
     def test_reject_wrong_lane(self):
         (self.root / "factory/config.json").write_text('{"kind":"game"}')
@@ -106,7 +113,7 @@ class PackageHandoffTests(unittest.TestCase):
         script = Path(__file__).resolve().parents[1] / "package_handoff_request.py"
         result = subprocess.run(
             [sys.executable, str(script), "--root", str(self.root),
-             "--slug", "example-product", "--request-id", "app-20261026-001"],
+             "--slug", "example-product"],
             capture_output=True, text=True, timeout=20,
         )
         self.assertEqual(result.returncode, 0, result.stderr)

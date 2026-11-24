@@ -1,0 +1,94 @@
+name: File Integrity deterministic Provisioner request
+
+on:
+  pull_request:
+    paths:
+      - 'package_handoff_request.py'
+      - 'tests/test_package_handoff_request.py'
+      - '.github/workflows/integrity-package-request.yml'
+      - '.github/workflows/integrity-native-gui.yml'
+      - '.github/workflows/integrity-store-assets-gate.yml'
+      - 'proposals/file-integrity-ledger.json'
+      - 'products/file-integrity-ledger/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      SOURCE_BRANCH: ${{ github.event.pull_request.head.ref || github.ref_name }}
+    steps:
+      - name: Checkout exact source HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Assert exact source and work branch
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SOURCE_SHA"
+          case "$SOURCE_BRANCH" in codex/*) ;; *) echo "Refusing non-codex source branch"; exit 1 ;; esac
+          echo "exact_source_sha=$actual"
+          echo "exact_source_branch=$SOURCE_BRANCH"
+          git switch --create "$SOURCE_BRANCH"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Generate deterministic read-only Factory request
+        run: |
+          python package_handoff_request.py --slug file-integrity-ledger > package-request.json
+          python -c "import json; j=json.load(open('package-request.json', encoding='utf-8')); assert j['source_sha'] == '$EXPECTED_SOURCE_SHA'; assert j['source_branch'] == '$SOURCE_BRANCH'; assert j['dry_run'] is True; assert j['request_id'] == 'app-file-integrity-ledger-' + j['source_sha'][:12]"
+      - name: Pin and validate the existing Provisioner intake contract
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          git clone --no-checkout https://github.com/shihuiarenjinba-png/Repository-Provisioner-app.git provisioner
+          git -C provisioner fetch --depth 1 origin 3f971e0d9c6bd8622d79935c8e02c5d93c37602f
+          git -C provisioner checkout --detach 3f971e0d9c6bd8622d79935c8e02c5d93c37602f
+          test "$(git -C provisioner rev-parse HEAD)" = "3f971e0d9c6bd8622d79935c8e02c5d93c37602f"
+          python provisioner/package_job.py --input package-request.json --output provisioner-dry-run-receipt.json --verify-head
+      - name: Bind registration route metadata to the validated request
+        run: |
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          job = json.loads(Path("package-request.json").read_text(encoding="utf-8"))
+          receipt = json.loads(Path("provisioner-dry-run-receipt.json").read_text(encoding="utf-8"))
+          expected = os.environ["EXPECTED_SOURCE_SHA"]
+          assert job["source_sha"] == expected
+          assert receipt["source_sha"] == expected
+          assert receipt["expected_head_sha"] == expected
+          assert receipt["source_head_verification"] == "VERIFIED"
+          assert receipt["status"] == "DRY_RUN"
+          request_sha = hashlib.sha256(Path("package-request.json").read_bytes()).hexdigest()
+          route = {
+              "schema_version": 1,
+              "registration_route": "MSIX_OR_PWA_APP",
+              "route_status": "ROUTE_METADATA_ONLY",
+              "source_repository": job["source_repository"],
+              "source_branch": job["source_branch"],
+              "source_sha": job["source_sha"],
+              "slug": job["slug"],
+              "request_id": job["request_id"],
+              "request_sha256": request_sha,
+              "provisioner_idempotency_key": receipt["idempotency_key"],
+              "note": "Route metadata only; no package build, official Identity lookup/return, Version selection, or Store submission was performed."
+          }
+          Path("registration-route.json").write_text(json.dumps(route, indent=2) + "\n", encoding="utf-8")
+          PY
+      - uses: actions/upload-artifact@v4
+        with:
+          name: file-integrity-package-request-${{ github.run_id }}
+          path: |
+            package-request.json
+            provisioner-dry-run-receipt.json
+            registration-route.json
+          if-no-files-found: error
+          retention-days: 30

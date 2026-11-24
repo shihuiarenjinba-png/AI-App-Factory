@@ -5,6 +5,10 @@ on:
       - 'products/file-integrity-ledger/store/assets/**'
       - 'products/file-integrity-ledger/tests/test_store_assets.py'
       - '.github/workflows/integrity-store-assets-gate.yml'
+      - 'package_handoff_request.py'
+      - 'tests/test_package_handoff_request.py'
+      - '.github/workflows/integrity-package-request.yml'
+      - '.github/workflows/integrity-native-gui.yml'
   workflow_dispatch:
 permissions:
   contents: read
@@ -13,6 +17,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact source HEAD
+        env:
+          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_SOURCE_SHA"
+          echo "exact_source_sha=$actual"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
