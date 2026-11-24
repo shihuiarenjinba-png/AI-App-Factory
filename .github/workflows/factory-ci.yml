@@ -10,6 +10,19 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Assert exact-head checkout
+        shell: bash
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          actual="$(git rev-parse HEAD)"
+          if [ "$actual" != "$EXPECTED_HEAD" ]; then
+            echo "Exact-head mismatch: $actual != $EXPECTED_HEAD"
+            exit 1
+          fi
+          echo "EXACT_HEAD=$actual" >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -29,7 +42,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Assert exact-head checkout
+        shell: pwsh
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:EXPECTED_HEAD) { throw "Exact-head mismatch: $actual != $env:EXPECTED_HEAD" }
+          "EXACT_HEAD=$actual" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -44,7 +66,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
+      - name: Assert exact-head checkout
+        shell: pwsh
+        env:
+          EXPECTED_HEAD: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:EXPECTED_HEAD) { throw "Exact-head mismatch: $actual != $env:EXPECTED_HEAD" }
+          "EXACT_HEAD=$actual" | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
