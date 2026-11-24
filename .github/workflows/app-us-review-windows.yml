@@ -4,6 +4,7 @@ on:
     paths:
       - 'tests/windows_us_review_gui_smoke.py'
       - 'tests/windows_us_review_native_exe.py'
+      - 'tests/test_us_jp_runtime_isolation.py'
       - '.github/workflows/app-us-review-windows.yml'
       - 'products/us-freelance-ledger/**'
   workflow_dispatch:
