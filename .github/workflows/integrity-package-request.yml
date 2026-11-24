@@ -34,6 +34,8 @@ jobs:
           case "$SOURCE_BRANCH" in codex/*) ;; *) echo "Refusing non-codex source branch"; exit 1 ;; esac
           echo "exact_source_sha=$actual"
           echo "exact_source_branch=$SOURCE_BRANCH"
+          git switch --create "$SOURCE_BRANCH"
+          test "$(git rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
