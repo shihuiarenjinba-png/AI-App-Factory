@@ -68,7 +68,12 @@ try:
             dialog.set_focus()
             keyboard.send_keys("%n")
             keyboard.send_keys("^a")
-            keyboard.send_keys(str(baseline_path), with_spaces=True, vk_packet=True)
+            # Escape pywinauto's keyboard metacharacters in paths (notably
+            # the "~" in Windows runner short names such as RUNNER~1).
+            path_keys = str(baseline_path)
+            for token in ("~", "+", "^", "%", "{", "}"):
+                path_keys = path_keys.replace(token, "\\" + token)
+            keyboard.send_keys(path_keys, with_spaces=True, vk_packet=True)
             keyboard.send_keys("{ENTER}")
             dialog.wait_not("visible", timeout=15)
             time.sleep(0.7)
