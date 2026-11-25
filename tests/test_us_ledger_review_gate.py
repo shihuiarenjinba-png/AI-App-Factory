@@ -148,6 +148,21 @@ class USReviewGateTests(unittest.TestCase):
         self.assertEqual(command.value.id, "self")
         self.assertEqual(command.attr, "tax_assets")
 
+    def test_tax_calculator_prompts_are_parented_to_main_window(self):
+        calls = [
+            node for node in ast.walk(self.tax_method)
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Attribute)
+            and isinstance(node.func.value, ast.Name)
+            and node.func.value.id == "simpledialog"
+        ]
+        self.assertGreaterEqual(len(calls), 10)
+        for call in calls:
+            with self.subTest(dialog=ast.unparse(call)):
+                parent = next((kw.value for kw in call.keywords if kw.arg == "parent"), None)
+                self.assertIsInstance(parent, ast.Name)
+                self.assertEqual(parent.id, "self")
+
     def test_review_warning_explains_scope_and_no_automatic_posting(self):
         # Confirm novice-facing warning actually includes essential risk boundaries.
         values = {}
