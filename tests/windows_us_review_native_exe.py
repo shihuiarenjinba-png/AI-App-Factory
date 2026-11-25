@@ -47,7 +47,7 @@ def find_tax_button(main):
     """ttk buttons are not necessarily native Win32 Button children."""
     ui = Desktop(backend="uia").window(handle=main.handle)
     controls = ui.descendants(control_type="Button")
-    matches = [c for c in controls if "US tax / fixed assets" in c.window_text()]
+    matches = [c for c in controls if "US tax — REVIEW REQUIRED" in c.window_text()]
     if len(matches) == 1 and matches[0].is_visible() and matches[0].is_enabled():
         return matches[0]
     diagnostics = {"uia_buttons": [{"name": c.window_text(), "type": c.element_info.control_type,
@@ -55,11 +55,11 @@ def find_tax_button(main):
                    "win32_children": [{"class": c.class_name(), "text": c.window_text(),
                                        "rectangle": str(c.rectangle())} for c in main.descendants()]}
     (OUT / "native_controls_diagnostic.json").write_text(json.dumps(diagnostics, indent=2), encoding="utf-8")
-    capture("native_tax_button_missing")
+    capture("native_controls_geometry_fallback")
     # Tk/ttk widgets appear as unnamed TkChild HWNDs on this runner.
-    # The captured runner screenshot and Win32 tree identify the tax action
+    # The captured runner screenshot and Win32 tree identify the review action
     # between Add transaction and Export CSV in the left Transaction pane.
-    # Derive the target from the live pane geometry, never screen pixels.
+    # Derive the target from live pane geometry, never screen pixels.
     pane_candidates = [c for c in main.descendants()
                        if c.class_name() == "TkChild" and
                        170 <= c.rectangle().width() <= 260 and
