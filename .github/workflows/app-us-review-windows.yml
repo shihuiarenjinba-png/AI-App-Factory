@@ -1,5 +1,13 @@
 name: APP US Review Windows Evidence
 on:
+  push:
+    branches:
+      - codex/issue64-us-jp-isolation-ci-fix-20261113
+    paths:
+      - 'tests/windows_us_review_gui_smoke.py'
+      - 'tests/windows_us_review_native_exe.py'
+      - '.github/workflows/app-us-review-windows.yml'
+      - 'products/us-freelance-ledger/**'
   pull_request:
     paths:
       - 'tests/windows_us_review_gui_smoke.py'
