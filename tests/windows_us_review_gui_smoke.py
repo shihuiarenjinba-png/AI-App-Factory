@@ -11,7 +11,7 @@ ROOT = Path(__file__).resolve().parents[1]
 PRODUCT = ROOT / "products" / "us-freelance-ledger"
 sys.path.insert(0, str(PRODUCT))
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox, simpledialog, font as tkfont
 from PIL import ImageGrab
 
 def sha(path):
@@ -33,6 +33,12 @@ def main():
                 walk(child)
         walk(app)
         assert len(buttons) == 1, f"Expected one real GUI button, got {len(buttons)}"
+        button_font = tkfont.Font(root=app, font=buttons[0].cget("font") or "TkDefaultFont")
+        button_text_width = button_font.measure(buttons[0].cget("text"))
+        button_width = buttons[0].winfo_width()
+        assert button_text_width + 24 <= button_width, (
+            f"Review button label is clipped: text={button_text_width}px, widget={button_width}px"
+        )
         receipt = {"source_sha": os.environ.get("APP_SOURCE_SHA", "LOCAL"), "scenarios": []}
         def shot(label):
             app.update()
@@ -40,6 +46,12 @@ def main():
             ImageGrab.grab().save(path)
             return {"file": path.name, "sha256": sha(path)}
         receipt["window"] = shot("us_main_window")
+        receipt["review_button"] = {
+            "label": buttons[0].cget("text"),
+            "text_width_px": button_text_width,
+            "widget_width_px": button_width,
+            "fully_visible": button_text_width + 24 <= button_width,
+        }
         with patch.object(us_main, "confirm_us_tax_review", return_value=False) as confirm, patch.object(simpledialog, "askstring") as ask:
             buttons[0].invoke()
             assert confirm.call_count == 1 and ask.call_count == 0
