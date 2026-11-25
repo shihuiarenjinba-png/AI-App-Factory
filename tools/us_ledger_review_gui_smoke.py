@@ -109,10 +109,30 @@ def capture(output: Path, name: str) -> Path:
     return path
 
 
-def click_message_button(dialog, label: str) -> None:
-    button = dialog.child_window(title=label, class_name="Button")
-    button.wait("exists enabled", timeout=8)
-    button.click_input()
+def click_message_button(dialog, label: str) -> str:
+    # MessageBoxW buttons are visible in the real Windows desktop screenshot,
+    # but hosted-runner UIA/Win32 enumeration can omit their child HWNDs.
+    try:
+        button = dialog.child_window(title=label, class_name="Button")
+        button.wait("exists enabled", timeout=2)
+        button.click_input()
+        return "win32-button-control"
+    except Exception:
+        rect = dialog.rectangle()
+        width = rect.right - rect.left
+        height = rect.bottom - rect.top
+        if width < 200 or height < 100:
+            raise RuntimeError(f"unexpected native message-box bounds for {label}: {rect}")
+        horizontal = {"Yes": 0.67, "No": 0.87, "OK": 0.50}.get(label)
+        if horizontal is None:
+            raise ValueError(f"unsupported native message-box button: {label}")
+        point = (
+            rect.left + int(width * horizontal),
+            rect.top + int(height * 0.88),
+        )
+        dialog.set_focus()
+        mouse.click(button="left", coords=point)
+        return f"native-messagebox-coordinate:{point[0]},{point[1]}"
 
 
 def click_tax_button(main) -> str:
@@ -226,7 +246,7 @@ def run_approved(output: Path) -> dict[str, Any]:
                 if phrase not in review_text:
                     raise AssertionError(f"review dialog omitted novice warning: {phrase!r}")
             capture(output, "approve-review-required-prompt")
-            click_message_button(review, "Yes")
+            approve_click_method = click_message_button(review, "Yes")
             wait_window_closed(review, timeout=8)
 
             enter_tk_prompt(CALC_TITLE, REQUEST["calculation"])
@@ -247,7 +267,7 @@ def run_approved(output: Path) -> dict[str, Any]:
                 if phrase not in result_text:
                     raise AssertionError(f"sales-tax result omitted expected text: {phrase!r}")
             capture(output, "approve-sales-tax-result")
-            click_message_button(result, "OK")
+            result_click_method = click_message_button(result, "OK")
             wait_window_closed(result, timeout=8)
 
             ledger_after = sha256_file(db_path)
@@ -262,6 +282,8 @@ def run_approved(output: Path) -> dict[str, Any]:
             return {
                 "status": "PASS",
                 "click_method": click_method,
+                "approve_button_click_method": approve_click_method,
+                "result_button_click_method": result_click_method,
                 "review_dialog_title": REVIEW_TITLE,
                 "result_dialog_title": RESULT_TITLE,
                 "result_text": result_text,
@@ -305,7 +327,7 @@ def run_declined(output: Path) -> dict[str, Any]:
             if "No tax amounts are posted automatically" not in review_text:
                 raise AssertionError("decline prompt did not show the no-posting warning")
             capture(output, "decline-review-required-prompt")
-            click_message_button(review, "No")
+            decline_click_method = click_message_button(review, "No")
             wait_window_closed(review, timeout=8)
 
             if not wait_title_absent(CALC_TITLE, timeout=3):
@@ -324,6 +346,7 @@ def run_declined(output: Path) -> dict[str, Any]:
             return {
                 "status": "PASS",
                 "click_method": click_method,
+                "decline_button_click_method": decline_click_method,
                 "review_dialog_title": REVIEW_TITLE,
                 "calculator_opened": False,
                 "ledger_sha256_before": ledger_before,
