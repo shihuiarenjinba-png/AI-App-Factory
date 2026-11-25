@@ -48,8 +48,10 @@ def main():
         receipt["window"] = shot("us_main_window")
         receipt["review_button"] = {
             "label": buttons[0].cget("text"),
+            "font": button_font.actual(),
             "text_width_px": button_text_width,
             "widget_width_px": button_width,
+            "horizontal_padding_allowance_px": 24,
             "fully_visible": button_text_width + 24 <= button_width,
         }
         with patch.object(us_main, "confirm_us_tax_review", return_value=False) as confirm, patch.object(simpledialog, "askstring") as ask:
