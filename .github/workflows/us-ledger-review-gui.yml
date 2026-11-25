@@ -7,6 +7,7 @@ on:
     paths:
       - "products/us-freelance-ledger/**"
       - "tools/us_ledger_review_gui_smoke.py"
+      - "tests/test_us_ledger_review_gate.py"
       - ".github/workflows/us-ledger-review-gui.yml"
 
 permissions:
