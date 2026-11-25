@@ -38,7 +38,9 @@ def main():
 
             walk(app)
             assert len(buttons) == 1, f"Expected one real GUI button, got {len(buttons)}"
-            button_font = tkfont.Font(root=app, font=buttons[0].cget("font") or "TkDefaultFont")
+            style = ttk.Style(app)
+            font_spec = style.lookup(buttons[0].cget("style") or "TButton", "font") or "TkDefaultFont"
+            button_font = tkfont.Font(root=app, font=font_spec)
             button_text_width = button_font.measure(buttons[0].cget("text"))
             button_width = buttons[0].winfo_width()
             assert button_text_width + 24 <= button_width, (
