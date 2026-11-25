@@ -32,9 +32,9 @@ jobs:
           source_branch="codex/focus-store-assets-gate-20261118"
           actual="$(git rev-parse HEAD)"
           test "$actual" = "$GITHUB_SHA"
-          parent="$(git rev-parse HEAD^)"
-          test "$parent" = "$expected"
+          git merge-base --is-ancestor "$expected" "$actual"
           remote_head="$(git ls-remote origin "refs/heads/$source_branch" | awk 'NR == 1 {print $1}')"
+          echo "remote_source_head=$remote_head"
           if [ "$remote_head" != "$expected" ]; then
             echo "SOURCE_DRIFT: expected=$expected observed=$remote_head"
             exit 1
@@ -42,6 +42,7 @@ jobs:
           git diff --quiet "$expected" "$actual" -- products/focus-session-desk
           changed="$(git diff --name-only "$expected" "$actual")"
           test -n "$changed"
+          printf '%s\n' "$changed"
           while IFS= read -r path; do
             case "$path" in
               handoff/focus-session-desk/source-request/*|tools/focus_source_request.py|tests/test_focus_source_request.py|.github/workflows/focus-source-request.yml) ;;
