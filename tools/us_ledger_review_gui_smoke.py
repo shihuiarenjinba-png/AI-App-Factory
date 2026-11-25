@@ -356,8 +356,8 @@ def main() -> int:
         raise SystemExit(f"refusing to overwrite evidence directory: {args.output}")
     args.output.mkdir(parents=True)
 
-    source_sha = os.environ.get("GITHUB_SHA", "")
-    source_ref = os.environ.get("GITHUB_REF", "")
+    source_sha = os.environ.get("SOURCE_SHA") or os.environ.get("GITHUB_SHA", "")
+    source_ref = os.environ.get("SOURCE_REF") or os.environ.get("GITHUB_REF", "")
     if len(source_sha) != 40 or not source_ref.startswith("refs/heads/codex/"):
         raise SystemExit("exact codex source SHA/ref required")
 
