@@ -8,16 +8,13 @@ on:
       - "products/us-freelance-ledger/**"
       - "tools/us_ledger_review_gui_smoke.py"
       - ".github/workflows/us-ledger-review-gui.yml"
-  pull_request:
-    branches:
-      - codex/ledger-proposal-recovery-20261109
-    paths:
-      - "products/us-freelance-ledger/**"
-      - "tools/us_ledger_review_gui_smoke.py"
-      - ".github/workflows/us-ledger-review-gui.yml"
 
 permissions:
   contents: read
+
+concurrency:
+  group: us-ledger-review-gui-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   windows-gui:
@@ -26,18 +23,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          ref: ${{ github.sha }}
           persist-credentials: false
-      - name: Assert exact codex source HEAD
+      - name: Assert exact pushed codex source HEAD
         shell: pwsh
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          SOURCE_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
         run: |
           $actual = (git rev-parse HEAD).Trim()
           Write-Host "RAW_HEAD=$actual"
           if ($actual -ne $env:SOURCE_SHA) { throw "Checkout is not the exact source HEAD" }
-          if (-not $env:SOURCE_REF.StartsWith("codex/")) { throw "Non-codex ref refused" }
+          if (-not $env:SOURCE_REF.StartsWith("refs/heads/codex/")) { throw "Non-codex ref refused" }
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -49,14 +46,14 @@ jobs:
         run: python -m pip install --disable-pip-version-check "pywinauto==0.6.9" "Pillow==11.0.0"
       - name: Exercise real US ledger Windows GUI approve and decline paths
         env:
-          SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
-          SOURCE_REF: ${{ github.event.pull_request.head.ref || github.ref_name }}
+          SOURCE_SHA: ${{ github.sha }}
+          SOURCE_REF: ${{ github.ref }}
         run: python tools/us_ledger_review_gui_smoke.py --output dist/us-ledger-review-gui
       - name: Upload GUI screenshots and source/request/receipt SHA evidence
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: us-ledger-review-gui-raw-head-${{ github.event.pull_request.head.sha || github.sha }}
+          name: us-ledger-review-gui-raw-head-${{ github.sha }}
           path: dist/us-ledger-review-gui/
           if-no-files-found: warn
           retention-days: 5
