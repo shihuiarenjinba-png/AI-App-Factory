@@ -35,8 +35,8 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
             jp_db = jp / "books.sqlite3"
 
             # sqlite3.Connection's context manager commits/rolls back but does
-            # not close the handle. Close it explicitly so Windows can remove
-            # the TemporaryDirectory after the assertion completes.
+            # not close the handle. Close it explicitly before Windows removes
+            # the TemporaryDirectory, otherwise the sentinel DB stays locked.
             jp_connection = sqlite3.connect(jp_db)
             try:
                 jp_connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
@@ -55,7 +55,8 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
                     self.assertEqual(len(store.rows()), 1)
                     self.assertEqual(store.rows()[0]["amount_cents"], 12500)
                 finally:
-                    store.conn.close()
+                    # Close the US ledger handle too, before temp cleanup.
+                    store.close()
 
             self.assertEqual(jp_db.read_bytes(), before, "US write changed JP database")
             self.assertEqual(
