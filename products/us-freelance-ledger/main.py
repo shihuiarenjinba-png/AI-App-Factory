@@ -453,35 +453,35 @@ class App(tk.Tk):
     def tax_assets(self):
         if not confirm_us_tax_review(self):
             return
-        mode=simpledialog.askstring("Tax / fixed assets","Enter sales tax, book depreciation, or tax depreciation")
+        mode=simpledialog.askstring("Tax / fixed assets","Enter sales tax, book depreciation, or tax depreciation",parent=self)
         if not mode:return
         try:
             lower=mode.strip().lower()
             if lower == "sales tax":
-                amount=simpledialog.askfloat("Sales tax","Amount before tax",minvalue=0)
-                rate=simpledialog.askfloat("Sales tax","Jurisdiction rate (%) — enter manually",minvalue=0)
-                jurisdiction=simpledialog.askstring("Sales tax","Jurisdiction name")
+                amount=simpledialog.askfloat("Sales tax","Amount before tax",minvalue=0,parent=self)
+                rate=simpledialog.askfloat("Sales tax","Jurisdiction rate (%) — enter manually",minvalue=0,parent=self)
+                jurisdiction=simpledialog.askstring("Sales tax","Jurisdiction name",parent=self)
                 if amount is None or rate is None:return
                 x=manual_sales_tax(amount,rate)
                 messagebox.showinfo("REVIEW REQUIRED — Sales tax",f'Jurisdiction: {jurisdiction or "manual"}\nTax USD {x["tax"]}\nGross USD {x["gross"]}\n\nREVIEW REQUIRED: Arithmetic only; nexus/taxability is not determined. No posting.')
             elif lower == "tax depreciation":
-                source=simpledialog.askstring("Tax depreciation","IRS source URL",initialvalue="https://www.irs.gov/publications/p946")
-                tax_year=simpledialog.askinteger("Tax depreciation","Tax year",initialvalue=date.today().year,minvalue=2000)
-                method=simpledialog.askstring("Tax depreciation","Method/profile name")
+                source=simpledialog.askstring("Tax depreciation","IRS source URL",initialvalue="https://www.irs.gov/publications/p946",parent=self)
+                tax_year=simpledialog.askinteger("Tax depreciation","Tax year",initialvalue=date.today().year,minvalue=2000,parent=self)
+                method=simpledialog.askstring("Tax depreciation","Method/profile name",parent=self)
                 require_tax_profile(source,tax_year,method or "")
-                cost=simpledialog.askfloat("Tax depreciation","Depreciable basis (USD)",minvalue=0)
-                start=simpledialog.askinteger("Tax depreciation","First schedule year",initialvalue=tax_year,minvalue=2000)
-                raw=simpledialog.askstring("Tax depreciation","Year percentages, comma-separated")
+                cost=simpledialog.askfloat("Tax depreciation","Depreciable basis (USD)",minvalue=0,parent=self)
+                start=simpledialog.askinteger("Tax depreciation","First schedule year",initialvalue=tax_year,minvalue=2000,parent=self)
+                raw=simpledialog.askstring("Tax depreciation","Year percentages, comma-separated",parent=self)
                 if cost is None or start is None or not raw:return
                 vals=[v.strip() for v in raw.split(",") if v.strip()]
                 rows=custom_tax_depreciation_schedule(cost,{start+i:v for i,v in enumerate(vals)})
                 messagebox.showinfo("REVIEW REQUIRED — Tax depreciation","\n".join(f'{r["year"]}: USD {r["business_depreciation"]}' for r in rows[:12])+"\n\nREVIEW REQUIRED: Verify IRS tax-year rules before use. No posting.")
             elif lower == "book depreciation":
-                cost=simpledialog.askfloat("Book depreciation","Asset cost (USD)",minvalue=0)
-                first=simpledialog.askstring("Book depreciation","Placed-in-service date YYYY-MM-DD",initialvalue=date.today().isoformat())
-                life=simpledialog.askinteger("Book depreciation","Useful life in years",minvalue=1)
-                salvage=simpledialog.askfloat("Book depreciation","Salvage value",initialvalue=0,minvalue=0)
-                use=simpledialog.askfloat("Book depreciation","Business-use percent",initialvalue=100,minvalue=0,maxvalue=100)
+                cost=simpledialog.askfloat("Book depreciation","Asset cost (USD)",minvalue=0,parent=self)
+                first=simpledialog.askstring("Book depreciation","Placed-in-service date YYYY-MM-DD",initialvalue=date.today().isoformat(),parent=self)
+                life=simpledialog.askinteger("Book depreciation","Useful life in years",minvalue=1,parent=self)
+                salvage=simpledialog.askfloat("Book depreciation","Salvage value",initialvalue=0,minvalue=0,parent=self)
+                use=simpledialog.askfloat("Book depreciation","Business-use percent",initialvalue=100,minvalue=0,maxvalue=100,parent=self)
                 if cost is None or not first or life is None:return
                 rows=straight_line_book_schedule(cost,first,life,salvage_value=salvage or 0,business_use_percent=use or 0,through_year=date.today().year+life)
                 messagebox.showinfo("REVIEW REQUIRED — Book depreciation","\n".join(f'{r["year"]}: USD {r["business_depreciation"]}' for r in rows[:12])+"\n\nREVIEW REQUIRED: Book and tax depreciation are separate. No posting.")
