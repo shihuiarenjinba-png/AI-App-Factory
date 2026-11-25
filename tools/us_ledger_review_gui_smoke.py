@@ -18,6 +18,7 @@ import time
 from typing import Any
 
 from PIL import ImageGrab
+import win32gui
 from pywinauto import Desktop, mouse
 from pywinauto.keyboard import send_keys
 
@@ -157,10 +158,18 @@ def click_tax_button(main) -> str:
 
 def enter_tk_prompt(title: str, value: str) -> None:
     dialog = wait_window(title, timeout=12)
+    old_handle = dialog.handle
     dialog.set_focus()
     send_keys(value, with_spaces=True)
     send_keys("{ENTER}")
-    wait_window_closed(dialog, timeout=10)
+    # The three Sales tax prompts intentionally share a title. Waiting for
+    # title disappearance would confuse the next modal with the previous one.
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        if not win32gui.IsWindow(old_handle):
+            return
+        time.sleep(0.1)
+    raise TimeoutError(f"native Tk prompt HWND did not close: {title}")
 
 
 def create_jp_sentinel(appdata: Path) -> tuple[Path, bytes]:
