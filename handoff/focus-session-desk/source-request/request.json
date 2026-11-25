@@ -1,0 +1,57 @@
+{
+  "execution": {
+    "dry_run": true,
+    "identity_write": false,
+    "msix_build": false,
+    "partner_center_write": false,
+    "request_submitted": false,
+    "store_publication": false,
+    "store_submission": false
+  },
+  "expected_head_sha": "fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79",
+  "historical_identity": {
+    "request_id": "app-focus-session-desk-8b00bc4e9082",
+    "reuse_for_current_source": false,
+    "source_sha": "8b00bc4e90828c4282463826873aa8dfd2eb93f4",
+    "status": "HISTORICAL_ONLY_NOT_REUSED"
+  },
+  "idempotency_key": "750bc660374613ddddb6303dea4ccb88b9f15d4b8854b543a8640aca5e059f55",
+  "operation": "PARTNER_CENTER_IDENTITY_REVALIDATION",
+  "package_version": {
+    "status": "HOLD_NOT_INFERRED",
+    "value": null
+  },
+  "partner_center": {
+    "action_scope": "READ_ONLY_IDENTITY_REVALIDATION",
+    "selection_code": "MSIX_OR_PWA_APP",
+    "selection_label": "MSIX or PWA app",
+    "write_authorized": false
+  },
+  "product": {
+    "display_name": "Focus Session Desk",
+    "product_type": "APP",
+    "slug": "focus-session-desk"
+  },
+  "request_id": "app-focus-session-desk-fb6293839bc7",
+  "required_operator_return_fields": [
+    "store_id",
+    "name",
+    "publisher",
+    "version",
+    "official_evidence_url",
+    "verified_by",
+    "operator_verified"
+  ],
+  "return_target": {
+    "apply_authorized": false,
+    "branch": "codex/focus-store-assets-gate-20261118",
+    "expected_head_sha": "fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79",
+    "path": "products/focus-session-desk/store/approved-identity.json",
+    "repository": "shihuiarenjinba-png/AI-App-Factory"
+  },
+  "schema_version": "focus-source-request/1",
+  "source_branch": "codex/focus-store-assets-gate-20261118",
+  "source_drift_policy": "Reject this request if the named source branch no longer points to source_sha or if products/focus-session-desk differs from that commit.",
+  "source_repository": "shihuiarenjinba-png/AI-App-Factory",
+  "source_sha": "fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79"
+}

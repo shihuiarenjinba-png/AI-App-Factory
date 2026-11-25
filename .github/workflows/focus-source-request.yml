@@ -1,0 +1,98 @@
+name: Focus source-bound DRY_RUN request
+
+on:
+  push:
+    branches:
+      - codex/focus-source-request-fb6293839bc7
+    paths:
+      - 'handoff/focus-session-desk/source-request/**'
+      - 'tools/focus_source_request.py'
+      - 'tests/test_focus_source_request.py'
+      - '.github/workflows/focus-source-request.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  request-artifact:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Verify request HEAD, pinned source branch and unchanged product tree
+        id: source
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79"
+          source_branch="codex/focus-store-assets-gate-20261118"
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$GITHUB_SHA"
+          parent="$(git rev-parse HEAD^)"
+          test "$parent" = "$expected"
+          remote_head="$(git ls-remote origin "refs/heads/$source_branch" | awk 'NR == 1 {print $1}')"
+          if [ "$remote_head" != "$expected" ]; then
+            echo "SOURCE_DRIFT: expected=$expected observed=$remote_head"
+            exit 1
+          fi
+          git diff --quiet "$expected" "$actual" -- products/focus-session-desk
+          changed="$(git diff --name-only "$expected" "$actual")"
+          test -n "$changed"
+          while IFS= read -r path; do
+            case "$path" in
+              handoff/focus-session-desk/source-request/*|tools/focus_source_request.py|tests/test_focus_source_request.py|.github/workflows/focus-source-request.yml) ;;
+              *) echo "Unexpected path outside request scope: $path"; exit 1 ;;
+            esac
+          done <<< "$changed"
+          echo "source_head=$remote_head" >> "$GITHUB_OUTPUT"
+          echo "request_head=$actual" >> "$GITHUB_OUTPUT"
+          echo "request_head=$actual"
+          echo "source_head=$remote_head"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Test deterministic payload, source drift, tamper rejection and replay
+        run: python -m unittest discover -s tests -p test_focus_source_request.py -v
+
+      - name: Build and verify downloadable DRY_RUN artifact
+        run: |
+          python tools/focus_source_request.py \
+            --source-root . \
+            --observed-source-head "${{ steps.source.outputs.source_head }}" \
+            --output dist/focus-source-request
+
+      - name: Upload source-bound request artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-source-request-app-focus-session-desk-fb6293839bc7
+          path: dist/focus-source-request/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Record exact source, request and Artifact provenance
+        shell: bash
+        run: |
+          set -euo pipefail
+          verification="dist/focus-source-request/verification.json"
+          request_sha="$(python -c 'import json,sys;print(json.load(open(sys.argv[1]))["request_sha256"])' "$verification")"
+          idempotency_key="$(python -c 'import json,sys;print(json.load(open(sys.argv[1]))["idempotency_key"])' "$verification")"
+          {
+            echo "## Focus source-bound DRY_RUN request"
+            echo "- Request branch HEAD: \`${{ steps.source.outputs.request_head }}\`"
+            echo "- Source branch HEAD: \`${{ steps.source.outputs.source_head }}\`"
+            echo "- Request ID: \`app-focus-session-desk-fb6293839bc7\`"
+            echo "- Request SHA-256: \`$request_sha\`"
+            echo "- Idempotency key: \`$idempotency_key\`"
+            echo "- Artifact ID: \`${{ steps.upload.outputs.artifact-id }}\`"
+            echo "- Artifact digest: \`${{ steps.upload.outputs.artifact-digest }}\`"
+            echo "- Artifact URL: \`${{ steps.upload.outputs.artifact-url }}\`"
+            echo "- dry_run=true; request_submitted=false; no Partner Center write, Identity write, MSIX build or Store submission."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "ARTIFACT_ID=${{ steps.upload.outputs.artifact-id }}"
+          echo "ARTIFACT_DIGEST=${{ steps.upload.outputs.artifact-digest }}"
