@@ -10,6 +10,8 @@ import urllib.parse
 import urllib.request
 from pathlib import Path
 
+from tools.product_qa_plan import load_template
+
 ROOT=Path(__file__).resolve().parent
 SLUG=re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 QUERIES={
@@ -93,6 +95,18 @@ def plan(root=ROOT):
               "For games implement playable loop, keyboard/mouse, game over and "
               "save/load. For apps implement useful functionality, validation, "
               "error feedback and save/load. Tests must work headlessly. "
+              "Also write qa/windows-product-qa-plan.json using schema "
+              "windows-product-qa-plan-template-v1. The QA plan must describe the "
+              "sale-preflight Windows checks as action IDs + bounded params + explicit "
+              "requires dependencies; use UIA_SET_TEXT only for bounded Edit-field " 
+              "input when a real product control requires text entry; never embed shell commands, executable paths, "
+              "Git writes, Store actions, security changes, or authority flags. "
+              "Always include ARTIFACT_HASH first and exactly one PROCESS_START that "
+              "requires it. Add product-specific UIA read/find/invoke steps only when "
+              "they correspond to real controls in this product. Also add a small set "
+              "of required=false read-only diagnostic steps when useful; their actions "
+              "must appear in allowed_diagnostics so local Ollama may select only those "
+              "pre-authored diagnostics after a required-step failure. "
               "No downloads, telemetry, remote shell, payment, or secrets.")
     else:
         source=root/"products"/st["slug"]
@@ -102,7 +116,14 @@ def plan(root=ROOT):
         goal=("Improve reliability, usability, first-run flow, honest error handling, "
               "1024x768 sizing, save/restart stability and regression coverage. "
               "Modify ONLY .candidate/product. Preserve existing features. "
-              "Update README and headless tests. No downloads or API access.")
+              "Update README and headless tests. Update "
+              "qa/windows-product-qa-plan.json so it matches the current real product "
+              "and uses only structured action IDs, bounded params, and dependencies. " 
+              "UIA_SET_TEXT is allowed only for bounded Edit-field input tied to a real control. "
+              "Keep failure diagnostics required=false and read-only; prefer PROCESS_STATUS, "
+              "UIA_FIND_WINDOW, UIA_FIND_CONTROL, or UIA_READ_TEXT and list the chosen action "
+              "in allowed_diagnostics. Never put shell commands, Git writes, Store actions, security changes, "
+              "or release authority in the plan. No downloads or API access.")
     snapshot={k:st.get(k) for k in ("schema","kind","stage","cycle","revision","slug")}
     save(root/".runtime/plan.json",snapshot)
     guidance=(root/"AGENTS.md").read_text(encoding="utf-8")
@@ -153,7 +174,10 @@ def validate(root=ROOT):
             stop("research evidence must reference two distinct repositories")
         return {"stage":"research","slug":slug}
     if any(part.parts[0]!="product" for part in files): stop("unexpected candidate root")
-    for req in ("manifest.json","README.md","main.py","tests/test_smoke.py"):
+    for req in (
+        "manifest.json", "README.md", "main.py", "tests/test_smoke.py",
+        "qa/windows-product-qa-plan.json",
+    ):
         if not (base/"product"/req).is_file(): stop("missing: "+req)
     if not (base/"product/README.md").read_text(encoding="utf-8").strip():
         stop("empty README")
@@ -203,6 +227,11 @@ def validate(root=ROOT):
     mf=load(base/"product/manifest.json")
     if mf.get("slug")!=st["slug"] or mf.get("kind")!=cfg["kind"] or mf.get("entry")!="main.py":
         stop("manifest/state mismatch")
+    load_template(
+        base/"product/qa/windows-product-qa-plan.json",
+        expected_slug=st["slug"],
+        expected_type={"app": "APP", "game": "GAME"}[cfg["kind"]],
+    )
     return {"stage":st["stage"],"slug":st["slug"]}
 
 def promote(root=ROOT):

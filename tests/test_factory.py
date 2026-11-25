@@ -4,6 +4,43 @@ import unittest
 from pathlib import Path
 from factory import plan, validate, promote, save
 
+def write_qa_plan(base, slug="simple-product", product_type="APP"):
+    save(base/"qa/windows-product-qa-plan.json", {
+        "schema_version": "windows-product-qa-plan-template-v1",
+        "product_slug": slug,
+        "product_type": product_type,
+        "plan_version": 1,
+        "steps": [
+            {
+                "step_id": "artifact-hash",
+                "action": "ARTIFACT_HASH",
+                "requires": [],
+                "required": True,
+                "params": {},
+            },
+            {
+                "step_id": "process-start",
+                "action": "PROCESS_START",
+                "requires": ["artifact-hash"],
+                "required": True,
+                "params": {"observation_seconds": 5},
+            },
+        ],
+        "allowed_diagnostics": ["PROCESS_STATUS", "EVENT_LOG_QUERY"],
+        "forbidden_actions": [
+            "SOURCE_EDIT", "ARBITRARY_SHELL", "GIT_WRITE",
+            "STORE_SUBMIT", "STORE_PUBLISH", "SECURITY_POLICY_CHANGE",
+        ],
+        "success_policy": {
+            "required_steps_must_pass": True,
+            "evidence_return_required": True,
+            "product_e2e_authority": False,
+            "release_authority": False,
+            "store_authority": False,
+        },
+    })
+
+
 class CoreTests(unittest.TestCase):
     def setUp(self):
         self.temp=tempfile.TemporaryDirectory()
@@ -71,6 +108,7 @@ class CoreTests(unittest.TestCase):
         (base/"README.md").write_text("Run with python main.py")
         (base/"main.py").write_text("print('ok')")
         (base/"tests/test_smoke.py").write_text("import unittest\nclass Smoke(unittest.TestCase):\n def test_ok(self):self.assertTrue(True)\n")
+        write_qa_plan(base)
         promote(self.root)
         for revision in (1,2):
             s=json.loads((self.root/"factory/state.json").read_text())
@@ -135,6 +173,7 @@ class CoreTests(unittest.TestCase):
         (base/"main.py").write_text("print('working prototype')\n")
         (base/"tests/test_smoke.py").write_text(
             "import unittest\nclass Smoke(unittest.TestCase):\n def test_run(self):self.assertEqual(1,1)\n")
+        write_qa_plan(base, product_type="APP" if kind=="app" else "GAME")
         return base
 
     def test_no_actual_code_change_is_rejected(self):

@@ -25,6 +25,32 @@ class FactoryTransportTests(unittest.TestCase):
         self.prod=self.root/"products/demo-product"
         (self.prod/"store").mkdir(parents=True)
         (self.prod/"manifest.json").write_text(json.dumps({"slug":"demo-product","kind":self.kind}))
+        (self.prod/"qa").mkdir()
+        (self.prod/"qa/windows-product-qa-plan.json").write_text(json.dumps({
+            "schema_version": "windows-product-qa-plan-template-v1",
+            "product_slug": "demo-product",
+            "product_type": "APP" if self.kind == "app" else "GAME",
+            "plan_version": 1,
+            "steps": [
+                {"step_id": "artifact-hash", "action": "ARTIFACT_HASH",
+                 "requires": [], "required": True, "params": {}},
+                {"step_id": "process-start", "action": "PROCESS_START",
+                 "requires": ["artifact-hash"], "required": True,
+                 "params": {"observation_seconds": 5}},
+            ],
+            "allowed_diagnostics": ["PROCESS_STATUS", "EVENT_LOG_QUERY"],
+            "forbidden_actions": [
+                "SOURCE_EDIT", "ARBITRARY_SHELL", "GIT_WRITE",
+                "STORE_SUBMIT", "STORE_PUBLISH", "SECURITY_POLICY_CHANGE",
+            ],
+            "success_policy": {
+                "required_steps_must_pass": True,
+                "evidence_return_required": True,
+                "product_e2e_authority": False,
+                "release_authority": False,
+                "store_authority": False,
+            },
+        }))
         self.approved={"reviewed":True,"source":"partner_center","store_id":"9PTESTING",
             "name":"OkinawaDesktopTools.Demo","publisher":"CN=TEST","version":"1.0.0.0"}
         self.save_approved()
@@ -49,6 +75,26 @@ class FactoryTransportTests(unittest.TestCase):
         self.assertEqual(meta["package_sha256"],hashlib.sha256(self.package.read_bytes()).hexdigest())
         self.assertEqual(meta["executable_sha256"],
                          hashlib.sha256(b"windows test executable").hexdigest())
+        self.assertEqual(meta["qa_plan"], "qa-plan.json")
+        qa=json.loads((saved/"qa-plan.json").read_text())
+        self.assertEqual(qa["schema_version"], "windows-product-qa-plan-v1")
+        self.assertEqual(qa["source_sha"], SHA)
+        self.assertEqual(qa["package_sha256"], meta["package_sha256"])
+        self.assertEqual(qa["executable_sha256"], meta["executable_sha256"])
+        self.assertEqual(qa["identity"], meta["identity"])
+        self.assertFalse(qa["success_policy"]["store_authority"])
+
+    def test_missing_qa_plan_fails(self):
+        (self.prod/"qa/windows-product-qa-plan.json").unlink()
+        with self.assertRaisesRegex(ValueError, "QA plan"):
+            create_handoff(self.root,"demo-product",self.package,self.root/"exports",SHA)
+
+    def test_raw_command_in_qa_plan_fails(self):
+        plan=json.loads((self.prod/"qa/windows-product-qa-plan.json").read_text())
+        plan["steps"][1]["command"]="powershell.exe -Command whoami"
+        (self.prod/"qa/windows-product-qa-plan.json").write_text(json.dumps(plan))
+        with self.assertRaisesRegex(ValueError, "step fields"):
+            create_handoff(self.root,"demo-product",self.package,self.root/"exports",SHA)
 
     def test_no_partner_center_evidence_fails(self):
         self.approved["reviewed"]=False
