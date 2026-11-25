@@ -47,7 +47,7 @@ def find_tax_button(main):
     """ttk buttons are not necessarily native Win32 Button children."""
     ui = Desktop(backend="uia").window(handle=main.handle)
     controls = ui.descendants(control_type="Button")
-    matches = [c for c in controls if "US tax — REVIEW REQUIRED" in c.window_text()]
+    matches = [c for c in controls if "US tax review (required)" in c.window_text()]
     if len(matches) == 1 and matches[0].is_visible() and matches[0].is_enabled():
         return matches[0]
     diagnostics = {"uia_buttons": [{"name": c.window_text(), "type": c.element_info.control_type,
