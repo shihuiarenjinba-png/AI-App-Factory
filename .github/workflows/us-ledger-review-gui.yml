@@ -1,0 +1,48 @@
+name: US Ledger Review GUI raw-head smoke
+
+on:
+  push:
+    branches:
+      - codex/us-ledger-review-gui-20261126
+    paths:
+      - "products/us-freelance-ledger/**"
+      - "tools/us_ledger_review_gui_smoke.py"
+      - ".github/workflows/us-ledger-review-gui.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-gui:
+    runs-on: windows-latest
+    timeout-minutes: 18
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Assert exact pushed codex HEAD
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          Write-Host "RAW_HEAD=$actual"
+          if ($actual -ne $env:GITHUB_SHA) { throw "Checkout is not the exact pushed HEAD" }
+          if (-not $env:GITHUB_REF.StartsWith("refs/heads/codex/")) { throw "Non-codex ref refused" }
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Run full unit and Windows contract suite on exact raw HEAD
+        run: python -m unittest discover -s tests -v
+      - name: Compile US ledger GUI smoke
+        run: python -m py_compile products/us-freelance-ledger/main.py tools/us_ledger_review_gui_smoke.py
+      - name: Install pinned Windows UI automation dependencies
+        run: python -m pip install --disable-pip-version-check "pywinauto==0.6.9" "Pillow==11.0.0"
+      - name: Exercise real US ledger Windows GUI approve and decline paths
+        run: python tools/us_ledger_review_gui_smoke.py --output dist/us-ledger-review-gui
+      - name: Upload GUI screenshots and source/request/receipt SHA evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-ledger-review-gui-raw-head-${{ github.sha }}
+          path: dist/us-ledger-review-gui/
+          if-no-files-found: warn
+          retention-days: 5
