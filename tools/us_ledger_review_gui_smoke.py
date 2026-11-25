@@ -156,10 +156,22 @@ def click_tax_button(main) -> str:
     return f"win32-screen-coordinate:{point[0]},{point[1]}"
 
 
-def enter_tk_prompt(title: str, value: str) -> None:
+def enter_tk_prompt(title: str, value: str, output: Path, screenshot_name: str) -> None:
     dialog = wait_window(title, timeout=12)
     old_handle = dialog.handle
+    rect = dialog.rectangle()
+    width = rect.right - rect.left
+    height = rect.bottom - rect.top
+    if width < 180 or height < 90:
+        raise RuntimeError(f"unexpected Tk prompt bounds for {title}: {rect}")
+    capture(output, screenshot_name)
     dialog.set_focus()
+    # simpledialog is a Tk Toplevel; on hosted Windows its Entry may not be
+    # exposed as a native Edit control. Click the centered Entry area directly.
+    mouse.click(
+        button="left",
+        coords=(rect.left + width // 2, rect.top + int(height * 0.48)),
+    )
     send_keys(value, with_spaces=True)
     send_keys("{ENTER}")
     # The three Sales tax prompts intentionally share a title. Waiting for
@@ -169,6 +181,7 @@ def enter_tk_prompt(title: str, value: str) -> None:
         if not win32gui.IsWindow(old_handle):
             return
         time.sleep(0.1)
+    capture(output, screenshot_name + "-timeout")
     raise TimeoutError(f"native Tk prompt HWND did not close: {title}")
 
 
@@ -258,10 +271,10 @@ def run_approved(output: Path) -> dict[str, Any]:
             approve_click_method = click_message_button(review, "Yes")
             wait_window_closed(review, timeout=8)
 
-            enter_tk_prompt(CALC_TITLE, REQUEST["calculation"])
-            enter_tk_prompt("Sales tax", REQUEST["amount_usd"])
-            enter_tk_prompt("Sales tax", REQUEST["jurisdiction_rate_percent"])
-            enter_tk_prompt("Sales tax", REQUEST["jurisdiction"])
+            enter_tk_prompt(CALC_TITLE, REQUEST["calculation"], output, "approve-calculation-mode")
+            enter_tk_prompt("Sales tax", REQUEST["amount_usd"], output, "approve-sales-tax-amount")
+            enter_tk_prompt("Sales tax", REQUEST["jurisdiction_rate_percent"], output, "approve-sales-tax-rate")
+            enter_tk_prompt("Sales tax", REQUEST["jurisdiction"], output, "approve-sales-tax-jurisdiction")
 
             result = wait_window(RESULT_TITLE, timeout=12)
             result_text = control_text(result)
