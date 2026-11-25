@@ -29,6 +29,30 @@ class CoreTests(unittest.TestCase):
         plan(self.root)
         save(self.root/".candidate/proposal.json",self.proposal)
 
+    def write_qa_plan(self, base, kind="app"):
+        save(base/"qa-plan.json", {
+            "schema_version":"windows-product-qa-plan-v1",
+            "product":{"slug":"simple-product","kind":kind},
+            "intent":"Final pre-sale local Windows QA for the exact generated product.",
+            "steps":[
+                {
+                    "step_id":"artifact_hash","test_id":"ARTIFACT_HASH","required":True,
+                    "requires":[],"purpose":"Verify exact artifact bytes.",
+                    "parameters":{},"evidence":["artifact_sha256"],
+                    "on_fail":"STOP_AND_RETURN"
+                },
+                {
+                    "step_id":"process_start","test_id":"PROCESS_START","required":True,
+                    "requires":["artifact_hash"],"purpose":"Launch the exact product.",
+                    "parameters":{},
+                    "evidence":["exit_code","runtime_state"],
+                    "on_fail":"STOP_AND_RETURN"
+                }
+            ],
+            "allowed_diagnostics":["EVENT_LOG_QUERY","PROCESS_STATUS"],
+            "success_criteria":["All required steps pass and Evidence is returned."]
+        })
+
     def test_research_transition(self):
         self.research()
         self.assertEqual(validate(self.root)["slug"],"simple-product")
@@ -71,6 +95,7 @@ class CoreTests(unittest.TestCase):
         (base/"README.md").write_text("Run with python main.py")
         (base/"main.py").write_text("print('ok')")
         (base/"tests/test_smoke.py").write_text("import unittest\nclass Smoke(unittest.TestCase):\n def test_ok(self):self.assertTrue(True)\n")
+        self.write_qa_plan(base)
         promote(self.root)
         for revision in (1,2):
             s=json.loads((self.root/"factory/state.json").read_text())
@@ -135,6 +160,7 @@ class CoreTests(unittest.TestCase):
         (base/"main.py").write_text("print('working prototype')\n")
         (base/"tests/test_smoke.py").write_text(
             "import unittest\nclass Smoke(unittest.TestCase):\n def test_run(self):self.assertEqual(1,1)\n")
+        self.write_qa_plan(base,kind)
         return base
 
     def test_no_actual_code_change_is_rejected(self):
@@ -174,6 +200,12 @@ class CoreTests(unittest.TestCase):
         base=self._prototype_for_validation()
         (base/"main.py").write_text("exec('print(1)')\n")
         with self.assertRaisesRegex(ValueError,"dynamic execution"):
+            validate(self.root)
+
+    def test_product_missing_qa_plan_rejected(self):
+        base=self._prototype_for_validation()
+        (base/"qa-plan.json").unlink()
+        with self.assertRaisesRegex(ValueError,"missing: qa-plan.json"):
             validate(self.root)
 
     def test_product_missing_test_rejected(self):

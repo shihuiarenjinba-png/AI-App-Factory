@@ -11,8 +11,11 @@ import sys
 import xml.etree.ElementTree as ET
 import zipfile
 
+from tools.product_qa_plan import load_plan
+
 SLUG=re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 SHA40=re.compile(r"^[a-f0-9]{40}$")
+BRANCH=re.compile(r"^[A-Za-z0-9][A-Za-z0-9._/-]{0,199}$")
 OWNER="shihuiarenjinba-png"
 
 def fail(reason):
@@ -61,8 +64,12 @@ def msix_data(path:Path)->dict:
             if len(applications)!=1:
                 fail("MSIX must declare exactly one executable application")
             executable=applications[0].attrib.get("Executable")
+            application_id=applications[0].attrib.get("Id")
             if not isinstance(executable,str):
                 fail("MSIX executable path missing")
+            if (not isinstance(application_id,str) or not application_id or
+                any(not (ch.isalnum() or ch in "._") for ch in application_id)):
+                fail("MSIX application Id invalid")
             exe_path=executable.replace("\\","/")
             components=exe_path.split("/")
             if (not exe_path.lower().endswith(".exe") or
@@ -89,12 +96,16 @@ def msix_data(path:Path)->dict:
     with path.open("rb") as reader:
         for piece in iter(lambda:reader.read(1024*1024),b""):digest.update(piece)
     fields.update(package_sha256=digest.hexdigest(),package_bytes=path.stat().st_size,
-                  executable_sha256=exe_digest.hexdigest())
+                  executable_sha256=exe_digest.hexdigest(),
+                  executable_path=exe_path,application_id=application_id)
     return fields
 
-def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:str)->dict:
+def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:str,source_branch:str)->dict:
     if not isinstance(slug,str) or not SLUG.fullmatch(slug):fail("invalid product slug")
     if not SHA40.fullmatch(str(source_sha)):fail("invalid Git source commit")
+    if (not isinstance(source_branch,str) or not BRANCH.fullmatch(source_branch) or
+        source_branch.startswith("/") or source_branch.endswith("/") or ".." in source_branch):
+        fail("invalid Git source branch")
     config=json.loads((repo_root/"factory/config.json").read_text(encoding="utf-8"))
     kind=config.get("kind")
     if kind not in ("app","game"):fail("factory app/game kind missing")
@@ -102,6 +113,8 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
     app_manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
     if app_manifest.get("slug")!=slug or app_manifest.get("kind")!=kind:
         fail("product manifest / factory mismatch")
+    qa_plan_path=repo_root/"products"/slug/"qa-plan.json"
+    _,qa_plan_sha256=load_plan(qa_plan_path,slug=slug,kind=kind)
     approved_path=repo_root/"products"/slug/"store/approved-identity.json"
     if not approved_path.is_file():fail("official Identity approval input missing")
     approved=json.loads(approved_path.read_text(encoding="utf-8"))
@@ -116,18 +129,24 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
     basename="AI-App-Factory" if kind=="app" else "AI-Game-Factory"
     result={
        "schema_version":1,"source_repository":"https://github.com/"+OWNER+"/"+basename,
-       "source_sha":source_sha,"type":kind,"slug":slug,
+       "source_sha":source_sha,"source_branch":source_branch,"type":kind,"slug":slug,
        "package":"package.msix","status":"QA_UNSIGNED",
        "package_sha256":actual["package_sha256"],
        "package_bytes":actual["package_bytes"],
        "executable_sha256":actual["executable_sha256"],
+       "executable_path":actual["executable_path"],
+       "application_id":actual["application_id"],
        "identity":{k:actual[k] for k in ("name","publisher","version")},
+       "qa_plan":"qa-plan.json",
+       "qa_plan_schema":"windows-product-qa-plan-v1",
+       "qa_plan_sha256":qa_plan_sha256,
     }
     dest=output/"factory-msix-handoff"
     if dest.exists():fail("output artifact already exists")
     dest.mkdir(parents=True)
     try:
         shutil.copyfile(package,dest/"package.msix")
+        shutil.copyfile(qa_plan_path,dest/"qa-plan.json")
         (dest/"handoff.json").write_text(json.dumps(result,indent=2)+"\n",encoding="utf-8")
         if msix_data(dest/"package.msix")["package_sha256"]!=actual["package_sha256"]:
             fail("copied MSIX hash mismatch")
@@ -141,13 +160,14 @@ def main(argv=None):
     parser.add_argument("--slug",required=True)
     parser.add_argument("--msix",required=True,type=Path)
     parser.add_argument("--output",required=True,type=Path)
+    parser.add_argument("--source-branch",required=True)
     parser.add_argument("--repository-root",type=Path,default=Path(__file__).resolve().parents[1])
     args=parser.parse_args(argv)
     try:
         head=subprocess.check_output(["git","rev-parse","HEAD"],
             cwd=args.repository_root,encoding="utf-8",timeout=8).strip()
         print(json.dumps(create_handoff(args.repository_root,args.slug,args.msix,
-            args.output,head),ensure_ascii=False))
+            args.output,head,args.source_branch),ensure_ascii=False))
         return 0
     except (OSError,ValueError,subprocess.CalledProcessError,subprocess.TimeoutExpired,KeyError) as exc:
         print("HOLD:",type(exc).__name__,str(exc)[:160],file=sys.stderr)

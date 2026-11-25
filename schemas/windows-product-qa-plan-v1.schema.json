@@ -1,0 +1,40 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/shihuiarenjinba-png/AI-App-Factory/schemas/windows-product-qa-plan-v1.schema.json",
+  "title": "Declarative final Windows product QA plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version","product","intent","steps","allowed_diagnostics","success_criteria"],
+  "properties": {
+    "schema_version": {"const": "windows-product-qa-plan-v1"},
+    "product": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["slug","kind"],
+      "properties": {
+        "slug": {"type":"string","pattern":"^[a-z][a-z0-9-]{3,39}$"},
+        "kind": {"enum":["app","game"]}
+      }
+    },
+    "intent": {"type":"string","minLength":1,"maxLength":1000},
+    "steps": {
+      "type":"array","minItems":2,"maxItems":24,
+      "items": {
+        "type":"object","additionalProperties":false,
+        "required":["step_id","test_id","required","requires","purpose","parameters","evidence","on_fail"],
+        "properties": {
+          "step_id":{"type":"string","pattern":"^[a-z][a-z0-9_]{2,63}$"},
+          "test_id":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{2,63}$"},
+          "required":{"type":"boolean"},
+          "requires":{"type":"array","uniqueItems":true,"items":{"type":"string","pattern":"^[a-z][a-z0-9_]{2,63}$"}},
+          "purpose":{"type":"string","minLength":1,"maxLength":800},
+          "parameters":{"type":"object"},
+          "evidence":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"string","minLength":1,"maxLength":80}},
+          "on_fail":{"enum":["STOP_AND_RETURN","CONTINUE_DIAGNOSTICS"]}
+        }
+      }
+    },
+    "allowed_diagnostics":{"type":"array","maxItems":16,"uniqueItems":true,"items":{"type":"string","pattern":"^[A-Z][A-Z0-9_]{2,63}$"}},
+    "success_criteria":{"type":"array","minItems":1,"maxItems":12,"items":{"type":"string","minLength":1,"maxLength":240}}
+  }
+}
