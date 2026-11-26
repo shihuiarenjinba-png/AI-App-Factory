@@ -1,0 +1,104 @@
+name: Focus native Windows error-recovery evidence
+on:
+  push:
+    branches:
+      - qa/focus-error-recovery-20261127
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  focus-error-recovery:
+    runs-on: windows-latest
+    timeout-minutes: 18
+    env:
+      EXPECTED_QA_HEAD_SHA: ${{ github.sha }}
+      EXPECTED_PRODUCT_SOURCE_SHA: fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79
+      EXPECTED_REQUEST_ID: app-focus-session-desk-fb6293839bc7
+      EXPECTED_EXE_SHA256: d1ef4b389b1344e4886eb7728173508ea7754b795d476340dffd46f9024ddcda
+    steps:
+      - name: Checkout exact QA HEAD
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert exact QA HEAD and unchanged pinned product source
+        shell: pwsh
+        run: |
+          $actual = (git rev-parse HEAD).Trim()
+          if ($actual -ne $env:EXPECTED_QA_HEAD_SHA) { throw "QA HEAD mismatch: $actual" }
+          git cat-file -e "$($env:EXPECTED_PRODUCT_SOURCE_SHA)^{commit}"
+          if ($LASTEXITCODE -ne 0) { throw "Pinned product source commit missing" }
+          $sourceBlob = (git rev-parse "$($env:EXPECTED_PRODUCT_SOURCE_SHA):products/focus-session-desk/main.py").Trim()
+          $qaBlob = (git rev-parse "HEAD:products/focus-session-desk/main.py").Trim()
+          if ($LASTEXITCODE -ne 0 -or $sourceBlob -ne $qaBlob) { throw "QA branch changed the frozen product source" }
+          if ($env:EXPECTED_REQUEST_ID -ne ("app-focus-session-desk-" + $env:EXPECTED_PRODUCT_SOURCE_SHA.Substring(0,12))) { throw "Request ID/source mismatch" }
+          Write-Output "qa_head=$actual"
+          Write-Output "product_source_sha=$env:EXPECTED_PRODUCT_SOURCE_SHA"
+          Write-Output "request_id=$env:EXPECTED_REQUEST_ID"
+
+      - name: Install pinned native GUI automation dependencies
+        run: python -m pip install --disable-pip-version-check pywinauto==0.6.9 pillow==11.3.0
+
+      - name: Download the already verified exact-source product EXE artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: focus-native-gui-exe-custody-45746737287
+          github-token: ${{ github.token }}
+          repository: ${{ github.repository }}
+          run-id: 45746737287
+          path: downloaded-product-exe
+
+      - name: Verify downloaded artifact provenance and executable bytes
+        shell: pwsh
+        run: |
+          $exe = 'downloaded-product-exe/FocusSessionDesk.exe'
+          if (!(Test-Path $exe)) { throw "Custody artifact is missing FocusSessionDesk.exe" }
+          $actualSha = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLowerInvariant()
+          $actualSize = (Get-Item $exe).Length
+          if ($actualSha -ne $env:EXPECTED_EXE_SHA256) { throw "Existing EXE SHA mismatch: $actualSha" }
+          if ($actualSize -ne 11477122) { throw "Existing EXE size mismatch: $actualSize" }
+          $provenance = Get-Content 'downloaded-product-exe/provenance.json' -Raw | ConvertFrom-Json
+          $receipt = Get-Content 'downloaded-product-exe/receipt.json' -Raw | ConvertFrom-Json
+          if ($provenance.product_source_sha -ne $env:EXPECTED_PRODUCT_SOURCE_SHA) { throw "Provenance source mismatch" }
+          if ($provenance.request_id -ne $env:EXPECTED_REQUEST_ID) { throw "Provenance request mismatch" }
+          if ($provenance.executable.sha256 -ne $actualSha -or $provenance.executable.included_in_artifact -ne $true) { throw "Provenance EXE custody mismatch" }
+          if ($receipt.source_sha -ne $env:EXPECTED_PRODUCT_SOURCE_SHA -or $receipt.exe_sha256 -ne $actualSha) { throw "Original GUI receipt mismatch" }
+          Write-Output "verified_existing_exe_sha256=$actualSha"
+          Write-Output "verified_existing_exe_size=$actualSize"
+          Write-Output "artifact_id=15083856249"
+          Write-Output "artifact_zip_sha256=d3c36255a282d1912c6fe5e00efdbaad217433033226744fb61cf6e493c9f19d"
+
+      - name: Run two disposable-APPDATA native error-recovery scenarios
+        shell: pwsh
+        run: |
+          python products/focus-session-desk/tests/windows_exe_error_recovery_smoke.py downloaded-product-exe/FocusSessionDesk.exe focus-error-recovery-evidence
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Assert both native receipts and source provenance
+        shell: pwsh
+        run: |
+          $receipt = Get-Content 'focus-error-recovery-evidence/error-recovery-receipt.json' -Raw | ConvertFrom-Json
+          if ($receipt.result -ne 'PASS') { throw "Error-recovery receipt is not PASS" }
+          if ($receipt.product_source_sha -ne $env:EXPECTED_PRODUCT_SOURCE_SHA) { throw "Receipt source mismatch" }
+          if ($receipt.request_id -ne $env:EXPECTED_REQUEST_ID) { throw "Receipt request mismatch" }
+          if ($receipt.exe_sha256 -ne $env:EXPECTED_EXE_SHA256) { throw "Receipt EXE mismatch" }
+          if (@($receipt.scenarios).Count -ne 2) { throw "Expected exactly two error-recovery scenarios" }
+          $recovery = @($receipt.scenarios | Where-Object { $_.case -eq 'corrupt_primary_valid_backup' })
+          $invalid = @($receipt.scenarios | Where-Object { $_.case -eq 'invalid_duration_zero' })
+          if ($recovery.Count -ne 1 -or $recovery[0].result -ne 'PASS' -or $recovery[0].recovery_notice_visible -ne $true) { throw "Backup recovery scenario failed" }
+          if ($invalid.Count -ne 1 -or $invalid[0].result -ne 'PASS' -or $invalid[0].state_unchanged_after_exit -ne $true) { throw "Invalid duration scenario failed" }
+          if ($receipt.user_data_safety.no_user_appdata_or_product_source_files_written -ne $true) { throw "User-data safety assertion missing" }
+
+      - name: Upload error-recovery screenshots and immutable receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-error-recovery-${{ github.run_id }}
+          path: focus-error-recovery-evidence/
+          if-no-files-found: error
+          retention-days: 30
