@@ -110,7 +110,7 @@ class WindowsPackageContractTests(unittest.TestCase):
 
     def test_exact_source_bound_untracked_identity_passes(self):
         product, cfg = verify_inputs(self.root, "demo-product")
-        self.assertEqual(product, self.product)
+        self.assertTrue(product.samefile(self.product))
         self.assertEqual(cfg["source_sha"], self.source_sha)
         self.assertEqual(cfg["version"], "1.0.0.0")
         self.assertEqual(len(verify_assets(product)), 3)
