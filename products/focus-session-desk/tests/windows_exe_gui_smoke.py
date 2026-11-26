@@ -177,11 +177,29 @@ try:
     receipt["progress_toggle_rectangle"] = [
         tree_rect.left, tree_rect.top, tree_rect.right, tree_rect.bottom
     ]
-    # pywinauto.mouse.click has no double=True option in the pinned 0.6.9
-    # release; issue two real clicks inside the native double-click interval.
+    # Select the real row, then activate the visible "Toggle done" footer
+    # button. Tk Treeview is unnamed in UIA, but the footer Pane rectangles are
+    # stable and the third action button is Toggle done (Add, Edit, Toggle done).
     click(coords=toggle_xy)
-    time.sleep(0.15)
-    click(coords=toggle_xy)
+    win_rect = window.rectangle()
+    footer_buttons = []
+    for control in window.descendants(control_type="Pane"):
+        rect = control.rectangle()
+        width = rect.right - rect.left
+        height = rect.bottom - rect.top
+        if (70 <= width <= 80 and 20 <= height <= 30
+                and rect.top > win_rect.top + 0.85 * win_rect.height()
+                and rect.top < win_rect.top + 0.92 * win_rect.height()):
+            footer_buttons.append(rect)
+    footer_buttons.sort(key=lambda rect: rect.left)
+    assert len(footer_buttons) == 6, "Expected six native task action buttons: " + repr(
+        [[r.left, r.top, r.right, r.bottom] for r in footer_buttons])
+    toggle_button = footer_buttons[2]
+    receipt["progress_toggle_button_rectangle"] = [
+        toggle_button.left, toggle_button.top, toggle_button.right, toggle_button.bottom
+    ]
+    click(coords=((toggle_button.left + toggle_button.right) // 2,
+                  (toggle_button.top + toggle_button.bottom) // 2))
     deadline = time.time() + 10
     while time.time() < deadline:
         saved = json.loads(state.read_text(encoding="utf-8"))
