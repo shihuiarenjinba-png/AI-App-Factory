@@ -219,6 +219,7 @@ def run(output: Path) -> dict:
     real_askstring = us_main.simpledialog.askstring
     real_askfloat = us_main.simpledialog.askfloat
     real_showinfo = us_main.messagebox.showinfo
+    real_confirm = us_main.confirm_us_tax_review
     app = None
 
     def capture(name: str) -> None:
@@ -361,20 +362,19 @@ def run(output: Path) -> dict:
         capture("main-window.png")
 
         us_main.confirm_us_tax_review = (
-            lambda parent: us_main.confirm_us_tax_review_original(
-                parent, askyesno=automated_askyesno
-            )
-        ) if hasattr(us_main, "confirm_us_tax_review_original") else (
-            lambda parent: automated_askyesno(
-                us_main.TAX_REVIEW_TITLE, us_main.TAX_REVIEW_TEXT, parent=parent
-            ) is True
+            lambda parent: real_confirm(parent, askyesno=automated_askyesno)
         )
         us_main.simpledialog.askstring = automated_askstring
         us_main.simpledialog.askfloat = automated_askfloat
         us_main.messagebox.showinfo = automated_showinfo
 
         app.after(1200, lambda: _click_widget(review_button))
-        app.after(30000, lambda: state["errors"].append("GUI smoke timeout"))
+
+        def timeout():
+            state["errors"].append("GUI smoke timeout")
+            app.close()
+
+        app.after(30000, timeout)
         app.mainloop()
 
         if state["errors"]:
