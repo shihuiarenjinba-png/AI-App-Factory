@@ -430,7 +430,10 @@ def run(output: Path) -> dict:
             "stage": "US_LEDGER_WINDOWS_GUI_REVIEW_SMOKE",
             "status": "PASS",
             "source_repository": "shihuiarenjinba-png/AI-App-Factory",
-            "source_branch": os.environ.get("GITHUB_HEAD_REF", ""),
+            "source_branch": (
+                os.environ.get("GITHUB_HEAD_REF")
+                or os.environ.get("GITHUB_REF_NAME", "")
+            ),
             "source_sha": source_sha,
             "expected_source_sha": expected_sha,
             "main_py_sha256": _sha256(US / "main.py"),
