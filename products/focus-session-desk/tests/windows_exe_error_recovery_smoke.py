@@ -290,6 +290,7 @@ def run_invalid_duration_case(exe, runner_temp, out):
                 25 <= rect.width() <= 65
                 and 15 <= rect.height() <= 40
                 and win.top + 0.28 * win.height() < rect.top < win.top + 0.40 * win.height()
+                and rect.left < win.left + 0.48 * win.width()
             ):
                 entry_candidates.append(rect)
         if len(entry_candidates) != 1:
