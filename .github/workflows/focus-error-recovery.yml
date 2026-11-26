@@ -1,8 +1,5 @@
 name: Focus native Windows error-recovery evidence
 on:
-  push:
-    branches:
-      - qa/focus-error-recovery-20261127
   pull_request:
     paths:
       - 'products/focus-session-desk/tests/windows_exe_error_recovery_smoke.py'
@@ -91,6 +88,7 @@ jobs:
           if ($receipt.product_source_sha -ne $env:EXPECTED_PRODUCT_SOURCE_SHA) { throw "Receipt source mismatch" }
           if ($receipt.request_id -ne $env:EXPECTED_REQUEST_ID) { throw "Receipt request mismatch" }
           if ($receipt.exe_sha256 -ne $env:EXPECTED_EXE_SHA256) { throw "Receipt EXE mismatch" }
+          if ($receipt.display_resolution.width -ne 1024 -or $receipt.display_resolution.height -ne 768) { throw "Native display resolution was not 1024x768" }
           if (@($receipt.scenarios).Count -ne 2) { throw "Expected exactly two error-recovery scenarios" }
           $recovery = @($receipt.scenarios | Where-Object { $_.case -eq 'corrupt_primary_valid_backup' })
           $invalid = @($receipt.scenarios | Where-Object { $_.case -eq 'invalid_duration_zero' })
