@@ -40,6 +40,7 @@ class TaxYearReferenceFixture2026Tests(unittest.TestCase):
         self.assertEqual(rule["tax_year_basis"], "taxable years beginning in 2026")
         self.assertEqual(rule["maximum_expense_usd"], 2_560_000)
         self.assertEqual(rule["phaseout_threshold_usd"], 4_090_000)
+        self.assertEqual(rule["sport_utility_vehicle_cost_cap_usd"], 32_000)
 
     def test_us_bonus_depreciation_is_qualified_property_not_universal(self):
         rule = next(
