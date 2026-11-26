@@ -4,6 +4,7 @@ This script does not rebuild or modify the product. It runs only against two
 fresh APPDATA directories beneath RUNNER_TEMP and records native dialog,
 state-file and process-exit evidence.
 """
+import ctypes
 import hashlib
 import json
 import os
@@ -398,6 +399,13 @@ def main():
         raise AssertionError("Workflow EXE SHA binding mismatch")
     custody = verify_custody(exe)
 
+    display_resolution = {
+        "width": int(ctypes.windll.user32.GetSystemMetrics(0)),
+        "height": int(ctypes.windll.user32.GetSystemMetrics(1)),
+    }
+    if display_resolution != {"width": 1024, "height": 768}:
+        raise AssertionError(f"Expected native 1024x768 Windows display, got {display_resolution!r}")
+
     runner_temp = Path(os.environ["RUNNER_TEMP"]).resolve()
     recovery = run_recovery_case(exe, runner_temp, out)
     invalid = run_invalid_duration_case(exe, runner_temp, out)
@@ -407,6 +415,7 @@ def main():
         "result": "PASS",
         "product_source_sha": source_sha,
         "qa_head_sha": expected_qa_head,
+        "display_resolution": display_resolution,
         "request_id": request_id,
         "exe_sha256": EXE_SHA256,
         "exe_size_bytes": EXE_SIZE,
