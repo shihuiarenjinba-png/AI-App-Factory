@@ -140,19 +140,22 @@ def _send_key(vk: int) -> None:
 
 
 def _send_text(value: str) -> None:
+    # keybd_event is reliable on the hosted interactive desktop; SendInput's
+    # Unicode packet can be rejected by the runner before the dialog gets text.
     for character in value:
-        down = INPUT()
-        down.type = INPUT_KEYBOARD
-        down.u.ki = KEYBDINPUT(0, ord(character), KEYEVENTF_UNICODE, 0, 0)
-        up = INPUT()
-        up.type = INPUT_KEYBOARD
-        up.u.ki = KEYBDINPUT(
-            0, ord(character), KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0, 0
-        )
-        batch = (INPUT * 2)(down, up)
-        sent = user32.SendInput(2, batch, ctypes.sizeof(INPUT))
-        if sent != 2:
-            raise OSError(f"SendInput typed only {sent}/2 events for {character!r}")
+        mapped = user32.VkKeyScanW(ord(character))
+        if mapped == -1:
+            raise ValueError(f"Character is not present on the runner keyboard: {character!r}")
+        virtual_key = mapped & 0xFF
+        modifiers = (mapped >> 8) & 0xFF
+        if modifiers & 0x02 or modifiers & 0x04:
+            raise ValueError(f"Unexpected Ctrl/Alt mapping for {character!r}")
+        if modifiers & 0x01:
+            user32.keybd_event(0x10, 0, 0, 0)  # VK_SHIFT down
+        user32.keybd_event(virtual_key, 0, 0, 0)
+        user32.keybd_event(virtual_key, 0, KEYEVENTF_KEYUP, 0)
+        if modifiers & 0x01:
+            user32.keybd_event(0x10, 0, KEYEVENTF_KEYUP, 0)  # VK_SHIFT up
 
 
 def _walk(widget):
