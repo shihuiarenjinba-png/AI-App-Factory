@@ -52,7 +52,7 @@ class USReviewGateTests(unittest.TestCase):
         self.assertTrue(gate(None, lambda *a, **k: True))
 
     def test_us_label_and_review_result_are_visible(self):
-        self.assertIn("US tax / fixed assets — REVIEW REQUIRED", self.source)
+        self.assertIn("US tax — REVIEW REQUIRED", self.source)
         self.assertIn("US tax calculation canceled", self.source)
         for title in ("REVIEW REQUIRED — Sales tax", "REVIEW REQUIRED — Tax depreciation",
                       "REVIEW REQUIRED — Book depreciation"):
