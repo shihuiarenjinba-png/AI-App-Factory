@@ -71,13 +71,15 @@
           "annual_aggregate_cap_jpy": 3000000,
           "blue_return_required": true,
           "exclude_if_three_year_pooled_asset_rule_applied": true,
+          "cost_tax_inclusion_rule": "The acquisition-cost test uses tax-inclusive cost for tax-inclusive bookkeeping and tax-exclusive cost for tax-exclusive bookkeeping; exempt taxpayers use tax-inclusive bookkeeping.",
+          "lending_asset_exclusion": "Assets acquired on or after 2022-04-01 and used for lending are excluded unless lending is the principal business.",
           "review_required": true,
           "auto_apply": false,
           "source": {
             "title": "No.2100 減価償却のあらまし",
             "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2100.htm",
             "source_as_of_date": "2026-04-01",
-            "source_note": "注3"
+            "source_note": "注3・注4・注5"
           }
         },
         {
@@ -93,7 +95,7 @@
           "review_required": true,
           "auto_apply": false,
           "cost_tax_inclusion_rule": "The acquisition-cost test uses tax-inclusive cost for tax-inclusive bookkeeping and tax-exclusive cost for tax-exclusive bookkeeping; exempt taxpayers use tax-inclusive bookkeeping.",
-          "lending_asset_exclusion": "Assets used for lending are excluded unless lending is the principal business.",
+          "lending_asset_exclusion": "Assets acquired on or after 2022-04-01 and used for lending are excluded unless lending is the principal business.",
           "source": {
             "title": "No.2100 減価償却のあらまし",
             "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2100.htm",
