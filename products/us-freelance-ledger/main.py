@@ -99,7 +99,7 @@ class App(tk.Tk):
         ttk.Button(f,text="Browse supporting file",command=self.pick).grid(row=9,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="Suggest category",command=self.suggest).grid(row=10,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="Add transaction",command=self.add).grid(row=11,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="US tax / fixed assets — REVIEW REQUIRED",command=self.tax_assets).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="US tax — REVIEW REQUIRED",command=self.tax_assets).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="Export CSV",command=self.export).grid(row=13,column=0,sticky="ew",pady=4)
         ttk.Button(f,text="Backup",command=self.backup).grid(row=13,column=1,sticky="ew",pady=4)
         f.columnconfigure(1,weight=1)
