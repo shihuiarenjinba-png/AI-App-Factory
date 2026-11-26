@@ -156,6 +156,7 @@ class FactoryTransportTests(unittest.TestCase):
         self.git("add","factory/config.json")
         self.git("commit","-qm","factory kind changed")
         new_head=self.git("rev-parse","HEAD")
+        self.source_sha=new_head
         self.approved.update(
             source_sha=new_head,
             verified_source_sha=new_head,
