@@ -200,12 +200,12 @@ try:
     receipt["restart_window_title"] = restart_window.window_text()
     receipt["restart_progress_expected_text"] = "Progress: 1/1 complete (100%)"
     receipt["restart_evidence"] = "07-restart-language-en-100.png"
+    receipt["restart_visual_review_required"] = True
     receipt["steps"].append("native_restart_restored_english_language_and_completed_task")
     restart_window.close()
     restart_proc.wait(timeout=15)
     assert restart_proc.returncode == 0, f"Restarted EXE exited with {restart_proc.returncode}"
     receipt["steps"].append("native_restart_normal_exit")
-    receipt["result"] = "PASS"
     receipt["result"] = "PASS"
 finally:
     # Preserve actionable evidence even if UIA cannot expose Tkinter widgets.
