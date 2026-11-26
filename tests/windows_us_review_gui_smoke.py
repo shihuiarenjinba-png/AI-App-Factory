@@ -62,10 +62,19 @@ def main():
                 "widget_width_px": button_width,
                 "fully_visible": button_text_width + 24 <= button_width,
             }
-            with patch.object(us_main, "confirm_us_tax_review", return_value=False) as confirm, patch.object(simpledialog, "askstring") as ask:
+            with patch.object(us_main, "confirm_us_tax_review", return_value=False) as confirm, patch.object(simpledialog, "askstring") as ask, patch.object(messagebox, "showinfo") as decline_info:
                 buttons[0].invoke()
                 assert confirm.call_count == 1 and ask.call_count == 0
-                receipt["scenarios"].append({"case": "decline", "result": "no_calculator_opened"})
+                decline_info.assert_called_once_with(
+                    "Tax review cancelled",
+                    "No calculation was opened. Your ledger was not changed.",
+                    parent=app,
+                )
+                receipt["scenarios"].append({
+                    "case": "decline",
+                    "result": "no_calculator_opened",
+                    "feedback": "No calculation was opened. Your ledger was not changed.",
+                })
             with patch.object(us_main, "confirm_us_tax_review", return_value=True) as confirm, patch.object(simpledialog, "askstring", side_effect=["sales tax", "California"]), patch.object(simpledialog, "askfloat", side_effect=[100.0, 7.5]), patch.object(messagebox, "showinfo") as info:
                 buttons[0].invoke()
                 assert confirm.call_count == 1 and info.call_count == 1
