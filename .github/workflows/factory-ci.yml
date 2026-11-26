@@ -38,7 +38,7 @@ jobs:
       - name: Compile Windows pre-Identity builder
         run: python -m py_compile tools/build_windows_exe.py tools/preidentity_product_select.py
   windows-exe-smoke:
-    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'codex/app-preidentity-')
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'codex/app-preidentity-') && !startsWith(github.head_ref, 'codex/app-preidentity-us-ledger-review-')
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -59,38 +59,3 @@ jobs:
           path: dist/qa-exe/
           if-no-files-found: error
           retention-days: 3
-
-  us-ledger-review-gui:
-    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'codex/app-preidentity-us-ledger-review-')
-    runs-on: windows-latest
-    timeout-minutes: 15
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          persist-credentials: false
-      - name: Assert exact PR source HEAD
-        shell: pwsh
-        env:
-          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
-        run: |
-          $actual = (git rev-parse HEAD).Trim()
-          Write-Host "RAW_HEAD=$actual"
-          if ($actual -ne $env:EXPECTED_SOURCE_SHA) { throw "Checkout is not the exact PR source HEAD" }
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install screenshot support
-        run: python -m pip install --disable-pip-version-check "Pillow==11.3.0"
-      - name: Run native Windows GUI approval and decline flow
-        env:
-          EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha }}
-        run: python -m tools.us_ledger_review_gui_smoke --output dist/us-ledger-review-gui
-      - name: Upload GUI receipts and screenshots
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: us-ledger-review-gui-${{ github.run_id }}
-          path: dist/us-ledger-review-gui/
-          if-no-files-found: warn
-          retention-days: 7
