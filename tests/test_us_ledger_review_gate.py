@@ -22,7 +22,18 @@ class USReviewGateTests(unittest.TestCase):
         self.assertIsInstance(first.test, ast.UnaryOp)
         self.assertIsInstance(first.test.operand, ast.Call)
         self.assertEqual(first.test.operand.func.id, "confirm_us_tax_review")
-        self.assertIsInstance(first.body[0], ast.Return)
+        self.assertIsInstance(first.body[-1], ast.Return)
+        self.assertTrue(
+            any(
+                isinstance(node, ast.Call)
+                and isinstance(node.func, ast.Attribute)
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "messagebox"
+                and node.func.attr == "showinfo"
+                for node in ast.walk(first)
+            ),
+            "Declining review must show a visible cancellation result",
+        )
 
     def test_review_gate_decline_and_non_boolean_fail_closed(self):
         # Compile only the pure gate function, without importing tkinter or creating a window.
@@ -42,6 +53,7 @@ class USReviewGateTests(unittest.TestCase):
 
     def test_us_label_and_review_result_are_visible(self):
         self.assertIn("US tax / fixed assets — REVIEW REQUIRED", self.source)
+        self.assertIn("US tax calculation canceled", self.source)
         for title in ("REVIEW REQUIRED — Sales tax", "REVIEW REQUIRED — Tax depreciation",
                       "REVIEW REQUIRED — Book depreciation"):
             self.assertIn(title, self.source)
@@ -64,12 +76,18 @@ class USReviewGateTests(unittest.TestCase):
         method.args.defaults = []
         module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
         dialogs = Mock()
+        messages = Mock()
         scope = {"confirm_us_tax_review": lambda parent: False,
-                 "simpledialog": dialogs, "messagebox": Mock()}
+                 "simpledialog": dialogs, "messagebox": messages}
         exec(compile(module, str(MAIN), "exec"), scope)
         scope["tax_assets"](object())
         dialogs.assert_not_called()
-        scope["messagebox"].showinfo.assert_not_called()
+        messages = scope["messagebox"]
+        messages.showinfo.assert_called_once()
+        title, body = messages.showinfo.call_args.args[:2]
+        self.assertEqual(title, "US tax calculation canceled")
+        self.assertIn("No calculator was opened", body)
+        self.assertIn("no ledger entry was created", body)
 
     def test_runtime_approved_sales_tax_stays_usd_and_requires_review(self):
         import copy
