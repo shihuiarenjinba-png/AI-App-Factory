@@ -1,0 +1,115 @@
+{
+  "schema_version": 1,
+  "fixture_id": "jp-us-asset-tax-year-2026",
+  "retrieved_on": "2026-11-26",
+  "status": "REFERENCE_ONLY_REVIEW_REQUIRED",
+  "auto_apply": false,
+  "product_code_consumption": false,
+  "jurisdictions": {
+    "US-FEDERAL": {
+      "tax_year": 2026,
+      "tax_scope": "US federal income tax; not state sales tax",
+      "rules": [
+        {
+          "rule_id": "us.section179.2026",
+          "rule_type": "section_179_expensing_limit",
+          "tax_year_basis": "taxable years beginning in 2026",
+          "maximum_expense_usd": 2560000,
+          "phaseout_threshold_usd": 4090000,
+          "phaseout_rule": "The maximum deduction is reduced, but not below zero, by the amount that the cost of Section 179 property placed in service during the tax year exceeds the phaseout threshold.",
+          "review_required": true,
+          "auto_apply": false,
+          "source": {
+            "title": "Internal Revenue Bulletin: 2025-45; Rev. Proc. 2025-32",
+            "url": "https://www.irs.gov/irb/2025-45_IRB",
+            "published_on": "2025-11-03",
+            "source_section": "Rev. Proc. 2025-32, section 2.24"
+          }
+        },
+        {
+          "rule_id": "us.special_depreciation.qualified_property.after_2025-01-19",
+          "rule_type": "additional_first_year_special_depreciation",
+          "tax_year": 2026,
+          "acquired_after": "2025-01-19",
+          "placed_in_service_after": "2025-01-19",
+          "allowance_percent": 100,
+          "election_out_allowed": true,
+          "first_tax_year_ending_after_2025_01_19_election_percent": 40,
+          "long_production_period_or_certain_aircraft_election_percent": 60,
+          "qualification_summary": [
+            "Qualified property under IRC section 168(k), including eligible MACRS tangible property with a recovery period of 20 years or less and other specifically listed property.",
+            "Certain used property may qualify.",
+            "ADS property and other statutory exclusions may disqualify an asset."
+          ],
+          "review_required": true,
+          "auto_apply": false,
+          "note": "The 40%/60% election is limited to the first tax year ending after 2025-01-19; it is not a general 2026 default rate.",
+          "source": {
+            "title": "Publication 946 (2025), How To Depreciate Property",
+            "url": "https://www.irs.gov/publications/p946",
+            "edition": "2025",
+            "source_sections": [
+              "What's New for 2026",
+              "Chapter 3: Certain Qualified Property Acquired and Placed in Service After January 19, 2025"
+            ]
+          }
+        }
+      ]
+    },
+    "JP-INDIVIDUAL-INCOME-TAX": {
+      "tax_year": 2026,
+      "tax_scope": "Japan individual income tax; qualifying blue-return taxpayers only, subject to statutory conditions",
+      "rules": [
+        {
+          "rule_id": "jp.blue_return.small_asset.2026.pre_cutover",
+          "rule_type": "small_asset_special_expensing",
+          "acquisition_date_from": "2006-04-01",
+          "acquisition_date_through": "2026-03-31",
+          "eligible_cost_min_inclusive_jpy": 100000,
+          "eligible_cost_max_exclusive_jpy": 300000,
+          "annual_aggregate_cap_jpy": 3000000,
+          "blue_return_required": true,
+          "exclude_if_three_year_pooled_asset_rule_applied": true,
+          "review_required": true,
+          "auto_apply": false,
+          "source": {
+            "title": "No.2100 減価償却のあらまし",
+            "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2100.htm",
+            "source_as_of_date": "2026-04-01",
+            "source_note": "注3"
+          }
+        },
+        {
+          "rule_id": "jp.blue_return.small_asset.2026.post_cutover",
+          "rule_type": "small_asset_special_expensing",
+          "acquisition_date_from": "2026-04-01",
+          "acquisition_date_through": "2029-03-31",
+          "eligible_cost_min_inclusive_jpy": 100000,
+          "eligible_cost_max_exclusive_jpy": 400000,
+          "annual_aggregate_cap_jpy": 3000000,
+          "blue_return_required": true,
+          "exclude_if_three_year_pooled_asset_rule_applied": true,
+          "review_required": true,
+          "auto_apply": false,
+          "cost_tax_inclusion_rule": "The acquisition-cost test uses tax-inclusive cost for tax-inclusive bookkeeping and tax-exclusive cost for tax-exclusive bookkeeping; exempt taxpayers use tax-inclusive bookkeeping.",
+          "lending_asset_exclusion": "Assets used for lending are excluded unless lending is the principal business.",
+          "source": {
+            "title": "No.2100 減価償却のあらまし",
+            "url": "https://www.nta.go.jp/taxes/shiraberu/taxanswer/shotoku/2100.htm",
+            "source_as_of_date": "2026-04-01",
+            "source_note": "注3・注4・注5"
+          }
+        }
+      ]
+    }
+  },
+  "cross_jurisdiction_guard": {
+    "currency_by_jurisdiction": {
+      "US-FEDERAL": "USD",
+      "JP-INDIVIDUAL-INCOME-TAX": "JPY"
+    },
+    "no_currency_conversion": true,
+    "no_rule_inheritance_between_jurisdictions": true,
+    "all_rules_review_required": true
+  }
+}
