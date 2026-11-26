@@ -1,0 +1,111 @@
+name: Package source preflight and real MakeAppx QA fixture
+
+on:
+  pull_request:
+    branches:
+      - codex/app-preidentity-usjp-isolation-stack-20261126
+    paths:
+      - 'tools/build_windows_msix.py'
+      - 'tests/test_build_windows_msix.py'
+      - 'scripts/package_source_preflight.py'
+      - 'scripts/run_makeappx_qa_fixture.py'
+      - '.github/workflows/package-source-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package-source-preflight:
+    runs-on: windows-latest
+    env:
+      FOCUS_SOURCE_SHA: fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79
+      INTEGRITY_SOURCE_SHA: 33d612be2774ac155ea3d85289ec5cb7981c81c1
+    steps:
+      - name: Checkout QA PR raw head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact Focus Session Desk source
+        uses: actions/checkout@v4
+        with:
+          repository: shihuiarenjinba-png/AI-App-Factory
+          ref: ${{ env.FOCUS_SOURCE_SHA }}
+          path: sources/focus-session-desk
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Checkout exact File Integrity Ledger source
+        uses: actions/checkout@v4
+        with:
+          repository: shihuiarenjinba-png/AI-App-Factory
+          ref: ${{ env.INTEGRITY_SOURCE_SHA }}
+          path: sources/file-integrity-ledger
+          fetch-depth: 1
+          persist-credentials: false
+
+      - name: Assert all raw source heads
+        shell: pwsh
+        run: |
+          $qaExpected = "${{ github.event.pull_request.head.sha || github.sha }}"
+          $qaActual = (git rev-parse HEAD).Trim()
+          if ($qaActual -ne $qaExpected) { throw "QA HEAD mismatch: $qaActual" }
+          $focusActual = (git -C sources/focus-session-desk rev-parse HEAD).Trim()
+          if ($focusActual -ne $env:FOCUS_SOURCE_SHA) { throw "Focus source HEAD mismatch: $focusActual" }
+          $integrityActual = (git -C sources/file-integrity-ledger rev-parse HEAD).Trim()
+          if ($integrityActual -ne $env:INTEGRITY_SOURCE_SHA) { throw "File Integrity source HEAD mismatch: $integrityActual" }
+          Write-Host "QA_HEAD=$qaActual"
+          Write-Host "FOCUS_SOURCE_HEAD=$focusActual"
+          Write-Host "FILE_INTEGRITY_SOURCE_HEAD=$integrityActual"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install pinned PyInstaller for QA-only MakeAppx fixture
+        run: python -m pip install --disable-pip-version-check pyinstaller==6.16.0
+
+      - name: Run package builder contracts
+        run: python -m unittest discover -s tests -p test_build_windows_msix.py -v
+
+      - name: Preflight exact Focus Session Desk source without building a product package
+        run: >-
+          python scripts/package_source_preflight.py
+          --source-root sources/focus-session-desk
+          --slug focus-session-desk
+          --expected-source-sha $env:FOCUS_SOURCE_SHA
+          --output qa-package-preflight/focus-session-desk.json
+
+      - name: Preflight exact File Integrity Ledger source without building a product package
+        run: >-
+          python scripts/package_source_preflight.py
+          --source-root sources/file-integrity-ledger
+          --slug file-integrity-ledger
+          --expected-source-sha $env:INTEGRITY_SOURCE_SHA
+          --output qa-package-preflight/file-integrity-ledger.json
+
+      - name: Assert expected fail-closed product holds and valid PNG assets
+        shell: pwsh
+        run: |
+          $focus = Get-Content qa-package-preflight/focus-session-desk.json -Raw | ConvertFrom-Json
+          if ($focus.asset_validation -ne "PASS" -or $focus.identity_status -ne "STALE_TRACKED" -or $focus.version_status -ne "MISSING" -or $focus.makeappx_invoked -ne $false) {
+            throw "Focus preflight did not preserve the expected fail-closed delivery hold"
+          }
+          $integrity = Get-Content qa-package-preflight/file-integrity-ledger.json -Raw | ConvertFrom-Json
+          if ($integrity.asset_validation -ne "PASS" -or $integrity.identity_status -ne "MISSING" -or $integrity.makeappx_invoked -ne $false) {
+            throw "File Integrity preflight did not preserve the expected fail-closed delivery hold"
+          }
+
+      - name: Invoke real MakeAppx on disposable QA fixture only
+        run: python scripts/run_makeappx_qa_fixture.py --output-dir qa-package-preflight/makeappx-qa-fixture
+
+      - name: Upload package preflight and QA-only unsigned MSIX evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-source-preflight-qa-only
+          path: qa-package-preflight/
+          if-no-files-found: error
+          retention-days: 30
