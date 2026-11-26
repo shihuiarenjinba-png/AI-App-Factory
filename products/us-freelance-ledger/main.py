@@ -452,6 +452,11 @@ class App(tk.Tk):
 
     def tax_assets(self):
         if not confirm_us_tax_review(self):
+            messagebox.showinfo(
+                "Tax review cancelled",
+                "No calculation was opened. Your ledger was not changed.",
+                parent=self,
+            )
             return
         mode=simpledialog.askstring("Tax / fixed assets","Enter sales tax, book depreciation, or tax depreciation")
         if not mode:return
