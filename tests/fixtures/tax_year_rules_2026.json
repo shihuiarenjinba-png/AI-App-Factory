@@ -16,6 +16,7 @@
           "tax_year_basis": "taxable years beginning in 2026",
           "maximum_expense_usd": 2560000,
           "phaseout_threshold_usd": 4090000,
+          "sport_utility_vehicle_cost_cap_usd": 32000,
           "phaseout_rule": "The maximum deduction is reduced, but not below zero, by the amount that the cost of Section 179 property placed in service during the tax year exceeds the phaseout threshold.",
           "review_required": true,
           "auto_apply": false,
