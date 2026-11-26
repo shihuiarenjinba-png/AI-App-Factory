@@ -1,0 +1,123 @@
+name: File Integrity Store PNG staging-map contract (QA only)
+
+on:
+  pull_request:
+    paths:
+      - 'tests/test_file_integrity_package_mapping.py'
+      - '.github/workflows/integrity-package-map-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  asset-map-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.base.sha || '33d612be2774ac155ea3d85289ec5cb7981c81c1' }}
+      EXPECTED_QA_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXPECTED_SOURCE_BRANCH: ${{ github.event.pull_request.base.ref || 'codex/integrity-pr95-source-request-integration-20261125' }}
+      EXPECTED_REQUEST_ID: app-file-integrity-ledger-33d612be2774
+    steps:
+      - name: Checkout QA branch at exact raw head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Assert pinned PR115 source and unchanged product/build inputs
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_QA_HEAD_SHA"
+          test "$EXPECTED_SOURCE_SHA" = "33d612be2774ac155ea3d85289ec5cb7981c81c1"
+          test "$EXPECTED_SOURCE_BRANCH" = "codex/integrity-pr95-source-request-integration-20261125"
+          test "$EXPECTED_REQUEST_ID" = "app-file-integrity-ledger-${EXPECTED_SOURCE_SHA:0:12}"
+          git cat-file -e "$EXPECTED_SOURCE_SHA^{commit}"
+          for path in \
+            products/file-integrity-ledger/main.py \
+            products/file-integrity-ledger/manifest.json \
+            products/file-integrity-ledger/store/assets/StoreLogo.png \
+            products/file-integrity-ledger/store/assets/Square150.png \
+            products/file-integrity-ledger/store/assets/Square44.png \
+            tools/build_windows_msix.py
+          do
+            source_blob="$(git rev-parse "$EXPECTED_SOURCE_SHA:$path")"
+            qa_blob="$(git rev-parse "HEAD:$path")"
+            test "$source_blob" = "$qa_blob"
+          done
+          echo "product_source_sha=$EXPECTED_SOURCE_SHA"
+          echo "qa_head_sha=$actual"
+          echo "request_id=$EXPECTED_REQUEST_ID"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Run read-only builder staging and fail-closed map contract
+        run: python -m unittest discover -s tests -p test_file_integrity_package_mapping.py -v
+      - name: Write source-bound mapping evidence (pre-MakeAppx only)
+        shell: bash
+        run: |
+          mkdir -p package-map-evidence
+          printf '%s\n' "$EXPECTED_SOURCE_SHA" > package-map-evidence/source-sha.txt
+          printf '%s\n' "$EXPECTED_QA_HEAD_SHA" > package-map-evidence/qa-head-sha.txt
+          printf '%s\n' "$EXPECTED_REQUEST_ID" > package-map-evidence/request-id.txt
+          python - <<'PY'
+          import hashlib, json, os, xml.etree.ElementTree as ET
+          from pathlib import Path
+          from tools.build_windows_msix import ASSETS, NS, UAP, appx_manifest
+
+          product = Path("products/file-integrity-ledger")
+          identity_fixture = {
+              "name": "Example.Company.App",
+              "publisher": "CN=QA-ONLY",
+              "version": "1.0.0.0",
+          }
+          root = ET.fromstring(appx_manifest(identity_fixture, "file-integrity-ledger.exe"))
+          ns = {"appx": NS, "uap": UAP}
+          logo = root.find("appx:Properties/appx:Logo", ns)
+          visual = root.find(".//uap:VisualElements", ns)
+          assert logo is not None and visual is not None
+          manifest_paths = {
+              "StoreLogo.png": logo.text,
+              "Square150.png": visual.attrib["Square150x150Logo"],
+              "Square44.png": visual.attrib["Square44x44Logo"],
+          }
+          mapping = []
+          for name in ASSETS:
+              data = (product / "store/assets" / name).read_bytes()
+              mapping.append({
+                  "source_path": f"products/file-integrity-ledger/store/assets/{name}",
+                  "staging_path": f"Assets/{name}",
+                  "manifest_path": manifest_paths[name],
+                  "size_bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+              })
+          receipt = {
+              "schema_version": 1,
+              "status": "PASS",
+              "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
+              "qa_head_sha": os.environ["EXPECTED_QA_HEAD_SHA"],
+              "request_id": os.environ["EXPECTED_REQUEST_ID"],
+              "builder": "tools.build_windows_msix.build",
+              "mapping": mapping,
+              "negative_cases": {
+                  "missing_asset": "FAIL_CLOSED_PASS",
+                  "mismatched_bytes": "FAIL_CLOSED_PASS",
+              },
+              "real_makeappx_invoked": False,
+              "real_msix_built": False,
+              "official_identity_read": False,
+              "package_version_read": False,
+              "scope": "staging-path and source-byte contract only; not MSIX inclusion proof",
+          }
+          Path("package-map-evidence/mapping-contract.json").write_text(
+              json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+          PY
+      - name: Upload source-bound package-map contract evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: file-integrity-asset-map-contract-${{ github.run_id }}
+          path: package-map-evidence/
+          if-no-files-found: error
+          retention-days: 30
