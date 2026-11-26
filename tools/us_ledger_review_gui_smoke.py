@@ -34,10 +34,6 @@ import main as us_main  # noqa: E402
 
 
 user32 = ctypes.windll.user32
-INPUT_KEYBOARD = 1
-KEYEVENTF_KEYUP = 0x0002
-KEYEVENTF_UNICODE = 0x0004
-VK_RETURN = 0x0D
 MOUSEEVENTF_LEFTDOWN = 0x0002
 MOUSEEVENTF_LEFTUP = 0x0004
 BM_CLICK = 0x00F5
@@ -50,24 +46,6 @@ class RECT(ctypes.Structure):
         ("right", wintypes.LONG),
         ("bottom", wintypes.LONG),
     ]
-
-
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ("wVk", wintypes.WORD),
-        ("wScan", wintypes.WORD),
-        ("dwFlags", wintypes.DWORD),
-        ("time", wintypes.DWORD),
-        ("dwExtraInfo", ctypes.c_size_t),
-    ]
-
-
-class INPUT_UNION(ctypes.Union):
-    _fields_ = [("ki", KEYBDINPUT)]
-
-
-class INPUT(ctypes.Structure):
-    _fields_ = [("type", wintypes.DWORD), ("u", INPUT_UNION)]
 
 
 ENUM_WINDOWS_PROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
@@ -134,34 +112,46 @@ def _click_dialog_button(hwnd: int, label: str) -> None:
     _click_screen((rect.left + rect.right) // 2, (rect.top + rect.bottom) // 2)
 
 
-def _send_key(vk: int) -> None:
-    user32.keybd_event(vk, 0, 0, 0)
-    user32.keybd_event(vk, 0, KEYEVENTF_KEYUP, 0)
-
-
-def _send_text(value: str) -> None:
-    # keybd_event is reliable on the hosted interactive desktop; SendInput's
-    # Unicode packet can be rejected by the runner before the dialog gets text.
-    for character in value:
-        mapped = user32.VkKeyScanW(ord(character))
-        if mapped == -1:
-            raise ValueError(f"Character is not present on the runner keyboard: {character!r}")
-        virtual_key = mapped & 0xFF
-        modifiers = (mapped >> 8) & 0xFF
-        if modifiers & 0x02 or modifiers & 0x04:
-            raise ValueError(f"Unexpected Ctrl/Alt mapping for {character!r}")
-        if modifiers & 0x01:
-            user32.keybd_event(0x10, 0, 0, 0)  # VK_SHIFT down
-        user32.keybd_event(virtual_key, 0, 0, 0)
-        user32.keybd_event(virtual_key, 0, KEYEVENTF_KEYUP, 0)
-        if modifiers & 0x01:
-            user32.keybd_event(0x10, 0, KEYEVENTF_KEYUP, 0)  # VK_SHIFT up
-
-
 def _walk(widget):
     for child in widget.winfo_children():
         yield child
         yield from _walk(child)
+
+
+def _find_tk_toplevel(app, title: str):
+    deadline = time.monotonic() + 8.0
+    while time.monotonic() < deadline:
+        for child in app.winfo_children():
+            if isinstance(child, us_main.tk.Toplevel) and child.title() == title:
+                return child
+        time.sleep(0.05)
+    raise TimeoutError(f"Tk dialog not found: {title}")
+
+
+def _fill_tk_dialog(app, title: str, value: str, screenshot: str, capture) -> None:
+    dialog = _find_tk_toplevel(app, title)
+    widgets = list(_walk(dialog))
+    entries = [
+        widget for widget in widgets
+        if isinstance(widget, (us_main.tk.Entry, us_main.ttk.Entry))
+    ]
+    buttons = [
+        widget for widget in widgets
+        if isinstance(widget, (us_main.tk.Button, us_main.ttk.Button))
+        and widget.cget("text") == "OK"
+    ]
+    if len(entries) != 1 or len(buttons) != 1:
+        raise RuntimeError(
+            f"Expected one Entry and one OK button in {title!r}; "
+            f"found {len(entries)} and {len(buttons)}"
+        )
+    entry = entries[0]
+    entry.delete(0, "end")
+    entry.insert(0, value)
+    entry.focus_force()
+    app.update_idletasks()
+    capture(screenshot)
+    _click_widget(buttons[0])
 
 
 def _find_review_button(app):
@@ -237,22 +227,18 @@ def run(output: Path) -> dict:
     def schedule_dialog(title: str, screenshot: str, *, button=None, text=None) -> None:
         def action():
             try:
-                hwnd = _wait_window(title)
-                user32.SetForegroundWindow(hwnd)
-                time.sleep(0.12)
-                capture(screenshot)
                 if button is not None:
+                    hwnd = _wait_window(title)
+                    user32.SetForegroundWindow(hwnd)
+                    time.sleep(0.12)
+                    capture(screenshot)
                     _click_dialog_button(hwnd, button)
                 else:
-                    _send_text(text or "")
-                    _send_key(VK_RETURN)
+                    _fill_tk_dialog(app, title, text or "", screenshot, capture)
             except Exception as exc:  # make CI fail instead of hanging on a modal dialog
                 state["errors"].append(f"{title}: {type(exc).__name__}: {exc}")
-                try:
-                    _send_key(0x1B)  # Escape
-                finally:
-                    if app is not None:
-                        app.after(100, app.close)
+                if app is not None:
+                    app.after(100, app.close)
 
         app.after(600, action)
 
