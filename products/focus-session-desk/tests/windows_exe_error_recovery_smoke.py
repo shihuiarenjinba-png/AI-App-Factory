@@ -252,7 +252,7 @@ def timer_button_rectangles(window):
         if (
             60 <= rect.width() <= 100
             and 15 <= rect.height() <= 40
-            and win.top + 0.28 * win.height() < rect.top < win.top + 0.40 * win.height()
+            and win.top + 0.32 * win.height() < rect.top < win.top + 0.40 * win.height()
         ):
             candidates.append(rect)
     return sorted(candidates, key=lambda rect: rect.left)
@@ -355,6 +355,7 @@ def run_invalid_duration_case(exe, runner_temp, out):
             "result": "PASS",
             "appdata_scope": "fresh RUNNER_TEMP directory only",
             "invalid_input": "0",
+            "duration_entry_rectangle": receipt_duration_entry_rect,
             "native_dialog_title": "Action failed",
             "native_dialog_text": dialog_text,
             "controlled_error_visible": True,
