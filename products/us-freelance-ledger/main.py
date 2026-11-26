@@ -7,6 +7,7 @@ from tkinter import filedialog,messagebox,simpledialog,ttk
 from core import CATEGORIES,DOCUMENT_TYPES,METHODS,LedgerError,Store,suggest_category,review_requirements
 from tax_assets import manual_sales_tax,straight_line_book_schedule,custom_tax_depreciation_schedule,require_tax_profile
 from receipt_queue import enqueue_receipts, list_receipts, link_receipt
+from receipt_integrity import audit_receipts
 from bank_reconcile import BankReviewError, match_transaction, unmatch_transaction, match_statuses, statement_preview, finalize_statement, cancel_statement
 from bank_report import export_bank_report
 from bank_csv_preview import BankCSVError, csv_headers, preview_bank_csv, save_review_report
@@ -81,7 +82,9 @@ class App(tk.Tk):
 
     def build(self):
         ttk.Label(self,text="Freelance Ledger US",font=("Segoe UI",18,"bold")).pack(anchor="w",padx=14,pady=(14,2))
-        ttk.Label(self,text="United States only · USD · local-only. Bookkeeping support only; federal special rules require review and state/local rules are not automated.").pack(anchor="w",padx=14)
+        ttk.Label(self,text=("United States only · USD · local-only. Bookkeeping support only; federal special rules require review "
+                  "and state/local rules are not automated. Cash/accrual is stored as a recordkeeping policy in this version; "
+                  "it does not automatically shift income or expense recognition dates."),wraplength=1040,justify="left").pack(anchor="w",fill="x",padx=14)
         p=ttk.Panedwindow(self,orient="horizontal");p.pack(fill="both",expand=True,padx=14,pady=10)
         f=ttk.Labelframe(p,text="Transaction",padding=10);p.add(f,weight=1)
         ttk.Label(f,text="Accounting method").grid(row=0,column=0,sticky="w")
@@ -99,7 +102,7 @@ class App(tk.Tk):
         ttk.Button(f,text="Browse supporting file",command=self.pick).grid(row=9,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="Suggest category",command=self.suggest).grid(row=10,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="Add transaction",command=self.add).grid(row=11,column=0,columnspan=2,sticky="ew",pady=4)
-        ttk.Button(f,text="US tax / fixed assets — REVIEW REQUIRED",command=self.tax_assets).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
+        ttk.Button(f,text="US tax — REVIEW REQUIRED",command=self.tax_assets).grid(row=12,column=0,columnspan=2,sticky="ew",pady=4)
         ttk.Button(f,text="Export CSV",command=self.export).grid(row=13,column=0,sticky="ew",pady=4)
         ttk.Button(f,text="Backup",command=self.backup).grid(row=13,column=1,sticky="ew",pady=4)
         f.columnconfigure(1,weight=1)
@@ -108,6 +111,7 @@ class App(tk.Tk):
         receipt_actions=ttk.Frame(r);receipt_actions.pack(fill="x",pady=(6,2))
         ttk.Button(receipt_actions,text="Add receipts / PDFs",command=self.add_receipts).pack(side="left",padx=(0,6))
         ttk.Button(receipt_actions,text="Review receipt queue",command=self.review_receipts).pack(side="left",padx=(0,6))
+        ttk.Button(receipt_actions,text="Check receipt files",command=self.check_receipt_files).pack(side="left",padx=(0,6))
         ttk.Label(r,textvariable=self.receipt_summary).pack(anchor="w")
         bank_hint=ttk.Label(r,text="Bank check: 1. Select a row → Match selected  2. Check statement (difference 0)  3. Undo checked (latest only). REVIEW REQUIRED.",wraplength=420)
         bank_hint.pack(anchor="w",fill="x",pady=(5,1))
@@ -175,6 +179,27 @@ class App(tk.Tk):
             self.v["doctype"].set("Receipt")
             win.destroy()
         ttk.Button(win,text="Use selected file for this transaction",command=choose).pack(pady=(2,12))
+
+    def check_receipt_files(self):
+        """Help beginners find missing or changed supporting files before export."""
+        results = audit_receipts(self.store.conn)
+        if not results:
+            messagebox.showinfo("Receipt files", "No receipt files have been added yet.")
+            return
+        ok = sum(r["status"] == "OK" for r in results)
+        issues = [r for r in results if r["status"] != "OK"]
+        summary = (
+            f"{ok} file(s) match the saved reference; {len(issues)} need attention.\n"
+            "Files are not stored inside the ledger backup. Keep your originals safely.\n"
+            "This check does not decide tax deductibility or recordkeeping compliance."
+        )
+        if issues:
+            details = "\n".join(
+                f"- {Path(r['path']).name}: {r['reason']}" for r in issues[:8]
+            )
+            messagebox.showwarning("Receipt files to review", summary + "\n\n" + details)
+        else:
+            messagebox.showinfo("Receipt file check", summary)
 
     def _selected_transaction(self):
         selected=self.tree.selection()
@@ -452,6 +477,12 @@ class App(tk.Tk):
 
     def tax_assets(self):
         if not confirm_us_tax_review(self):
+            messagebox.showinfo(
+                "US tax calculation canceled",
+                "Canceled. No calculator was opened, no tax amount was calculated, "
+                "and no ledger entry was created.",
+                parent=self,
+            )
             return
         mode=simpledialog.askstring("Tax / fixed assets","Enter sales tax, book depreciation, or tax depreciation")
         if not mode:return
