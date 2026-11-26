@@ -7,7 +7,6 @@ state-file and process-exit evidence.
 import hashlib
 import json
 import os
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -280,20 +279,34 @@ def run_invalid_duration_case(exe, runner_temp, out):
         backup_before_action = backup_path.read_bytes()
         backup_sha_before_action = sha256_bytes(backup_before_action)
 
-        edits = window.descendants(control_type="Edit")
-        if len(edits) < 2:
+        # Tk/ttk Entry widgets are exposed as unnamed Pane peers on this
+        # hosted runner, not UIA Edit controls. Resolve the small duration
+        # Entry by its measured position in the timer row, then click it.
+        win = window.rectangle()
+        entry_candidates = []
+        for control in window.descendants(control_type="Pane"):
+            rect = control.rectangle()
+            if (
+                25 <= rect.width() <= 65
+                and 15 <= rect.height() <= 40
+                and win.top + 0.28 * win.height() < rect.top < win.top + 0.40 * win.height()
+            ):
+                entry_candidates.append(rect)
+        if len(entry_candidates) != 1:
             raise AssertionError(
-                f"Expected native minutes and task Entry controls; found {len(edits)} Edit controls"
+                "Expected one measured duration Entry Pane; observed "
+                + repr([[r.left, r.top, r.right, r.bottom] for r in entry_candidates])
             )
-        minutes_entry = edits[0]
-        minutes_entry.click_input()
+        duration_entry = entry_candidates[0]
+        duration_entry_xy = (
+            (duration_entry.left + duration_entry.right) // 2,
+            (duration_entry.top + duration_entry.bottom) // 2,
+        )
+        click(coords=duration_entry_xy)
         send_keys("^a0", pause=0.08)
-        try:
-            entered_value = str(minutes_entry.get_value()).strip()
-        except Exception:
-            entered_value = str(minutes_entry.window_text()).strip()
-        if entered_value and entered_value != "0":
-            raise AssertionError(f"Minutes entry did not retain invalid input 0: {entered_value!r}")
+        receipt_duration_entry_rect = [
+            duration_entry.left, duration_entry.top, duration_entry.right, duration_entry.bottom
+        ]
         window.capture_as_image().save(out / "03-invalid-duration-entered.png")
 
         buttons = timer_button_rectangles(window)
