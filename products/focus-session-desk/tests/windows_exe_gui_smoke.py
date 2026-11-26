@@ -154,13 +154,34 @@ try:
     trees = window.descendants(control_type="Tree")
     if len(trees) == 1:
         tree_rect = trees[0].rectangle()
-        toggle_xy = (tree_rect.left + 24, tree_rect.top + 35)
         receipt["progress_toggle_target"] = "uia_tree_first_row"
     else:
+        # Tk Treeview is exposed as a large unnamed Pane on this runner.
+        # Resolve the actual list rectangle (not the enclosing Tasks frame),
+        # then target the first data row below its header.
         win_rect = window.rectangle()
-        toggle_xy = (win_rect.left + 55, win_rect.top + int(win_rect.height() * 0.60))
-        receipt["progress_toggle_target"] = "geometry_fallback_first_row"
-    click(coords=toggle_xy, double=True)
+        pane_rects = []
+        for control in window.descendants(control_type="Pane"):
+            rect = control.rectangle()
+            width = rect.right - rect.left
+            height = rect.bottom - rect.top
+            if (width >= 0.80 * win_rect.width()
+                    and 150 <= height <= 300
+                    and rect.top > win_rect.top + 0.45 * win_rect.height()):
+                pane_rects.append(rect)
+        assert len(pane_rects) == 1, "Expected one native Treeview Pane: " + repr(
+            [[r.left, r.top, r.right, r.bottom] for r in pane_rects])
+        tree_rect = pane_rects[0]
+        receipt["progress_toggle_target"] = "geometry_verified_treeview_pane"
+    toggle_xy = (tree_rect.left + 24, tree_rect.top + 35)
+    receipt["progress_toggle_rectangle"] = [
+        tree_rect.left, tree_rect.top, tree_rect.right, tree_rect.bottom
+    ]
+    # pywinauto.mouse.click has no double=True option in the pinned 0.6.9
+    # release; issue two real clicks inside the native double-click interval.
+    click(coords=toggle_xy)
+    time.sleep(0.15)
+    click(coords=toggle_xy)
     deadline = time.time() + 10
     while time.time() < deadline:
         saved = json.loads(state.read_text(encoding="utf-8"))
