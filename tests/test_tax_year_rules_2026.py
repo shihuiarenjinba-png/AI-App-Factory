@@ -67,7 +67,17 @@ class TaxYearReferenceFixture2026Tests(unittest.TestCase):
         self.assertEqual(after["annual_aggregate_cap_jpy"], 3_000_000)
         self.assertTrue(before["blue_return_required"])
         self.assertTrue(after["blue_return_required"])
+        self.assertTrue(before["exclude_if_three_year_pooled_asset_rule_applied"])
         self.assertTrue(after["exclude_if_three_year_pooled_asset_rule_applied"])
+
+    def test_japan_common_conditions_apply_to_both_cutover_windows(self):
+        rules = FIXTURE["jurisdictions"]["JP-INDIVIDUAL-INCOME-TAX"]["rules"]
+        for rule in rules:
+            with self.subTest(rule=rule["rule_id"]):
+                self.assertIn("tax-inclusive cost", rule["cost_tax_inclusion_rule"])
+                self.assertIn("on or after 2022-04-01", rule["lending_asset_exclusion"])
+                self.assertIn("principal business", rule["lending_asset_exclusion"])
+                self.assertIn("注3・注4・注5", rule["source"]["source_note"])
 
     def test_jurisdiction_currency_and_tax_scope_are_not_mixed(self):
         guard = FIXTURE["cross_jurisdiction_guard"]
