@@ -64,12 +64,18 @@ class USReviewGateTests(unittest.TestCase):
         method.args.defaults = []
         module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
         dialogs = Mock()
+        messages = Mock()
+        parent = object()
         scope = {"confirm_us_tax_review": lambda parent: False,
-                 "simpledialog": dialogs, "messagebox": Mock()}
+                 "simpledialog": dialogs, "messagebox": messages}
         exec(compile(module, str(MAIN), "exec"), scope)
-        scope["tax_assets"](object())
+        scope["tax_assets"](parent)
         dialogs.assert_not_called()
-        scope["messagebox"].showinfo.assert_not_called()
+        messages.showinfo.assert_called_once_with(
+            "Tax review cancelled",
+            "No calculation was opened. Your ledger was not changed.",
+            parent=parent,
+        )
 
     def test_runtime_approved_sales_tax_stays_usd_and_requires_review(self):
         import copy
