@@ -6,6 +6,7 @@ a separate JP sentinel database. This does not replace Windows GUI smoke.
 """
 import importlib.util
 import os
+from contextlib import closing
 from pathlib import Path
 import sqlite3
 import sys
@@ -33,9 +34,15 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
             jp = base / "JPFreelanceLedger"
             jp.mkdir()
             jp_db = jp / "books.sqlite3"
-            with sqlite3.connect(jp_db) as connection:
-                connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
-                connection.execute("INSERT INTO sentinel VALUES ('JP-KEEP')")
+
+            # sqlite3.Connection's context manager commits/rolls back but does
+            # not close the handle. Explicitly close it so Windows can remove
+            # the temporary directory after the test.
+            with closing(sqlite3.connect(jp_db)) as connection:
+                with connection:
+                    connection.execute("CREATE TABLE sentinel (value TEXT NOT NULL)")
+                    connection.execute("INSERT INTO sentinel VALUES ('JP-KEEP')")
+
             before = jp_db.read_bytes()
             with patch.dict(os.environ, {"APPDATA": str(base)}):
                 store = core.Store()
@@ -46,9 +53,14 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
                     self.assertEqual(len(store.rows()), 1)
                     self.assertEqual(store.rows()[0]["amount_cents"], 12500)
                 finally:
-                    store.conn.close()
+                    store.close()
+
             self.assertEqual(jp_db.read_bytes(), before, "US write changed JP database")
-            self.assertEqual([p.name for p in base.iterdir()], ["JPFreelanceLedger", "USFreelanceLedger"])
+            # Filesystem iteration order differs across Linux and Windows.
+            self.assertEqual(
+                sorted(p.name for p in base.iterdir()),
+                ["JPFreelanceLedger", "USFreelanceLedger"],
+            )
 
     def test_us_default_path_cannot_fall_back_to_jp_directory(self):
         core = load_us_core()
