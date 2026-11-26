@@ -3,6 +3,10 @@ on:
   push:
     branches:
       - qa/focus-error-recovery-20261127
+  pull_request:
+    paths:
+      - 'products/focus-session-desk/tests/windows_exe_error_recovery_smoke.py'
+      - '.github/workflows/focus-error-recovery.yml'
   workflow_dispatch:
 
 permissions:
@@ -14,7 +18,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 18
     env:
-      EXPECTED_QA_HEAD_SHA: ${{ github.sha }}
+      EXPECTED_QA_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
       EXPECTED_PRODUCT_SOURCE_SHA: fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79
       EXPECTED_REQUEST_ID: app-focus-session-desk-fb6293839bc7
       EXPECTED_EXE_SHA256: d1ef4b389b1344e4886eb7728173508ea7754b795d476340dffd46f9024ddcda
@@ -22,7 +26,7 @@ jobs:
       - name: Checkout exact QA HEAD
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
           fetch-depth: 0
           persist-credentials: false
 
