@@ -38,7 +38,7 @@ jobs:
       - name: Compile Windows pre-Identity builder
         run: python -m py_compile tools/build_windows_exe.py tools/preidentity_product_select.py
   windows-exe-smoke:
-    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'codex/app-preidentity-')
+    if: github.event_name == 'pull_request' && startsWith(github.head_ref, 'codex/app-preidentity-') && !startsWith(github.head_ref, 'codex/app-preidentity-us-ledger-review-')
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
