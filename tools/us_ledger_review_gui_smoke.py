@@ -155,7 +155,7 @@ def _fill_tk_dialog(app, title: str, value: str, screenshot: str, capture) -> No
 
 
 def _find_review_button(app):
-    expected = "US tax / fixed assets — REVIEW REQUIRED"
+    expected = "US tax — REVIEW REQUIRED"
     matches = [
         widget for widget in _walk(app)
         if isinstance(widget, us_main.ttk.Button)
