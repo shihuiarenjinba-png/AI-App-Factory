@@ -24,6 +24,9 @@ appdata = Path(os.environ["APPDATA"])
 state = appdata / "FocusSessionDesk" / "state.json"
 assert not state.exists(), "Expected isolated fresh state"
 proc = subprocess.Popen([str(exe)], cwd=str(exe.parent))
+restart_proc = None
+window = None
+restart_window = None
 receipt = {"source_sha": source, "exe_sha256": sha, "exe_name": exe.name, "steps": []}
 try:
     window = Desktop(backend="uia").window(title_re=".*集中セッション.*|.*Focus Session Desk.*")
@@ -139,22 +142,70 @@ try:
         assert saved["session"] == ("interrupted" if expected in ("running", "paused") else "idle"), (label, saved)
         receipt["steps"].append("native_" + label.lower())
     window.capture_as_image().save(out / "04-reset.png")
-    # Tk labels are unnamed Pane peers on this Windows runner, so UIA
-    # window_text() cannot verify the progress string. Preserve a real native
-    # screenshot for visual review and independently assert persisted counts.
-    # Do not misreport this as machine-verified GUI text.
+    # Preserve both ends of the progress scale. The first screenshot proves
+    # the initial 0% state; then toggle the selected task through the native
+    # Treeview double-click binding and prove the persisted 100% state.
     saved = json.loads(state.read_text(encoding="utf-8"))
     assert len(saved["tasks"]) == 1 and not saved["tasks"][0]["done"], saved["tasks"]
-    progress_image = window.capture_as_image()
-    progress_image.save(out / "05-progress-review-required.png")
-    receipt["progress_expected_text"] = "Progress: 0/1 complete (0%)"
-    receipt["progress_evidence"] = "05-progress-review-required.png"
+    window.capture_as_image().save(out / "05-progress-0-review-required.png")
+    receipt["progress_0_expected_text"] = "Progress: 0/1 complete (0%)"
+    receipt["progress_0_evidence"] = "05-progress-0-review-required.png"
+
+    trees = window.descendants(control_type="Tree")
+    if len(trees) == 1:
+        tree_rect = trees[0].rectangle()
+        toggle_xy = (tree_rect.left + 24, tree_rect.top + 35)
+        receipt["progress_toggle_target"] = "uia_tree_first_row"
+    else:
+        win_rect = window.rectangle()
+        toggle_xy = (win_rect.left + 55, win_rect.top + int(win_rect.height() * 0.60))
+        receipt["progress_toggle_target"] = "geometry_fallback_first_row"
+    click(coords=toggle_xy, double=True)
+    deadline = time.time() + 10
+    while time.time() < deadline:
+        saved = json.loads(state.read_text(encoding="utf-8"))
+        if len(saved["tasks"]) == 1 and saved["tasks"][0]["done"]:
+            break
+        time.sleep(0.25)
+    else:
+        raise AssertionError("Native Treeview double-click did not persist task completion")
+    assert saved["language"] == "en", saved
+    window.capture_as_image().save(out / "06-progress-100-review-required.png")
+    receipt["progress_100_expected_text"] = "Progress: 1/1 complete (100%)"
+    receipt["progress_100_evidence"] = "06-progress-100-review-required.png"
     receipt["progress_visual_review_required"] = True
-    receipt["steps"].append("progress_state_verified_screenshot_captured")
+    receipt["steps"].append("native_task_completed_and_100_percent_progress_captured")
+
     window.close()
     proc.wait(timeout=15)
     assert proc.returncode == 0, f"EXE exited with {proc.returncode}"
-    receipt["steps"].append("native_normal_exit")
+    receipt["steps"].append("native_first_exit")
+    persisted = json.loads(state.read_text(encoding="utf-8"))
+    assert persisted["language"] == "en", persisted
+    assert len(persisted["tasks"]) == 1 and persisted["tasks"][0]["done"], persisted
+
+    # Relaunch the same native EXE against the same isolated APPDATA. The saved
+    # language must be restored by the real startup path, not by a test-only
+    # state injection or direct model call.
+    restart_proc = subprocess.Popen([str(exe)], cwd=str(exe.parent))
+    restart_window = Desktop(backend="uia").window(title_re=".*Focus Session Desk.*")
+    restart_window.wait("visible", timeout=45)
+    restart_window.set_focus()
+    assert restart_window.window_text() == "Focus Session Desk", restart_window.window_text()
+    restored = json.loads(state.read_text(encoding="utf-8"))
+    assert restored["language"] == "en", restored
+    assert len(restored["tasks"]) == 1 and restored["tasks"][0]["done"], restored
+    restart_window.capture_as_image().save(out / "07-restart-language-en-100.png")
+    receipt["restart_language"] = restored["language"]
+    receipt["restart_window_title"] = restart_window.window_text()
+    receipt["restart_progress_expected_text"] = "Progress: 1/1 complete (100%)"
+    receipt["restart_evidence"] = "07-restart-language-en-100.png"
+    receipt["steps"].append("native_restart_restored_english_language_and_completed_task")
+    restart_window.close()
+    restart_proc.wait(timeout=15)
+    assert restart_proc.returncode == 0, f"Restarted EXE exited with {restart_proc.returncode}"
+    receipt["steps"].append("native_restart_normal_exit")
+    receipt["result"] = "PASS"
     receipt["result"] = "PASS"
 finally:
     # Preserve actionable evidence even if UIA cannot expose Tkinter widgets.
@@ -164,28 +215,32 @@ finally:
         (out / "failure-traceback.txt").write_text(
             "".join(traceback.format_exception(*sys.exc_info())), encoding="utf-8"
         )
+        active_window = restart_window or window
         with contextlib.suppress(Exception):
-            window.capture_as_image().save(out / "failure-window.png")
+            if active_window is not None:
+                active_window.capture_as_image().save(out / "failure-window.png")
         with contextlib.suppress(Exception):
-            with (out / "uia-tree.txt").open("w", encoding="utf-8") as stream:
-                with contextlib.redirect_stdout(stream):
-                    window.print_control_identifiers(depth=8)
+            if active_window is not None:
+                with (out / "uia-tree.txt").open("w", encoding="utf-8") as stream:
+                    with contextlib.redirect_stdout(stream):
+                        active_window.print_control_identifiers(depth=8)
         with contextlib.suppress(Exception):
-            controls = []
-            for control in window.descendants():
-                rect = control.rectangle()
-                controls.append({"name": control.window_text(), "type": control.element_info.control_type,
-                                 "rectangle": [rect.left, rect.top, rect.right, rect.bottom]})
-            (out / "uia-controls.json").write_text(
-                json.dumps(controls, ensure_ascii=False, indent=2), encoding="utf-8"
-            )
-            # Surface diagnostic control names in the job log as well as the artifact.
-            # The artifact is not always directly inspectable by automated supervisors.
-            print("GUI_DIAGNOSTIC_CONTROLS=" + json.dumps(controls[:100], ensure_ascii=False), flush=True)
-            print("GUI_DIAGNOSTIC_WINDOW_RECT=" + str(window.rectangle()), flush=True)
-    if proc.poll() is None:
-        proc.kill()
-        proc.wait(timeout=10)
+            if active_window is not None:
+                controls = []
+                for control in active_window.descendants():
+                    rect = control.rectangle()
+                    controls.append({"name": control.window_text(), "type": control.element_info.control_type,
+                                     "rectangle": [rect.left, rect.top, rect.right, rect.bottom]})
+                (out / "uia-controls.json").write_text(
+                    json.dumps(controls, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+                # Surface diagnostic control names in the job log as well as the artifact.
+                print("GUI_DIAGNOSTIC_CONTROLS=" + json.dumps(controls[:100], ensure_ascii=False), flush=True)
+                print("GUI_DIAGNOSTIC_WINDOW_RECT=" + str(active_window.rectangle()), flush=True)
+    for candidate in (restart_proc, proc):
+        if candidate is not None and candidate.poll() is None:
+            candidate.kill()
+            candidate.wait(timeout=10)
     receipt.setdefault("result", "FAIL")
     (out / "receipt.json").write_text(json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 print(json.dumps(receipt, ensure_ascii=False))
