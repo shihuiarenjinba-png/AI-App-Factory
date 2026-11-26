@@ -189,7 +189,7 @@ def verify_inputs(root: Path, slug: str) -> tuple[Path, dict]:
 
     approved = identity_path_for(product)
     if approved.is_symlink() or not approved.is_file():
-        raise ValueError("approved Identity return missing; do not invent")
+        raise ValueError("Identity missing: approved Identity return missing; do not invent")
     cfg = json.loads(approved.read_text(encoding="utf-8"))
 
     source_fields = ("source_sha", "verified_source_sha", "expected_head_sha")

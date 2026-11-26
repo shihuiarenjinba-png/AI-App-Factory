@@ -76,8 +76,17 @@ def inspect_exe_evidence(root: Path, slug: str, evidence: Path,
         if (path != f"products/{slug}/store/approved-identity.json"
                 and not path.startswith(f"products/{slug}/store/assets/")):
             raise ValueError("APP code/proposal changed since pinned EXE build")
-    if _git(root, "status", "--porcelain", "--untracked-files=all", "--", *paths):
-        raise ValueError("uncommitted APP source or Identity")
+    status = _git(root, "status", "--porcelain", "--untracked-files=all", "--", *paths)
+    if status:
+        identity_path = f"products/{slug}/store/approved-identity.json".encode("utf-8")
+        unexpected = []
+        for line in status.splitlines():
+            # The only permitted worktree addition is the operator-return file.
+            # It must remain untracked so it cannot change the immutable source SHA.
+            if line[3:].strip() != identity_path:
+                unexpected.append(line)
+        if unexpected:
+            raise ValueError("uncommitted APP source changes other than the approved Identity return")
     if evidence.is_symlink() or not evidence.is_dir():
         raise ValueError("EXE evidence directory absent or linked")
     exe = evidence / (slug + ".exe")
