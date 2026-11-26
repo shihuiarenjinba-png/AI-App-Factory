@@ -157,7 +157,7 @@ class USReviewGateTests(unittest.TestCase):
             label = next((k.value.value for k in node.keywords
                           if k.arg == "text" and isinstance(k.value, ast.Constant)
                           and isinstance(k.value.value, str)), None)
-            if label == "US tax / fixed assets — REVIEW REQUIRED":
+            if label == "US tax — REVIEW REQUIRED":
                 matches.append(node)
         self.assertEqual(len(matches), 1, "Exactly one visible US review entrypoint is required")
         command = next((k.value for k in matches[0].keywords if k.arg == "command"), None)
