@@ -1,9 +1,8 @@
-name: Focus native Windows EXE GUI evidence
+name: Focus native Windows EXE GUI evidence and byte custody
 
 on:
   pull_request:
     paths:
-      - 'products/focus-session-desk/main.py'
       - 'products/focus-session-desk/tests/windows_exe_gui_smoke.py'
       - '.github/workflows/focus-native-gui.yml'
   workflow_dispatch:
@@ -16,31 +15,61 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 25
     env:
-      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      # The PR base is the immutable product-source commit. The PR head is QA-only.
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.base.sha || 'fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79' }}
+      EXPECTED_QA_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXPECTED_SOURCE_BRANCH: ${{ github.event.pull_request.base.ref || 'codex/focus-store-assets-gate-20261118' }}
+      EXPECTED_REQUEST_ID: app-focus-session-desk-fb6293839bc7
     steps:
-      - name: Checkout raw PR source SHA
+      - name: Checkout QA branch at exact raw head
         uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
           persist-credentials: false
-      - name: Assert exact source SHA
+      - name: Assert immutable product source and unchanged build inputs
         shell: pwsh
         run: |
-          $actual = (git rev-parse HEAD).Trim()
-          if ($actual -ne $env:EXPECTED_SOURCE_SHA) { throw "Source SHA mismatch: $actual" }
-          Write-Output "exact_source_sha=$actual"
+          $qaHead = (git rev-parse HEAD).Trim()
+          if ($qaHead -ne $env:EXPECTED_QA_HEAD_SHA) { throw "QA checkout SHA mismatch: $qaHead" }
+          if ($env:EXPECTED_SOURCE_SHA -ne 'fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79') { throw "Unexpected product source SHA" }
+          if ($env:EXPECTED_SOURCE_BRANCH -ne 'codex/focus-store-assets-gate-20261118') { throw "Unexpected product source branch" }
+          if ($env:EXPECTED_REQUEST_ID -ne ("app-focus-session-desk-" + $env:EXPECTED_SOURCE_SHA.Substring(0,12))) { throw "Request ID is not bound to product source SHA" }
+          git cat-file -e "$($env:EXPECTED_SOURCE_SHA)^{commit}"
+          if ($LASTEXITCODE -ne 0) { throw "Pinned product source commit is unavailable" }
+          $paths = @(
+            'products/focus-session-desk/main.py',
+            'products/focus-session-desk/store/assets/StoreLogo.png',
+            'products/focus-session-desk/store/assets/Square150.png',
+            'products/focus-session-desk/store/assets/Square44.png'
+          )
+          foreach ($path in $paths) {
+            $sourceBlob = (git rev-parse "$($env:EXPECTED_SOURCE_SHA):$path").Trim()
+            if ($LASTEXITCODE -ne 0) { throw "Missing pinned source input: $path" }
+            $qaBlob = (git rev-parse "HEAD:$path").Trim()
+            if ($LASTEXITCODE -ne 0 -or $qaBlob -ne $sourceBlob) { throw "QA branch changed product input: $path" }
+          }
+          Write-Output "product_source_sha=$env:EXPECTED_SOURCE_SHA"
+          Write-Output "qa_head_sha=$qaHead"
+          Write-Output "request_id=$env:EXPECTED_REQUEST_ID"
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-      - name: Install Windows GUI and EXE build tools
+      - name: Install pinned Windows GUI and EXE build tools
         run: python -m pip install --disable-pip-version-check pyinstaller==6.16.0 pywinauto==0.6.9 pillow==11.3.0
-      - name: Build real Windows native EXE
+      - name: Build real EXE from the pinned product source commit
         shell: pwsh
         run: |
-          python -m PyInstaller --noconfirm --clean --onefile --windowed --name FocusSessionDesk --distpath dist --workpath build/focus-gui --specpath build/focus-gui products/focus-session-desk/main.py
+          git worktree add --detach product-source $env:EXPECTED_SOURCE_SHA
+          if ($LASTEXITCODE -ne 0) { throw "Could not create pinned product-source worktree" }
+          $buildHead = (git -C product-source rev-parse HEAD).Trim()
+          if ($buildHead -ne $env:EXPECTED_SOURCE_SHA) { throw "Build worktree source SHA mismatch: $buildHead" }
+          $main = Join-Path $env:GITHUB_WORKSPACE 'product-source/products/focus-session-desk/main.py'
+          python -m PyInstaller --noconfirm --clean --onefile --windowed --name FocusSessionDesk --distpath dist --workpath build/focus-gui --specpath build/focus-gui $main
           if ($LASTEXITCODE -ne 0) { throw "PyInstaller failed" }
           if (-not (Test-Path dist/FocusSessionDesk.exe)) { throw "Missing native EXE" }
-      - name: Run native GUI smoke and capture screenshots/receipt
+          Write-Output "build_source_sha=$buildHead"
+      - name: Run native GUI smoke against the pinned-source EXE
         shell: pwsh
         timeout-minutes: 8
         run: |
@@ -48,20 +77,71 @@ jobs:
           New-Item -ItemType Directory -Force -Path $env:APPDATA | Out-Null
           python products/focus-session-desk/tests/windows_exe_gui_smoke.py dist/FocusSessionDesk.exe focus-gui-evidence
           if ($LASTEXITCODE -ne 0) { throw "Native GUI smoke failed" }
-      - name: Save source, EXE and receipt SHA evidence
+      - name: Copy actual EXE bytes and write custody manifest
         if: always()
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path focus-gui-evidence | Out-Null
-          git rev-parse HEAD | Out-File -Encoding utf8 focus-gui-evidence/source-sha.txt
-          if (Test-Path dist/FocusSessionDesk.exe) {
-            (Get-FileHash dist/FocusSessionDesk.exe -Algorithm SHA256).Hash | Out-File -Encoding utf8 focus-gui-evidence/exe-sha256.txt
+          $qaHead = (git rev-parse HEAD).Trim()
+          $env:EXPECTED_QA_HEAD_SHA | Out-File -Encoding utf8 focus-gui-evidence/qa-head-sha.txt
+          $env:EXPECTED_SOURCE_SHA | Out-File -Encoding utf8 focus-gui-evidence/source-sha.txt
+          $env:EXPECTED_REQUEST_ID | Out-File -Encoding utf8 focus-gui-evidence/request-id.txt
+          $exePath = 'dist/FocusSessionDesk.exe'
+          $exeSha = $null
+          $copiedSha = $null
+          $exeSize = $null
+          if (Test-Path $exePath) {
+            $exeSha = (Get-FileHash $exePath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $exeSize = (Get-Item $exePath).Length
+            Copy-Item $exePath focus-gui-evidence/FocusSessionDesk.exe -Force
+            $copiedSha = (Get-FileHash focus-gui-evidence/FocusSessionDesk.exe -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($copiedSha -ne $exeSha) { throw "Copied artifact EXE SHA mismatch" }
+            $exeSha | Out-File -Encoding utf8 focus-gui-evidence/exe-sha256.txt
+            $exeSize | Out-File -Encoding utf8 focus-gui-evidence/exe-size-bytes.txt
           }
-      - name: Upload native GUI evidence
+          $receiptPath = 'focus-gui-evidence/receipt.json'
+          $receiptSha = $null
+          if (Test-Path $receiptPath) {
+            $receipt = Get-Content -Raw $receiptPath | ConvertFrom-Json
+            if ($receipt.source_sha -ne $env:EXPECTED_SOURCE_SHA) { throw "GUI receipt source SHA mismatch" }
+            if ($receipt.qa_head_sha -ne $qaHead) { throw "GUI receipt QA head mismatch" }
+            if ($receipt.request_id -ne $env:EXPECTED_REQUEST_ID) { throw "GUI receipt request ID mismatch" }
+            if ($null -ne $exeSha -and $receipt.exe_sha256 -ne $exeSha) { throw "GUI-tested EXE SHA mismatch" }
+            if ($null -ne $exeSize -and $receipt.exe_size_bytes -ne $exeSize) { throw "GUI-tested EXE size mismatch" }
+            $receiptSha = (Get-FileHash $receiptPath -Algorithm SHA256).Hash.ToLowerInvariant()
+            $receiptSha | Out-File -Encoding utf8 focus-gui-evidence/receipt-sha256.txt
+          }
+          $assetHashes = [ordered]@{}
+          foreach ($asset in @('StoreLogo.png','Square150.png','Square44.png')) {
+            $assetPath = Join-Path 'products/focus-session-desk/store/assets' $asset
+            if (-not (Test-Path $assetPath)) { throw "Missing immutable Store asset: $asset" }
+            $assetHashes[$asset] = (Get-FileHash $assetPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          }
+          $manifest = [ordered]@{
+            schema_version = 1
+            product = 'focus-session-desk'
+            product_source_sha = $env:EXPECTED_SOURCE_SHA
+            qa_head_sha = $qaHead
+            source_branch = $env:EXPECTED_SOURCE_BRANCH
+            request_id = $env:EXPECTED_REQUEST_ID
+            executable = [ordered]@{
+              file_name = 'FocusSessionDesk.exe'
+              size_bytes = $exeSize
+              sha256 = $exeSha
+              copied_artifact_sha256 = $copiedSha
+              included_in_artifact = (Test-Path 'focus-gui-evidence/FocusSessionDesk.exe')
+            }
+            gui_receipt_sha256 = $receiptSha
+            store_png_sha256 = $assetHashes
+            custody_scope = 'QA artifact custody only; unsigned pre-Identity EXE; not an MSIX'
+          }
+          $manifest | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 focus-gui-evidence/provenance.json
+          if (-not (Test-Path 'focus-gui-evidence/FocusSessionDesk.exe')) { throw "Actual product EXE bytes are not present in the upload directory" }
+      - name: Upload GUI screenshots, receipts, provenance and actual product EXE
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: focus-native-gui-${{ github.run_id }}
+          name: focus-native-gui-exe-custody-${{ github.run_id }}
           path: focus-gui-evidence/
           if-no-files-found: error
           retention-days: 30
