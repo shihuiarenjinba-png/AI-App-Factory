@@ -22,7 +22,22 @@ class USReviewGateTests(unittest.TestCase):
         self.assertIsInstance(first.test, ast.UnaryOp)
         self.assertIsInstance(first.test.operand, ast.Call)
         self.assertEqual(first.test.operand.func.id, "confirm_us_tax_review")
-        self.assertIsInstance(first.body[0], ast.Return)
+        self.assertIsInstance(first.body[-1], ast.Return)
+        feedback_calls = [
+            stmt.value for stmt in first.body[:-1]
+            if isinstance(stmt, ast.Expr)
+            and isinstance(stmt.value, ast.Call)
+            and isinstance(stmt.value.func, ast.Attribute)
+            and isinstance(stmt.value.func.value, ast.Name)
+            and stmt.value.func.value.id == "messagebox"
+            and stmt.value.func.attr == "showinfo"
+        ]
+        self.assertEqual(len(feedback_calls), 1)
+        self.assertEqual(ast.literal_eval(feedback_calls[0].args[0]), "Tax review cancelled")
+        self.assertIn(
+            "No calculation was opened. Your ledger was not changed.",
+            ast.literal_eval(feedback_calls[0].args[1]),
+        )
 
     def test_review_gate_decline_and_non_boolean_fail_closed(self):
         # Compile only the pure gate function, without importing tkinter or creating a window.
