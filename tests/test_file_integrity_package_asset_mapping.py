@@ -23,11 +23,11 @@ SLUG = "file-integrity-ledger"
 SOURCE_PRODUCT = ROOT / "products" / SLUG
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
 
-# Frozen by PR95 and preserved byte-for-byte by PR115.
+# Frozen from PR115's exact-head native-GUI artifact png-sha256.txt.
 EXPECTED_ASSET_SHA256 = {
     "StoreLogo.png": "224fa777280cf61877c14146e920fca32bb90bff6f0cea3df4ed0ac77c0645a9",
-    "Square150.png": "e00136c7a319756ccc48c2dc50136f5872e272e806cd592a6beb8922bbb1742",
-    "Square44.png": "bd61099427a770f8dff247f0f6928e5d50ba2cd8265797c7f13952e96147d70d",
+    "Square150.png": "e00136c7a319756ccc48c2dc50136f5872e272e806cd592a6bebb8922bbb1742",
+    "Square44.png": "bd61099427a770f8ddf247f0f6928e5d50ba2cd8265797c7f13952e96147d70d",
 }
 
 # Synthetic fixture only. This never enters the checked-out product tree.
@@ -44,7 +44,7 @@ FIXTURE_IDENTITY = {
 
 
 def assert_exact_asset_bytes(product: Path) -> dict[str, bytes]:
-    """Fail closed unless the exact three approved PR95 PNG byte strings exist."""
+    """Fail closed unless the exact three approved PR115 PNG byte strings exist."""
     asset_dir = product / "store" / "assets"
     if asset_dir.is_symlink() or not asset_dir.is_dir():
         raise ValueError("Store asset directory missing or linked")
