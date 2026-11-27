@@ -61,6 +61,7 @@ class TaxYearReferenceFixture2026Tests(unittest.TestCase):
         self.assertEqual(rule["source"]["irs_download_directory_date"], "2026-03-13")
         self.assertEqual(rule["source"]["irs_download_directory_filename"], "p946--2025.pdf")
         self.assertEqual(rule["source"]["irs_download_directory_url"], "https://www.irs.gov/downloads/irs-prior")
+        self.assertIn("not represented as the publication date", rule["source"]["source_metadata_note"])
 
     def test_japan_2026_acquisition_date_cutover_is_strict_and_non_overlapping(self):
         rules = FIXTURE["jurisdictions"]["JP-INDIVIDUAL-INCOME-TAX"]["rules"]
