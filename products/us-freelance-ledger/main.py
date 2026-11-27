@@ -104,7 +104,13 @@ class App(tk.Tk):
         ttk.Button(f,text="Backup",command=self.backup).grid(row=13,column=1,sticky="ew",pady=4)
         f.columnconfigure(1,weight=1)
         r=ttk.Labelframe(p,text="Ledger",padding=10);p.add(r,weight=3)
-        ttk.Label(r,textvariable=self.summary,font=("Segoe UI",11,"bold")).pack(anchor="w")
+        self.ledger_frame = r
+        self.summary_label = ttk.Label(
+            r, textvariable=self.summary, font=("Segoe UI",11,"bold"),
+            wraplength=620, justify="left"
+        )
+        self.summary_label.pack(anchor="w", fill="x")
+        r.bind("<Configure>", self._resize_summary_to_ledger, add="+")
         receipt_actions=ttk.Frame(r);receipt_actions.pack(fill="x",pady=(6,2))
         ttk.Button(receipt_actions,text="Add receipts / PDFs",command=self.add_receipts).pack(side="left",padx=(0,6))
         ttk.Button(receipt_actions,text="Review receipt queue",command=self.review_receipts).pack(side="left",padx=(0,6))
@@ -125,6 +131,12 @@ class App(tk.Tk):
         for c,t in zip(cols,["Date","Type","Amount","Category","Payer / payee","Memo","Bank check"]):
             self.tree.heading(c,text=t);self.tree.column(c,width=90 if c in ("date","kind","amount","bank") else 110)
         self.tree.pack(fill="both",expand=True,pady=(8,0))
+
+    def _resize_summary_to_ledger(self, event=None):
+        """Keep the monthly/YTD summary readable inside the responsive ledger pane."""
+        width = event.width if event is not None else self.ledger_frame.winfo_width()
+        if width > 1:
+            self.summary_label.configure(wraplength=max(280, min(620, width - 28)))
 
     def refresh_receipts(self):
         rows=list_receipts(self.store.conn)
