@@ -1,0 +1,77 @@
+name: Source-versioned JP and US tax-year fixture contract (reference only)
+
+on:
+  pull_request:
+    paths:
+      - 'tests/fixtures/tax_year_rules_2026.json'
+      - 'tests/test_tax_year_rules_2026.py'
+      - '.github/workflows/tax-year-fixture-contract.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tax-year-fixture-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      EXPECTED_SOURCE_SHA: ${{ github.event.pull_request.base.sha || '75f247f85b9540be4c752fbfc9063f5310d5ccc9' }}
+      EXPECTED_QA_HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      EXPECTED_SOURCE_BRANCH: ${{ github.event.pull_request.base.ref || 'codex/app-preidentity-usjp-isolation-stack-20261126' }}
+    steps:
+      - name: Checkout QA branch at exact raw head
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Assert exact PR122 base and no product-source changes
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "$EXPECTED_QA_HEAD_SHA"
+          test "$EXPECTED_SOURCE_SHA" = "75f247f85b9540be4c752fbfc9063f5310d5ccc9"
+          test "$EXPECTED_SOURCE_BRANCH" = "codex/app-preidentity-usjp-isolation-stack-20261126"
+          git cat-file -e "$EXPECTED_SOURCE_SHA^{commit}"
+          git diff --quiet "$EXPECTED_SOURCE_SHA" HEAD -- products/
+          git diff --quiet "$EXPECTED_SOURCE_SHA" HEAD -- tools/
+          echo "source_sha=$EXPECTED_SOURCE_SHA"
+          echo "qa_head_sha=$actual"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Validate source-versioned tax-year references
+        run: python -m unittest discover -s tests -p test_tax_year_rules_2026.py -v
+      - name: Write fixture validation evidence
+        shell: bash
+        run: |
+          mkdir -p tax-year-fixture-evidence
+          cp tests/fixtures/tax_year_rules_2026.json tax-year-fixture-evidence/
+          printf '%s\n' "$EXPECTED_SOURCE_SHA" > tax-year-fixture-evidence/source-sha.txt
+          printf '%s\n' "$EXPECTED_QA_HEAD_SHA" > tax-year-fixture-evidence/qa-head-sha.txt
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          fixture = Path("tests/fixtures/tax_year_rules_2026.json").read_bytes()
+          receipt = {
+              "status": "PASS",
+              "source_sha": os.environ["EXPECTED_SOURCE_SHA"],
+              "qa_head_sha": os.environ["EXPECTED_QA_HEAD_SHA"],
+              "fixture_sha256": hashlib.sha256(fixture).hexdigest(),
+              "jurisdictions": ["US-FEDERAL", "JP-INDIVIDUAL-INCOME-TAX"],
+              "tax_calculation_performed": False,
+              "product_code_changed": False,
+              "auto_apply": False,
+              "review_required": True
+          }
+          Path("tax-year-fixture-evidence/validation-receipt.json").write_text(
+              json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+          PY
+      - name: Upload tax-year fixture validation evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: jp-us-tax-year-fixture-contract-${{ github.run_id }}
+          path: tax-year-fixture-evidence/
+          if-no-files-found: error
+          retention-days: 30
