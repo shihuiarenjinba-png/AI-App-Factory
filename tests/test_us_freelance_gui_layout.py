@@ -4,7 +4,7 @@ import importlib.util
 import sys
 import tempfile
 import tkinter as tk
-from tkinter import ttk
+from tkinter import ttk, font as tkfont
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -131,6 +131,26 @@ class FirstRunLayoutTests(unittest.TestCase):
                         self.skipTest("Windows runner has no mapped GUI desktop; physical GUI remains unverified")
                     self.assertLessEqual(app.winfo_width(), 1024)
                     self.assertLessEqual(app.winfo_height(), 720)
+                    summary = app.summary_label
+                    self.assertTrue(summary.winfo_ismapped())
+                    self.assertGreater(summary.cget("wraplength"), 0)
+                    self.assertLessEqual(summary.cget("wraplength"), 620)
+                    summary_font = tkfont.Font(root=app, font=summary.cget("font"))
+                    self.assertGreater(
+                        summary_font.measure(app.summary.get()),
+                        summary.cget("wraplength"),
+                        "The 1024x720 ledger summary must wrap instead of clipping at the right edge",
+                    )
+                    self.assertGreaterEqual(
+                        summary.winfo_reqheight(),
+                        summary_font.metrics("linespace") * 2,
+                        "The summary should occupy multiple visible lines at the constrained width",
+                    )
+                    self.assertGreaterEqual(summary.winfo_rootx(), app.ledger_frame.winfo_rootx())
+                    self.assertLessEqual(
+                        summary.winfo_rootx() + summary.winfo_width(),
+                        app.ledger_frame.winfo_rootx() + app.ledger_frame.winfo_width(),
+                    )
                     buttons = {}
                     def visit(widget):
                         for child in widget.winfo_children():
