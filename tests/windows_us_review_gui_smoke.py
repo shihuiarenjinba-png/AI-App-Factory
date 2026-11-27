@@ -49,6 +49,12 @@ def main():
             assert policy_width > 0 and policy_wrap <= policy_width, (
                 f"US scope disclosure can be clipped: wrap={policy_wrap}px, widget={policy_width}px"
             )
+            summary_width = app.summary_label.winfo_width()
+            summary_wrap = int(app.summary_label.cget("wraplength"))
+            assert summary_width > 0 and summary_wrap <= summary_width, (
+                f"Ledger summary can be clipped: wrap={summary_wrap}px, widget={summary_width}px"
+            )
+            assert "not taxable income" in app.summary.get().lower()
             style = ttk.Style(app)
             font_spec = style.lookup(buttons[0].cget("style") or "TButton", "font") or "TkDefaultFont"
             button_font = tkfont.Font(root=app, font=font_spec)
@@ -77,6 +83,12 @@ def main():
                 "wraplength_px": policy_wrap,
                 "widget_width_px": policy_width,
                 "fully_wrapped_to_widget": policy_wrap <= policy_width,
+            }
+            receipt["ledger_summary"] = {
+                "wraplength_px": summary_wrap,
+                "widget_width_px": summary_width,
+                "fully_wrapped_to_widget": summary_wrap <= summary_width,
+                "not_taxable_income_warning_visible": "not taxable income" in app.summary.get().lower(),
             }
             with patch.object(us_main, "confirm_us_tax_review", return_value=False) as confirm, patch.object(simpledialog, "askstring") as ask, patch.object(messagebox, "showinfo") as info:
                 buttons[0].invoke()
