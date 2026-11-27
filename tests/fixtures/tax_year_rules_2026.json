@@ -52,7 +52,7 @@
             "irs_download_directory_date": "2026-03-13",
             "irs_download_directory_filename": "p946--2025.pdf",
             "irs_download_directory_url": "https://www.irs.gov/downloads/irs-prior",
-            "source_metadata_note": "The IRS downloads directory date is retained as directory metadata, not represented as the publication date."
+            "source_metadata_note": "The IRS downloads directory date is retained as directory metadata, not represented as the publication date.",
             "source_sections": [
               "What's New for 2026",
               "Chapter 3: Certain Qualified Property Acquired and Placed in Service After January 19, 2025"
