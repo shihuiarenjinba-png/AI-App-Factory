@@ -1,0 +1,223 @@
+name: Focus Session Desk source-bound Provisioner request
+
+on:
+  pull_request:
+    branches:
+      - "codex/focus-store-assets-gate-20261118"
+    paths:
+      - "package_handoff_request.py"
+      - "tests/test_package_handoff_request.py"
+      - ".github/workflows/focus-package-request.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  focus-package-request:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      EXPECTED_SOURCE_SHA: b6b69464a9c7450489338bc7542fd22cf190ed42
+      SOURCE_BRANCH: codex/focus-store-assets-gate-20261118
+      SLUG: focus-session-desk
+      EXPECTED_REQUEST_ID: app-focus-session-desk-b6b69464a9c7
+      PROVISIONER_SHA: 3f971e0d9c6bd8622d79935c8e02c5d93c37602f
+    steps:
+      - name: Checkout request tooling at exact PR head
+        uses: actions/checkout@v4
+        with:
+          ref: \${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Assert request tooling head
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "\${{ github.event.pull_request.head.sha }}"
+          echo "request_tooling_head=$(git rev-parse HEAD)"
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Test deterministic request producer
+        run: python -m unittest discover -s tests -p test_package_handoff_request.py -v
+
+      - name: Checkout immutable Focus product source
+        uses: actions/checkout@v4
+        with:
+          ref: \${{ env.EXPECTED_SOURCE_SHA }}
+          path: source
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify exact source branch, remote HEAD and clean product tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          git -C source switch --create "$SOURCE_BRANCH"
+          test "$(git -C source branch --show-current)" = "$SOURCE_BRANCH"
+          test "$(git -C source rev-parse HEAD)" = "$EXPECTED_SOURCE_SHA"
+          remote_head="$(git ls-remote https://github.com/shihuiarenjinba-png/AI-App-Factory.git "refs/heads/$SOURCE_BRANCH" | awk '{print $1}')"
+          test "$remote_head" = "$EXPECTED_SOURCE_SHA"
+          test -z "$(git -C source status --porcelain)"
+          product_tree_sha="$(git -C source rev-parse "$EXPECTED_SOURCE_SHA:products/$SLUG")"
+          proposal_blob_sha="$(git -C source rev-parse "$EXPECTED_SOURCE_SHA:proposals/$SLUG.json")"
+          config_blob_sha="$(git -C source rev-parse "$EXPECTED_SOURCE_SHA:factory/config.json")"
+          printf 'source_branch=%s\nsource_sha=%s\nremote_branch_sha=%s\nproduct_tree_sha=%s\nproposal_blob_sha=%s\nconfig_blob_sha=%s\n' \
+            "$SOURCE_BRANCH" "$EXPECTED_SOURCE_SHA" "$remote_head" "$product_tree_sha" "$proposal_blob_sha" "$config_blob_sha" \
+            > source-manifest.txt
+
+      - name: Generate deterministic request and verify product tree unchanged
+        shell: bash
+        run: |
+          set -euo pipefail
+          python package_handoff_request.py --root source --slug "$SLUG" > package-request.json
+          python package_handoff_request.py --root source --slug "$SLUG" > package-request-replay.json
+          cmp package-request.json package-request-replay.json
+          python - <<'PY'
+          import json, os
+          from pathlib import Path
+          job = json.loads(Path("package-request.json").read_text(encoding="utf-8"))
+          assert job["request_id"] == os.environ["EXPECTED_REQUEST_ID"]
+          assert job["source_sha"] == os.environ["EXPECTED_SOURCE_SHA"]
+          assert job["source_branch"] == os.environ["SOURCE_BRANCH"]
+          assert job["slug"] == os.environ["SLUG"]
+          assert job["dry_run"] is True
+          assert job["requested_actions"] == [
+              "BUILD_WINDOWS", "INSPECT_PACKAGE",
+              "LOOKUP_OFFICIAL_IDENTITY", "PROPOSE_GITHUB_RETURN"
+          ]
+          PY
+          test -z "$(git -C source status --porcelain)"
+          test "$(git -C source rev-parse HEAD:products/$SLUG)" = "$(sed -n 's/^product_tree_sha=//p' source-manifest.txt)"
+
+      - name: Prove dirty product tampering is rejected in a disposable worktree
+        shell: bash
+        run: |
+          set -euo pipefail
+          tamper_dir="$RUNNER_TEMP/focus-source-tamper"
+          git -C source worktree add --detach "$tamper_dir" "$EXPECTED_SOURCE_SHA"
+          git -C "$tamper_dir" switch --create codex/focus-request-tamper-check
+          printf '\n# disposable tamper probe\n' >> "$tamper_dir/products/$SLUG/main.py"
+          set +e
+          python package_handoff_request.py --root "$tamper_dir" --slug "$SLUG" > /dev/null 2> tamper-generator.stderr
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          git -C source worktree remove --force "$tamper_dir"
+          printf '{"dirty_product_rejected":true,"exit_code":%s,"source_checkout_unchanged":true}\n' "$rc" > tamper-check.json
+          test -z "$(git -C source status --porcelain)"
+
+      - name: Validate request against pinned Provisioner and live GitHub branch HEAD
+        env:
+          GITHUB_TOKEN: \${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone --no-checkout https://github.com/shihuiarenjinba-png/Repository-Provisioner-app.git provisioner
+          git -C provisioner fetch --depth 1 origin "$PROVISIONER_SHA"
+          git -C provisioner checkout --detach FETCH_HEAD
+          test "$(git -C provisioner rev-parse HEAD)" = "$PROVISIONER_SHA"
+          python provisioner/package_job.py --input package-request.json --output provisioner-dry-run-receipt.json --verify-head
+          python provisioner/package_job.py --input package-request.json --output provisioner-replay-receipt.json --verify-head
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          first = json.loads(Path("provisioner-dry-run-receipt.json").read_text(encoding="utf-8"))
+          replay = json.loads(Path("provisioner-replay-receipt.json").read_text(encoding="utf-8"))
+          assert first == replay
+          assert first["status"] == "DRY_RUN"
+          assert first["source_sha"] == "b6b69464a9c7450489338bc7542fd22cf190ed42"
+          assert first["expected_head_sha"] == first["source_sha"]
+          assert first["source_head_verification"] == "VERIFIED"
+          assert first["package"]["status"] == "NOT_BUILT"
+          assert first["official_identity"]["status"] == "UNVERIFIED"
+          assert first["github_return"]["status"] == "NOT_APPLIED"
+          PY
+
+      - name: Prove stale-source tampering is rejected by live HEAD check
+        env:
+          GITHUB_TOKEN: \${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          job = json.loads(Path("package-request.json").read_text(encoding="utf-8"))
+          job["source_sha"] = "0" * 39 + "1"
+          Path("tampered-request.json").write_text(json.dumps(job, indent=2) + "\n", encoding="utf-8")
+          PY
+          set +e
+          python provisioner/package_job.py --input tampered-request.json --output tampered-receipt.json --verify-head > tamper-provisioner.stdout 2> tamper-provisioner.stderr
+          rc=$?
+          set -e
+          test "$rc" -eq 2
+          test ! -e tampered-receipt.json
+          printf '{"stale_source_rejected":true,"exit_code":%s,"receipt_created":false}\n' "$rc" > provisioner-tamper-check.json
+
+      - name: Emit immutable request, receipt and route digests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import hashlib, json, os
+          from pathlib import Path
+          job_bytes = Path("package-request.json").read_bytes()
+          receipt_bytes = Path("provisioner-dry-run-receipt.json").read_bytes()
+          job = json.loads(job_bytes)
+          receipt = json.loads(receipt_bytes)
+          route = {
+              "schema_version": 1,
+              "registration_route": "MSIX_OR_PWA_APP",
+              "route_status": "ROUTE_METADATA_ONLY",
+              "source_repository": job["source_repository"],
+              "source_branch": job["source_branch"],
+              "source_sha": job["source_sha"],
+              "slug": job["slug"],
+              "request_id": job["request_id"],
+              "request_sha256": hashlib.sha256(job_bytes).hexdigest(),
+              "receipt_sha256": hashlib.sha256(receipt_bytes).hexdigest(),
+              "provisioner_idempotency_key": receipt["idempotency_key"],
+              "source_head_verification": receipt["source_head_verification"],
+              "request_submitted": False,
+              "partner_center_write": False,
+              "identity_write": False,
+              "msix_build": False,
+              "package_status": receipt["package"]["status"],
+              "official_identity_status": receipt["official_identity"]["status"],
+              "github_return_status": receipt["github_return"]["status"]
+          }
+          Path("registration-route.json").write_text(json.dumps(route, indent=2) + "\n", encoding="utf-8")
+          Path("request-sha256.txt").write_text(hashlib.sha256(job_bytes).hexdigest() + "\n", encoding="ascii")
+          Path("receipt-sha256.txt").write_text(hashlib.sha256(receipt_bytes).hexdigest() + "\n", encoding="ascii")
+          replay = json.loads(Path("provisioner-replay-receipt.json").read_text(encoding="utf-8"))
+          assert replay["idempotency_key"] == receipt["idempotency_key"]
+          Path("replay-check.json").write_text(json.dumps({
+              "request_bytes_identical": Path("package-request-replay.json").read_bytes() == job_bytes,
+              "provisioner_receipts_identical": replay == receipt,
+              "idempotency_key": receipt["idempotency_key"]
+          }, indent=2) + "\n", encoding="utf-8")
+          PY
+
+      - name: Upload source-bound DRY_RUN evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: focus-session-desk-package-request-\${{ github.run_id }}
+          path: |
+            package-request.json
+            package-request-replay.json
+            provisioner-dry-run-receipt.json
+            provisioner-replay-receipt.json
+            registration-route.json
+            source-manifest.txt
+            request-sha256.txt
+            receipt-sha256.txt
+            tamper-check.json
+            provisioner-tamper-check.json
+            replay-check.json
+          if-no-files-found: error
+          retention-days: 30
