@@ -22,7 +22,11 @@ class USReviewGateTests(unittest.TestCase):
         self.assertIsInstance(first.test, ast.UnaryOp)
         self.assertIsInstance(first.test.operand, ast.Call)
         self.assertEqual(first.test.operand.func.id, "confirm_us_tax_review")
-        self.assertIsInstance(first.body[0], ast.Return)
+        # Declining the gate now reports the safe cancellation outcome before returning.
+        self.assertIsInstance(first.body[0], ast.Expr)
+        self.assertIsInstance(first.body[0].value, ast.Call)
+        self.assertEqual(first.body[0].value.func.attr, "showinfo")
+        self.assertIsInstance(first.body[1], ast.Return)
 
     def test_review_gate_decline_and_non_boolean_fail_closed(self):
         # Compile only the pure gate function, without importing tkinter or creating a window.
