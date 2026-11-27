@@ -82,9 +82,21 @@ class App(tk.Tk):
 
     def build(self):
         ttk.Label(self,text="Freelance Ledger US",font=("Segoe UI",18,"bold")).pack(anchor="w",padx=14,pady=(14,2))
-        ttk.Label(self,text=("United States only · USD · local-only. Bookkeeping support only; federal special rules require review "
+        policy_label = ttk.Label(
+            self,
+            text=("United States only · USD · local-only. Bookkeeping support only; federal special rules require review "
                   "and state/local rules are not automated. Cash/accrual is stored as a recordkeeping policy in this version; "
-                  "it does not automatically shift income or expense recognition dates."),wraplength=1040,justify="left").pack(anchor="w",fill="x",padx=14)
+                  "it does not automatically shift income or expense recognition dates."),
+            wraplength=max(320, self.winfo_width() - 28),
+            justify="left",
+        )
+        policy_label.pack(anchor="w", fill="x", padx=14)
+
+        def resize_policy_disclosure(event):
+            if event.widget is self:
+                policy_label.configure(wraplength=max(320, event.width - 28))
+
+        self.bind("<Configure>", resize_policy_disclosure, add="+")
         p=ttk.Panedwindow(self,orient="horizontal");p.pack(fill="both",expand=True,padx=14,pady=10)
         f=ttk.Labelframe(p,text="Transaction",padding=10);p.add(f,weight=1)
         ttk.Label(f,text="Accounting method").grid(row=0,column=0,sticky="w")
