@@ -57,7 +57,10 @@ class TaxYearReferenceFixture2026Tests(unittest.TestCase):
         self.assertEqual(rule["long_production_period_or_certain_aircraft_election_percent"], 60)
         self.assertIn("not a general 2026 default rate", rule["note"])
         self.assertEqual(rule["source"]["edition"], "2025")
-        self.assertEqual(rule["source"]["published_on"], "2026-03-13")
+        self.assertNotIn("published_on", rule["source"])
+        self.assertEqual(rule["source"]["irs_download_directory_date"], "2026-03-13")
+        self.assertEqual(rule["source"]["irs_download_directory_filename"], "p946--2025.pdf")
+        self.assertEqual(rule["source"]["irs_download_directory_url"], "https://www.irs.gov/downloads/irs-prior")
 
     def test_japan_2026_acquisition_date_cutover_is_strict_and_non_overlapping(self):
         rules = FIXTURE["jurisdictions"]["JP-INDIVIDUAL-INCOME-TAX"]["rules"]
