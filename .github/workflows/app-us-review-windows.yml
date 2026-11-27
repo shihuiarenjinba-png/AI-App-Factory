@@ -162,6 +162,10 @@ jobs:
             if ($scenario.no_posting -ne $true) { throw 'Native no-posting assertion missing' }
             if (!$scenario.ledger_before.sha256 -or $scenario.ledger_before.sha256 -ne $scenario.ledger_after.sha256) { throw 'Native SQLite snapshot mismatch' }
           }
+          $declined = @($native.scenarios | Where-Object { $_.case -eq 'decline' })
+          if ($declined.Count -ne 1) { throw 'Native decline receipt ambiguous' }
+          $declineResult = $declined[0].decline_result
+          if (!$declineResult -or !$declineResult.observed_dialog.Contains('No calculator was opened') -or !$declineResult.observed_dialog.Contains('no ledger entry was created')) { throw 'Native decline result missing' }
           $approved = @($native.scenarios | Where-Object { $_.case -eq 'approve' })
           if ($approved.Count -ne 1) { throw 'Native approval receipt ambiguous' }
           $usd = $approved[0].usd_sales_tax_result
@@ -180,15 +184,19 @@ jobs:
           if (@($receipt.scenarios).Count -ne 2) { throw 'Expected approve and decline receipts' }
           $cases = @($receipt.scenarios | ForEach-Object { $_.case })
           if ('approve' -notin $cases -or 'decline' -notin $cases) { throw 'Missing review scenarios' }
+          $mockDeclined = @($receipt.scenarios | Where-Object { $_.case -eq 'decline' })
+          if ($mockDeclined.Count -ne 1 -or !$mockDeclined[0].body.Contains('No calculator was opened') -or !$mockDeclined[0].body.Contains('no ledger entry was created')) { throw 'Mock GUI decline result missing' }
           $manifest = [ordered]@{
             source_sha = $env:APP_SOURCE_SHA
             request_sha256 = $request
             exe_sha256 = $exe
             evidence_type = 'Two distinct evidence types; see mock_gui_evidence_type and native_exe_evidence_type'
             mock_gui_evidence_type = 'Tk real button invoke with patched dialogs; NOT native modal clicks'
+            mock_decline_result_verified = $true
             native_exe_evidence_type = 'Real Windows PyInstaller EXE; native Win32 approve/decline modal clicks and USD result'
             native_receipt_sha256 = $nativeSha
             native_review_scenarios = $nativeCases
+            native_decline_result_verified = $true
             native_usd_fixture = '100 USD at manually entered 8 percent; tax 8 USD; gross 108 USD'
             native_sqlite_no_posting_verified = $true
             windows_run_id = $env:GITHUB_RUN_ID

@@ -22,7 +22,11 @@ class USReviewGateTests(unittest.TestCase):
         self.assertIsInstance(first.test, ast.UnaryOp)
         self.assertIsInstance(first.test.operand, ast.Call)
         self.assertEqual(first.test.operand.func.id, "confirm_us_tax_review")
-        self.assertIsInstance(first.body[0], ast.Return)
+        # Declining the gate now reports the safe cancellation outcome before returning.
+        self.assertIsInstance(first.body[0], ast.Expr)
+        self.assertIsInstance(first.body[0].value, ast.Call)
+        self.assertEqual(first.body[0].value.func.attr, "showinfo")
+        self.assertIsInstance(first.body[1], ast.Return)
 
     def test_review_gate_decline_and_non_boolean_fail_closed(self):
         # Compile only the pure gate function, without importing tkinter or creating a window.
@@ -64,12 +68,19 @@ class USReviewGateTests(unittest.TestCase):
         method.args.defaults = []
         module = ast.fix_missing_locations(ast.Module(body=[method], type_ignores=[]))
         dialogs = Mock()
+        messages = Mock()
         scope = {"confirm_us_tax_review": lambda parent: False,
-                 "simpledialog": dialogs, "messagebox": Mock()}
+                 "simpledialog": dialogs, "messagebox": messages}
         exec(compile(module, str(MAIN), "exec"), scope)
         scope["tax_assets"](object())
         dialogs.assert_not_called()
-        scope["messagebox"].showinfo.assert_not_called()
+        messages.showinfo.assert_called_once()
+        title, body = messages.showinfo.call_args.args
+        self.assertEqual(title, "US tax calculation canceled")
+        self.assertIn("No calculator was opened", body)
+        self.assertIn("no tax amount was calculated", body)
+        self.assertIn("no ledger entry was created", body)
+        messages.showwarning.assert_not_called()
 
     def test_runtime_approved_sales_tax_stays_usd_and_requires_review(self):
         import copy
