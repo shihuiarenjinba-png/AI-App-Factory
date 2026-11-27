@@ -24,7 +24,7 @@
             "title": "Internal Revenue Bulletin: 2025-45; Rev. Proc. 2025-32",
             "url": "https://www.irs.gov/irb/2025-45_IRB",
             "published_on": "2025-11-03",
-            "source_section": "Rev. Proc. 2025-32, section 2.24"
+            "source_section": "Rev. Proc. 2025-32, §4.24 (2026 adjusted items)"
           }
         },
         {
@@ -49,6 +49,7 @@
             "title": "Publication 946 (2025), How To Depreciate Property",
             "url": "https://www.irs.gov/publications/p946",
             "edition": "2025",
+            "published_on": "2026-03-13",
             "source_sections": [
               "What's New for 2026",
               "Chapter 3: Certain Qualified Property Acquired and Placed in Service After January 19, 2025"
