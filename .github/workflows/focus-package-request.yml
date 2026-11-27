@@ -29,7 +29,7 @@ jobs:
       - name: Checkout request tooling at exact PR head
         uses: actions/checkout@v4
         with:
-          ref: \${{ github.event.pull_request.head.sha }}
+          ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
           persist-credentials: false
 
@@ -37,7 +37,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          test "$(git rev-parse HEAD)" = "\${{ github.event.pull_request.head.sha }}"
+          test "$(git rev-parse HEAD)" = "${{ github.event.pull_request.head.sha }}"
           echo "request_tooling_head=$(git rev-parse HEAD)"
 
       - uses: actions/setup-python@v5
@@ -50,7 +50,7 @@ jobs:
       - name: Checkout immutable Focus product source
         uses: actions/checkout@v4
         with:
-          ref: \${{ env.EXPECTED_SOURCE_SHA }}
+          ref: ${{ env.EXPECTED_SOURCE_SHA }}
           path: source
           fetch-depth: 0
           persist-credentials: false
@@ -116,7 +116,7 @@ jobs:
 
       - name: Validate request against pinned Provisioner and live GitHub branch HEAD
         env:
-          GITHUB_TOKEN: \${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -143,7 +143,7 @@ jobs:
 
       - name: Prove stale-source tampering is rejected by live HEAD check
         env:
-          GITHUB_TOKEN: \${{ github.token }}
+          GITHUB_TOKEN: ${{ github.token }}
         shell: bash
         run: |
           set -euo pipefail
@@ -209,7 +209,7 @@ jobs:
       - name: Upload source-bound DRY_RUN evidence
         uses: actions/upload-artifact@v4
         with:
-          name: focus-session-desk-package-request-\${{ github.run_id }}
+          name: focus-session-desk-package-request-${{ github.run_id }}
           path: |
             package-request.json
             package-request-replay.json
