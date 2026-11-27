@@ -29,15 +29,26 @@ def main():
         try:
             app.update()
             buttons = []
+            policy_labels = []
 
             def walk(widget):
                 for child in widget.winfo_children():
                     if isinstance(child, ttk.Button) and child.cget("text") == "US tax — REVIEW REQUIRED":
                         buttons.append(child)
+                    if isinstance(child, ttk.Label) and child.cget("text").startswith(
+                        "United States only · USD · local-only."
+                    ):
+                        policy_labels.append(child)
                     walk(child)
 
             walk(app)
             assert len(buttons) == 1, f"Expected one real GUI button, got {len(buttons)}"
+            assert len(policy_labels) == 1, f"Expected one first-use US scope disclosure, got {len(policy_labels)}"
+            policy_width = policy_labels[0].winfo_width()
+            policy_wrap = int(policy_labels[0].cget("wraplength"))
+            assert policy_width > 0 and policy_wrap <= policy_width, (
+                f"US scope disclosure can be clipped: wrap={policy_wrap}px, widget={policy_width}px"
+            )
             style = ttk.Style(app)
             font_spec = style.lookup(buttons[0].cget("style") or "TButton", "font") or "TkDefaultFont"
             button_font = tkfont.Font(root=app, font=font_spec)
@@ -61,6 +72,11 @@ def main():
                 "text_width_px": button_text_width,
                 "widget_width_px": button_width,
                 "fully_visible": button_text_width + 24 <= button_width,
+            }
+            receipt["policy_disclosure"] = {
+                "wraplength_px": policy_wrap,
+                "widget_width_px": policy_width,
+                "fully_wrapped_to_widget": policy_wrap <= policy_width,
             }
             with patch.object(us_main, "confirm_us_tax_review", return_value=False) as confirm, patch.object(simpledialog, "askstring") as ask, patch.object(messagebox, "showinfo") as info:
                 buttons[0].invoke()
