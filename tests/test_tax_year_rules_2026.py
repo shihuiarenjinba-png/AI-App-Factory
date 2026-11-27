@@ -41,6 +41,8 @@ class TaxYearReferenceFixture2026Tests(unittest.TestCase):
         self.assertEqual(rule["maximum_expense_usd"], 2_560_000)
         self.assertEqual(rule["phaseout_threshold_usd"], 4_090_000)
         self.assertEqual(rule["sport_utility_vehicle_cost_cap_usd"], 32_000)
+        self.assertEqual(rule["source"]["published_on"], "2025-11-03")
+        self.assertEqual(rule["source"]["source_section"], "Rev. Proc. 2025-32, §4.24 (2026 adjusted items)")
 
     def test_us_bonus_depreciation_is_qualified_property_not_universal(self):
         rule = next(
@@ -54,6 +56,8 @@ class TaxYearReferenceFixture2026Tests(unittest.TestCase):
         self.assertEqual(rule["first_tax_year_ending_after_2025_01_19_election_percent"], 40)
         self.assertEqual(rule["long_production_period_or_certain_aircraft_election_percent"], 60)
         self.assertIn("not a general 2026 default rate", rule["note"])
+        self.assertEqual(rule["source"]["edition"], "2025")
+        self.assertEqual(rule["source"]["published_on"], "2026-03-13")
 
     def test_japan_2026_acquisition_date_cutover_is_strict_and_non_overlapping(self):
         rules = FIXTURE["jurisdictions"]["JP-INDIVIDUAL-INCOME-TAX"]["rules"]
