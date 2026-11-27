@@ -119,7 +119,11 @@ class App(tk.Tk):
         ttk.Button(f,text="Backup",command=self.backup).grid(row=13,column=1,sticky="ew",pady=4)
         f.columnconfigure(1,weight=1)
         r=ttk.Labelframe(p,text="Ledger",padding=10);p.add(r,weight=3)
-        ttk.Label(r,textvariable=self.summary,font=("Segoe UI",11,"bold")).pack(anchor="w")
+        self.summary_label = ttk.Label(
+            r, textvariable=self.summary, font=("Segoe UI", 11, "bold"),
+            wraplength=max(240, r.winfo_width() - 24),
+        )
+        self.summary_label.pack(anchor="w", fill="x")
         receipt_actions=ttk.Frame(r);receipt_actions.pack(fill="x",pady=(6,2))
         ttk.Button(receipt_actions,text="Add receipts / PDFs",command=self.add_receipts).pack(side="left",padx=(0,6))
         ttk.Button(receipt_actions,text="Review receipt queue",command=self.review_receipts).pack(side="left",padx=(0,6))
@@ -127,7 +131,13 @@ class App(tk.Tk):
         ttk.Label(r,textvariable=self.receipt_summary).pack(anchor="w")
         bank_hint=ttk.Label(r,text="Bank check: 1. Select a row → Match selected  2. Check statement (difference 0)  3. Undo checked (latest only). REVIEW REQUIRED.",wraplength=420)
         bank_hint.pack(anchor="w",fill="x",pady=(5,1))
-        r.bind("<Configure>",lambda event:bank_hint.configure(wraplength=max(220,event.width-24)),add="+")
+        def resize_ledger_disclosures(event):
+            if event.widget is r:
+                available = max(240, event.width - 24)
+                self.summary_label.configure(wraplength=available)
+                bank_hint.configure(wraplength=max(220, event.width - 24))
+
+        r.bind("<Configure>", resize_ledger_disclosures, add="+")
         bank_actions=ttk.Frame(r);bank_actions.pack(fill="x",pady=3)
         ttk.Button(bank_actions,text="Match selected",command=self.match_bank).grid(row=0,column=0,sticky="ew",padx=(0,4),pady=2)
         ttk.Button(bank_actions,text="Check statement",command=self.check_bank).grid(row=0,column=1,sticky="ew",padx=(4,0),pady=2)
