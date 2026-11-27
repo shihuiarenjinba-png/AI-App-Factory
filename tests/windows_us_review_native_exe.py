@@ -227,7 +227,9 @@ try:
     run_case(True)
 finally:
     (OUT / "native_receipt.json").write_text(json.dumps({
-        "source_sha": os.environ.get("APP_SOURCE_SHA"), "scenarios": records,
+        "source_sha": os.environ.get("APP_SOURCE_SHA"),
+        "harness_sha256": hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+        "scenarios": records,
         "exe_sha256": hashlib.sha256(EXE.read_bytes()).hexdigest(),
         "scope": "native consent and fixed-input USD sales-tax arithmetic; not legal tax advice"
     }, indent=2), encoding="utf-8")
