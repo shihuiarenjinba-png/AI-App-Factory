@@ -187,6 +187,24 @@ def run_case(accept):
                            "screenshot": after,
                            "scope": "arithmetic only; not a legal tax-rate assertion"}
         else:
+            # Verify the native decline result, not merely that the calculator
+            # stayed closed. This makes the no-calculation/no-ledger-write
+            # boundary visible to a first-time user.
+            result = wait_window("US tax calculation canceled")
+            result_text = "\\n".join([result.window_text()] +
+                [child.window_text() for child in result.descendants()])
+            for expected in ("No calculator was opened", "no ledger entry was created"):
+                if expected.lower() not in result_text.lower():
+                    capture("native_decline_result_mismatch")
+                    raise AssertionError(
+                        f"Native decline result missing {expected!r}: {result_text!r}")
+            decline_result = {
+                "title": result.window_text(),
+                "observed_dialog": result_text,
+                "screenshot": capture("native_decline_result"),
+            }
+            click_named(result, "OK")
+            time.sleep(.2)
             after = capture("native_declined_main")
             assert not any("Tax / fixed assets" in w.window_text()
                            for w in Desktop(backend="win32").windows()
@@ -198,7 +216,8 @@ def run_case(accept):
                         "dialog_method": "native Win32 click_input, no monkeypatch",
                         "before": before, "after": after, "no_posting": True,
                         "ledger_before": ledger_before, "ledger_after": ledger_after,
-                        **({"usd_sales_tax_result": calculation} if accept else {})})
+                        **({"usd_sales_tax_result": calculation} if accept else
+                           {"decline_result": decline_result})})
     finally:
         subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
                        capture_output=True, text=True, timeout=15)
