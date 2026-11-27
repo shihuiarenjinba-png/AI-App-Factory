@@ -1,6 +1,9 @@
 name: Focus Session Desk source-bound Provisioner request
 
 on:
+  push:
+    branches:
+      - "codex/focus-current-source-request-20261127"
   pull_request:
     branches:
       - "codex/focus-store-assets-gate-20261118"
