@@ -215,7 +215,8 @@ def run_case(accept):
                         "dialog_method": "native Win32 click_input, no monkeypatch",
                         "before": before, "after": after, "no_posting": True,
                         "ledger_before": ledger_before, "ledger_after": ledger_after,
-                        **({"usd_sales_tax_result": calculation} if accept else {})})
+                        **({"usd_sales_tax_result": calculation} if accept else
+                           {"decline_result": decline_result})})
     finally:
         subprocess.run(["taskkill", "/PID", str(p.pid), "/T", "/F"],
                        capture_output=True, text=True, timeout=15)
