@@ -60,10 +60,17 @@ def find_tax_button(main):
     # The captured runner screenshot and Win32 tree identify the review action
     # between Add transaction and Export CSV in the left Transaction pane.
     # Derive the target from live pane geometry, never screen pixels.
+    window_rect = main.rectangle()
+    # The transaction pane is the tall left-hand child of the main window.
+    # Its width is intentionally responsive: wrapping the first-use and
+    # bookkeeping disclosures can change the Panedwindow sash position.
     pane_candidates = [c for c in main.descendants()
                        if c.class_name() == "TkChild" and
-                       170 <= c.rectangle().width() <= 260 and
-                       c.rectangle().height() >= 400]
+                       c.rectangle().width() >= 170 and
+                       c.rectangle().height() >= window_rect.height() * 0.55 and
+                       c.rectangle().left >= window_rect.left and
+                       c.rectangle().left <= window_rect.left + window_rect.width() * 0.40 and
+                       c.rectangle().right <= window_rect.left + window_rect.width() * 0.50]
     if len(pane_candidates) != 1:
         raise AssertionError(f"Transaction pane ambiguous: {len(pane_candidates)}")
     pane = pane_candidates[0].rectangle()
