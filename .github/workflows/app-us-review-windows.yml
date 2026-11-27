@@ -192,6 +192,7 @@ jobs:
             exe_sha256 = $exe
             evidence_type = 'Two distinct evidence types; see mock_gui_evidence_type and native_exe_evidence_type'
             mock_gui_evidence_type = 'Tk real button invoke with patched dialogs; NOT native modal clicks'
+            mock_decline_result_verified = $true
             native_exe_evidence_type = 'Real Windows PyInstaller EXE; native Win32 approve/decline modal clicks and USD result'
             native_receipt_sha256 = $nativeSha
             native_review_scenarios = $nativeCases
