@@ -4,15 +4,23 @@ on:
     branches:
       - codex/issue64-us-jp-isolation-ci-fix-20261113
       - codex/app-preidentity-us-ledger-review-stacked-20261127
+      - codex/app-preidentity-us-ledger-review-ux-20261127
+      - codex/app-preidentity-us-ledger-review-integration-20261128
     paths:
       - 'tests/windows_us_review_gui_smoke.py'
       - 'tests/windows_us_review_native_exe.py'
+      - 'tests/test_us_jp_runtime_isolation.py'
+      - 'tests/test_us_freelance_gui_layout.py'
+      - 'tests/test_us_ledger_review_gate.py'
       - '.github/workflows/app-us-review-windows.yml'
       - 'products/us-freelance-ledger/**'
   pull_request:
     paths:
       - 'tests/windows_us_review_gui_smoke.py'
       - 'tests/windows_us_review_native_exe.py'
+      - 'tests/test_us_jp_runtime_isolation.py'
+      - 'tests/test_us_freelance_gui_layout.py'
+      - 'tests/test_us_ledger_review_gate.py'
       - '.github/workflows/app-us-review-windows.yml'
       - 'products/us-freelance-ledger/**'
   workflow_dispatch:
@@ -143,7 +151,7 @@ jobs:
       - name: Hash evidence and source
         shell: pwsh
         run: |
-          Get-FileHash tests/windows_us_review_gui_smoke.py,products/us-freelance-ledger/main.py,app-smoke-dist/USFreelanceLedgerSmoke.exe -Algorithm SHA256 | Format-Table -AutoSize | Out-String | Out-File app-smoke-evidence/hashes.txt
+          Get-FileHash tests/windows_us_review_gui_smoke.py,tests/windows_us_review_native_exe.py,products/us-freelance-ledger/main.py,app-smoke-dist/USFreelanceLedgerSmoke.exe -Algorithm SHA256 | Format-Table -AutoSize | Out-String | Out-File app-smoke-evidence/hashes.txt
           "source_sha=$env:APP_SOURCE_SHA" | Out-File app-smoke-evidence/source.txt
       - name: Verify evidence provenance and write immutable manifest
         shell: pwsh
@@ -154,6 +162,8 @@ jobs:
           if (!(Test-Path $nativePath)) { throw 'Native receipt missing' }
           $native = Get-Content $nativePath -Raw | ConvertFrom-Json
           $nativeSha = (Get-FileHash $nativePath -Algorithm SHA256).Hash.ToLowerInvariant()
+          $nativeHarness = (Get-FileHash tests/windows_us_review_native_exe.py -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($native.harness_sha256 -ne $nativeHarness) { throw 'Native harness SHA mismatch' }
           if ($native.source_sha -ne $env:APP_SOURCE_SHA) { throw 'Native receipt source SHA mismatch' }
           if (@($native.scenarios).Count -ne 2) { throw 'Native scenario count mismatch' }
           $nativeCases = @($native.scenarios | ForEach-Object { $_.case })
@@ -163,6 +173,18 @@ jobs:
             if ($scenario.no_posting -ne $true) { throw 'Native no-posting assertion missing' }
             if (!$scenario.ledger_before.sha256 -or $scenario.ledger_before.sha256 -ne $scenario.ledger_after.sha256) { throw 'Native SQLite snapshot mismatch' }
           }
+          $declined = @($native.scenarios | Where-Object { $_.case -eq 'decline' })
+          if ($declined.Count -ne 1) { throw 'Native decline receipt ambiguous' }
+          $decline = $declined[0].decline_result
+          if (!$decline -or $decline.title -ne 'US tax calculation canceled') { throw 'Native decline feedback missing' }
+          foreach ($token in @('No calculator was opened', 'no ledger entry was created')) {
+            if (!$decline.observed_dialog.Contains($token)) { throw "Native decline result missing: $token" }
+          }
+          if (!$decline.screenshot.sha256) { throw 'Native decline screenshot hash missing' }
+          $declineShot = Join-Path 'app-smoke-evidence' $decline.screenshot.file
+          if (!(Test-Path $declineShot)) { throw 'Native decline result screenshot missing' }
+          $declineShotSha = (Get-FileHash $declineShot -Algorithm SHA256).Hash.ToLowerInvariant()
+          if ($declineShotSha -ne $decline.screenshot.sha256) { throw 'Native decline screenshot SHA mismatch' }
           $approved = @($native.scenarios | Where-Object { $_.case -eq 'approve' })
           if ($approved.Count -ne 1) { throw 'Native approval receipt ambiguous' }
           $usd = $approved[0].usd_sales_tax_result
@@ -181,17 +203,27 @@ jobs:
           if (@($receipt.scenarios).Count -ne 2) { throw 'Expected approve and decline receipts' }
           $cases = @($receipt.scenarios | ForEach-Object { $_.case })
           if ('approve' -notin $cases -or 'decline' -notin $cases) { throw 'Missing review scenarios' }
+          $mockDeclined = @($receipt.scenarios | Where-Object { $_.case -eq 'decline' })
+          if ($mockDeclined.Count -ne 1 -or
+              !$mockDeclined[0].body.Contains('No calculator was opened') -or
+              !$mockDeclined[0].body.Contains('no ledger entry was created')) {
+            throw 'Mock GUI decline result missing'
+          }
           $manifest = [ordered]@{
             source_sha = $env:APP_SOURCE_SHA
             request_sha256 = $request
+            native_harness_sha256 = $nativeHarness
             exe_sha256 = $exe
             evidence_type = 'Two distinct evidence types; see mock_gui_evidence_type and native_exe_evidence_type'
             mock_gui_evidence_type = 'Tk real button invoke with patched dialogs; NOT native modal clicks'
+            mock_decline_result_verified = $true
+            native_decline_screenshot_sha256 = $declineShotSha
             native_exe_evidence_type = 'Real Windows PyInstaller EXE; native Win32 approve/decline modal clicks and USD result'
             native_receipt_sha256 = $nativeSha
             native_review_scenarios = $nativeCases
             native_usd_fixture = '100 USD at manually entered 8 percent; tax 8 USD; gross 108 USD'
             native_sqlite_no_posting_verified = $true
+            native_decline_feedback_verified = $true
             windows_run_id = $env:GITHUB_RUN_ID
             review_scenarios = $cases
           }
@@ -200,6 +232,7 @@ jobs:
           Write-Host "REQUEST_SHA256=$request"
           Write-Host "PRODUCT_EXE_SHA256=$exe"
           Write-Host "NATIVE_RECEIPT_SHA256=$nativeSha"
+          Write-Host "NATIVE_HARNESS_SHA256=$nativeHarness"
           Write-Host "NATIVE_REVIEW_SCENARIOS=$($nativeCases -join ',')"
           Write-Host ("PROVENANCE_MANIFEST=" + ($manifest | ConvertTo-Json -Depth 5 -Compress))
       - uses: actions/upload-artifact@v4
