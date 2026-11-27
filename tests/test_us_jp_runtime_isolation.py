@@ -58,6 +58,7 @@ class USJPRuntimeIsolationTests(unittest.TestCase):
                     store.conn.close()
 
             self.assertEqual(jp_db.read_bytes(), before, "US write changed JP database")
+            # Directory enumeration order is filesystem-dependent.
             self.assertEqual(
                 sorted(p.name for p in base.iterdir()),
                 ["JPFreelanceLedger", "USFreelanceLedger"],
