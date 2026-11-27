@@ -184,6 +184,8 @@ jobs:
           if (@($receipt.scenarios).Count -ne 2) { throw 'Expected approve and decline receipts' }
           $cases = @($receipt.scenarios | ForEach-Object { $_.case })
           if ('approve' -notin $cases -or 'decline' -notin $cases) { throw 'Missing review scenarios' }
+          $mockDeclined = @($receipt.scenarios | Where-Object { $_.case -eq 'decline' })
+          if ($mockDeclined.Count -ne 1 -or !$mockDeclined[0].body.Contains('No calculator was opened') -or !$mockDeclined[0].body.Contains('no ledger entry was created')) { throw 'Mock GUI decline result missing' }
           $manifest = [ordered]@{
             source_sha = $env:APP_SOURCE_SHA
             request_sha256 = $request
