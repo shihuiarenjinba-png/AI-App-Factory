@@ -15,7 +15,8 @@ import sys
 
 OWNER = "shihuiarenjinba-png"
 FACTORY = "AI-App-Factory"
-BRANCH = "codex/factory-autoloop-20261026"
+BRANCH = "codex/factory-autoloop-20261026"  # legacy test fixture; runtime uses the checked-out codex branch
+BRANCH_RE = re.compile(r"^codex/[A-Za-z0-9._/-]+$")
 SLUG = re.compile(r"^[a-z][a-z0-9-]{3,39}$")
 REQUEST_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
 SHA = re.compile(r"^[0-9a-f]{40}$")
@@ -42,22 +43,38 @@ def _read_json(path: Path) -> dict:
     return value
 
 
-def make_request(root: Path, slug: str, request_id: str) -> dict:
-    """Produce a candidate only from a clean, committed APP source snapshot."""
+def _valid_work_branch(value: object) -> bool:
+    """Accept safe codex/* work branches; never main, release, or traversal refs."""
+    if (not isinstance(value, str) or not 7 <= len(value) <= 240
+            or BRANCH_RE.fullmatch(value) is None
+            or ".." in value or "//" in value or "@{" in value
+            or value.endswith(("/", "."))):
+        return False
+    return all(part and not part.startswith(".") and not part.endswith(".lock")
+               for part in value.split("/"))
+
+
+def make_request(root: Path, slug: str, request_id: str | None = None) -> dict:
+    """Produce a deterministic candidate from a clean, committed APP source snapshot."""
     if not isinstance(slug, str) or not SLUG.fullmatch(slug):
         raise ValueError("unsafe product slug")
-    if not isinstance(request_id, str) or not REQUEST_ID.fullmatch(request_id):
-        raise ValueError("unsafe request ID")
     root = root.resolve(strict=True)
     # Git for Windows can emit 8.3 short paths (RUNNER~1) while pathlib
     # resolves the long path. Compare filesystem identity, not path text.
     if not Path(_git(root, "rev-parse", "--show-toplevel")).samefile(root):
         raise ValueError("root must be Git checkout top-level")
-    if _git(root, "branch", "--show-current") != BRANCH:
-        raise ValueError("unapproved Factory source branch")
+    source_branch = _git(root, "branch", "--show-current")
+    if not _valid_work_branch(source_branch):
+        raise ValueError("unapproved or unsafe Factory source branch")
     head = _git(root, "rev-parse", "HEAD")
     if not SHA.fullmatch(head) or head == "0" * 40:
         raise ValueError("unusable Git source HEAD")
+    if request_id is None:
+        # Same deterministic source-SHA naming convention used by the original
+        # Factory promotion script for File Integrity Ledger.
+        request_id = "app-" + slug + "-" + head[:12]
+    if not isinstance(request_id, str) or not REQUEST_ID.fullmatch(request_id):
+        raise ValueError("unsafe request ID")
 
     paths = [
         "factory/config.json",
@@ -102,7 +119,7 @@ def make_request(root: Path, slug: str, request_id: str) -> dict:
         "product_type": "APP",
         "source_factory": FACTORY,
         "source_repository": OWNER + "/" + FACTORY,
-        "source_branch": BRANCH,
+        "source_branch": source_branch,
         "source_sha": head,
         "slug": slug,
         "display_name": title,
@@ -116,7 +133,7 @@ def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path(__file__).resolve().parent)
     parser.add_argument("--slug", required=True)
-    parser.add_argument("--request-id", required=True)
+    parser.add_argument("--request-id", help="Optional explicit ID; default is app-<slug>-<source SHA prefix>")
     args = parser.parse_args(argv)
     try:
         print(json.dumps(make_request(args.root, args.slug, args.request_id),
