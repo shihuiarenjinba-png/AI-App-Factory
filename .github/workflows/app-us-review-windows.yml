@@ -162,6 +162,10 @@ jobs:
             if ($scenario.no_posting -ne $true) { throw 'Native no-posting assertion missing' }
             if (!$scenario.ledger_before.sha256 -or $scenario.ledger_before.sha256 -ne $scenario.ledger_after.sha256) { throw 'Native SQLite snapshot mismatch' }
           }
+          $declined = @($native.scenarios | Where-Object { $_.case -eq 'decline' })
+          if ($declined.Count -ne 1) { throw 'Native decline receipt ambiguous' }
+          $declineResult = $declined[0].decline_result
+          if (!$declineResult -or !$declineResult.observed_dialog.Contains('No calculator was opened') -or !$declineResult.observed_dialog.Contains('no ledger entry was created')) { throw 'Native decline result missing' }
           $approved = @($native.scenarios | Where-Object { $_.case -eq 'approve' })
           if ($approved.Count -ne 1) { throw 'Native approval receipt ambiguous' }
           $usd = $approved[0].usd_sales_tax_result
