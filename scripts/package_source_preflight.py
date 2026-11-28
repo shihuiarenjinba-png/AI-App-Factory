@@ -20,13 +20,31 @@ from tools.build_windows_msix import (
 )
 
 
-def inspect_source(source_root: Path, slug: str, expected_sha: str) -> dict:
+def inspect_source(
+    source_root: Path,
+    slug: str,
+    expected_sha: str,
+    expected_request_id: str | None = None,
+) -> dict:
     source_root = Path(source_root).resolve(strict=True)
     actual_sha = source_head(source_root)
     if actual_sha != expected_sha:
         raise ValueError(
             f"source checkout mismatch for {slug}: expected {expected_sha}, got {actual_sha}"
         )
+
+    factory_request_id = None
+    factory_request_source_sha = None
+    request_binding_status = "NOT_SUPPLIED"
+    if expected_request_id is not None:
+        deterministic_request_id = f"app-{slug}-{actual_sha[:12]}"
+        if expected_request_id != deterministic_request_id:
+            raise ValueError(
+                "factory request id does not match current source SHA for " + slug
+            )
+        factory_request_id = expected_request_id
+        factory_request_source_sha = actual_sha
+        request_binding_status = "PASS"
 
     product = source_root / "products" / slug
     asset_hashes = verify_assets(product)
@@ -83,6 +101,10 @@ def inspect_source(source_root: Path, slug: str, expected_sha: str) -> dict:
         "product_slug": slug,
         "source_sha": actual_sha,
         "expected_source_sha": expected_sha,
+        # Factory request binding is deterministic QA metadata, not an Identity return.
+        "factory_request_id": factory_request_id,
+        "factory_request_source_sha": factory_request_source_sha,
+        "request_binding_status": request_binding_status,
         "asset_validation": "PASS",
         "asset_sha256": asset_hashes,
         "identity_status": identity_status,
@@ -103,12 +125,21 @@ def main(argv=None) -> int:
     parser.add_argument("--source-root", type=Path, required=True)
     parser.add_argument("--slug", required=True)
     parser.add_argument("--expected-source-sha", required=True)
+    parser.add_argument(
+        "--expected-request-id",
+        help="Optional deterministic Factory request ID bound to the exact source SHA.",
+    )
     parser.add_argument("--output", type=Path, required=True)
     args = parser.parse_args(argv)
     if not re.fullmatch(r"[0-9a-f]{40}", args.expected_source_sha):
         raise SystemExit("invalid expected source SHA")
     try:
-        report = inspect_source(args.source_root, args.slug, args.expected_source_sha)
+        report = inspect_source(
+            args.source_root,
+            args.slug,
+            args.expected_source_sha,
+            args.expected_request_id,
+        )
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n",
