@@ -18,10 +18,10 @@ def png_bytes(width, height):
             + struct.pack(">I", zlib.crc32(kind + data) & 0xFFFFFFFF)
         )
 
-    raw = b"".join(b"\\x00" + (b"\\x00" * (width * 4)) for _ in range(height))
+    raw = b"".join(b"\x00" + (b"\x00" * (width * 4)) for _ in range(height))
     ihdr = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
     return (
-        b"\\x89PNG\\r\\n\\x1a\\n"
+        b"\x89PNG\r\n\x1a\n"
         + chunk(b"IHDR", ihdr)
         + chunk(b"IDAT", zlib.compress(raw))
         + chunk(b"IEND", b"")
@@ -43,11 +43,11 @@ class PackageSourcePreflightTests(unittest.TestCase):
         assets = self.product / "store" / "assets"
         assets.mkdir(parents=True)
         (self.product / "manifest.json").write_text(
-            '{"kind":"app","slug":"focus-session-desk","entry":"main.py"}\\n',
+            '{"kind":"app","slug":"focus-session-desk","entry":"main.py"}\n',
             encoding="utf-8",
         )
         (self.product / "main.py").write_text(
-            "print('preflight fixture')\\n", encoding="utf-8"
+            "print('preflight fixture')\n", encoding="utf-8"
         )
         for filename, dimensions in (
             ("StoreLogo.png", (300, 300)),
