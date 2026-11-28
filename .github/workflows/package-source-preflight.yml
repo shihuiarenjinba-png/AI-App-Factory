@@ -7,6 +7,7 @@ on:
     paths:
       - 'tools/build_windows_msix.py'
       - 'tests/test_build_windows_msix.py'
+      - 'tests/test_package_source_preflight.py'
       - 'scripts/package_source_preflight.py'
       - 'scripts/run_makeappx_qa_fixture.py'
       - '.github/workflows/package-source-preflight.yml'
@@ -19,8 +20,9 @@ jobs:
   package-source-preflight:
     runs-on: windows-latest
     env:
-      FOCUS_SOURCE_SHA: fb6293839bc7b0bbff0a6d1d3c04e2f8f5942e79
+      FOCUS_SOURCE_SHA: b6b69464a9c7450489338bc7542fd22cf190ed42
       INTEGRITY_SOURCE_SHA: 33d612be2774ac155ea3d85289ec5cb7981c81c1
+      FOCUS_REQUEST_ID: app-focus-session-desk-b6b69464a9c7
     steps:
       - name: Checkout QA PR raw head
         uses: actions/checkout@v4
@@ -59,6 +61,9 @@ jobs:
           if ($integrityActual -ne $env:INTEGRITY_SOURCE_SHA) { throw "File Integrity source HEAD mismatch: $integrityActual" }
           Write-Host "QA_HEAD=$qaActual"
           Write-Host "FOCUS_SOURCE_HEAD=$focusActual"
+          $expectedRequest = "app-focus-session-desk-$($focusActual.Substring(0,12))"
+          if ($env:FOCUS_REQUEST_ID -ne $expectedRequest) { throw "Focus request/source binding mismatch" }
+          Write-Host "FOCUS_REQUEST_ID=$env:FOCUS_REQUEST_ID"
           Write-Host "FILE_INTEGRITY_SOURCE_HEAD=$integrityActual"
 
       - uses: actions/setup-python@v5
@@ -77,6 +82,7 @@ jobs:
           --source-root sources/focus-session-desk
           --slug focus-session-desk
           --expected-source-sha $env:FOCUS_SOURCE_SHA
+          --expected-request-id $env:FOCUS_REQUEST_ID
           --output qa-package-preflight/focus-session-desk.json
 
       - name: Preflight exact File Integrity Ledger source without building a product package
@@ -87,18 +93,39 @@ jobs:
           --expected-source-sha $env:INTEGRITY_SOURCE_SHA
           --output qa-package-preflight/file-integrity-ledger.json
 
-      - name: Assert expected fail-closed product holds and valid PNG assets
+      - name: Run source/request binding regression
+        run: python -m unittest discover -s tests -p test_package_source_preflight.py -v
+
+      - name: Assert exact source-bound fail-closed product holds and valid PNG assets
         shell: pwsh
         run: |
           $focus = Get-Content qa-package-preflight/focus-session-desk.json -Raw | ConvertFrom-Json
-          if ($focus.asset_validation -ne "PASS" -or $focus.identity_status -ne "STALE_TRACKED" -or $focus.version_status -ne "MISSING" -or $focus.makeappx_invoked -ne $false) {
-            throw "Focus preflight did not preserve the expected fail-closed delivery hold"
-          }
-          $integrity = Get-Content qa-package-preflight/file-integrity-ledger.json -Raw | ConvertFrom-Json
-          if ($integrity.asset_validation -ne "PASS" -or $integrity.identity_status -ne "MISSING" -or $integrity.makeappx_invoked -ne $false) {
-            throw "File Integrity preflight did not preserve the expected fail-closed delivery hold"
+          if ($focus.asset_validation -ne "PASS" -or
+              $focus.identity_status -ne "STALE_TRACKED" -or
+              $focus.version_status -ne "MISSING" -or
+              $focus.status -ne "DELIVERY_HOLD" -or
+              $focus.factory_request_id -ne $env:FOCUS_REQUEST_ID -or
+              $focus.factory_request_source_sha -ne $env:FOCUS_SOURCE_SHA -or
+              $focus.request_binding_status -ne "PASS" -or
+              $focus.makeappx_invoked -ne $false -or
+              $focus.product_msix_created -ne $false -or
+              $focus.store_submission -ne $false -or
+              $focus.publish -ne $false) {
+            throw "Focus preflight did not preserve the exact-source fail-closed delivery hold"
           }
 
+          $integrity = Get-Content qa-package-preflight/file-integrity-ledger.json -Raw | ConvertFrom-Json
+          if ($integrity.asset_validation -ne "PASS" -or
+              $integrity.identity_status -ne "MISSING" -or
+              $integrity.version_status -ne "UNAVAILABLE" -or
+              $integrity.status -ne "DELIVERY_HOLD" -or
+              $integrity.request_binding_status -ne "NOT_SUPPLIED" -or
+              $integrity.makeappx_invoked -ne $false -or
+              $integrity.product_msix_created -ne $false -or
+              $integrity.store_submission -ne $false -or
+              $integrity.publish -ne $false) {
+            throw "File Integrity preflight did not preserve the fail-closed delivery hold"
+          }
       - name: Invoke real MakeAppx on disposable QA fixture only
         run: python scripts/run_makeappx_qa_fixture.py --output-dir qa-package-preflight/makeappx-qa-fixture
 
