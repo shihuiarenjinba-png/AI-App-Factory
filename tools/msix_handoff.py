@@ -8,6 +8,9 @@ import re
 import shutil
 import subprocess
 import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from tools.build_windows_msix import source_head, verify_assets, verify_inputs
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -95,24 +98,66 @@ def msix_data(path:Path)->dict:
 def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:str)->dict:
     if not isinstance(slug,str) or not SLUG.fullmatch(slug):fail("invalid product slug")
     if not SHA40.fullmatch(str(source_sha)):fail("invalid Git source commit")
-    config=json.loads((repo_root/"factory/config.json").read_text(encoding="utf-8"))
+    repo_root=Path(repo_root).resolve(strict=True)
+    try:
+        actual_head=source_head(repo_root)
+    except (OSError,ValueError,subprocess.CalledProcessError) as error:
+        fail("source checkout unavailable: "+str(error)[:120])
+    if actual_head!=source_sha:
+        fail("Git source SHA does not match current HEAD")
+    config_path=repo_root/"factory/config.json"
+    if config_path.is_symlink() or not config_path.is_file():
+        fail("factory configuration missing or linked")
+    config_diff=subprocess.run(
+        ["git","-C",str(repo_root),"diff","--quiet","HEAD","--","factory/config.json"],
+        check=False,capture_output=True,timeout=20)
+    if config_diff.returncode!=0:
+        fail("Factory config differs from committed source HEAD")
+    config=json.loads(config_path.read_text(encoding="utf-8"))
     kind=config.get("kind")
     if kind not in ("app","game"):fail("factory app/game kind missing")
     manifest_path=repo_root/"products"/slug/"manifest.json"
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        fail("product manifest missing or linked")
     app_manifest=json.loads(manifest_path.read_text(encoding="utf-8"))
     if app_manifest.get("slug")!=slug or app_manifest.get("kind")!=kind:
         fail("product manifest / factory mismatch")
-    approved_path=repo_root/"products"/slug/"store/approved-identity.json"
-    if not approved_path.is_file():fail("official Identity approval input missing")
-    approved=json.loads(approved_path.read_text(encoding="utf-8"))
-    if (approved.get("reviewed") is not True or
-        approved.get("source")!="partner_center" or
-        not isinstance(approved.get("store_id"),str) or
-        not approved["store_id"].strip()):
-        fail("Partner Center approval not recorded")
+
+    expected_assets=None
+    if kind=="app":
+        try:
+            product,approved=verify_inputs(repo_root,slug)
+            expected_assets=verify_assets(product)
+        except (ValueError,OSError,KeyError) as error:
+            fail(str(error)[:200])
+    else:
+        approved_path=repo_root/"products"/slug/"store/approved-identity.json"
+        if not approved_path.is_file():fail("official Identity approval input missing")
+        approved=json.loads(approved_path.read_text(encoding="utf-8"))
+        if (approved.get("reviewed") is not True or
+            approved.get("source")!="partner_center" or
+            not isinstance(approved.get("store_id"),str) or
+            not approved["store_id"].strip()):
+            fail("Partner Center approval not recorded")
+
     actual=msix_data(package)
     for field in ("name","publisher","version"):
         if approved.get(field)!=actual[field]:fail("MSIX identity differs from approved "+field)
+
+    if expected_assets is not None:
+        try:
+            with zipfile.ZipFile(package) as archive:
+                members={entry.filename.replace("\\","/") for entry in archive.infolist()}
+                for filename,expected_sha in expected_assets.items():
+                    member="Assets/"+filename
+                    if member not in members:
+                        fail("MSIX Store asset missing: "+filename)
+                    actual_sha=sha256(archive.read(member)).hexdigest()
+                    if actual_sha!=expected_sha:
+                        fail("MSIX Store asset differs from current source: "+filename)
+        except (zipfile.BadZipFile,KeyError,OSError) as error:
+            fail("invalid MSIX Store assets: "+type(error).__name__)
+
     basename="AI-App-Factory" if kind=="app" else "AI-Game-Factory"
     result={
        "schema_version":1,"source_repository":"https://github.com/"+OWNER+"/"+basename,
@@ -123,6 +168,8 @@ def create_handoff(repo_root:Path,slug:str,package:Path,output:Path,source_sha:s
        "executable_sha256":actual["executable_sha256"],
        "identity":{k:actual[k] for k in ("name","publisher","version")},
     }
+    if expected_assets is not None:
+        result["asset_sha256"]=expected_assets
     dest=output/"factory-msix-handoff"
     if dest.exists():fail("output artifact already exists")
     dest.mkdir(parents=True)
