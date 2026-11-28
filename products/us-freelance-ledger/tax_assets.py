@@ -228,6 +228,7 @@ def section_179_source_reference(tax_year):
     if fixture is None:
         return {
             "status": "REVIEW_REQUIRED",
+            "review_required": True,
             "tax_year": year,
             "source_version": None,
             "source_url": None,
@@ -245,6 +246,7 @@ def section_179_source_reference(tax_year):
     return {
         **fixture,
         "status": "REVIEW_REQUIRED",
+        "review_required": True,
         "reference_only": True,
         "special_depreciation_effective_after": SPECIAL_DEPRECIATION_EFFECTIVE_AFTER,
         "special_depreciation_rule": SPECIAL_DEPRECIATION_RULE_SUMMARY,
@@ -476,7 +478,8 @@ def build_tax_depreciation_review(
         "blocking_reasons": blocking,
         "review_reasons": list(dict.fromkeys(review_reasons + blocking)),
         "source_reference": source_reference,
-        "source_effective_date": SPECIAL_DEPRECIATION_EFFECTIVE_AFTER,
+        "source_effective_date": "2025-01-20",
+        "special_depreciation_effective_after": SPECIAL_DEPRECIATION_EFFECTIVE_AFTER,
         "special_depreciation_window": special_window,
         "eligibility_determined": False,
         "deduction_approved": False,
